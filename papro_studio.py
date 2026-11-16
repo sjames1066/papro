@@ -35,10 +35,20 @@ TYPED_BASES = {"SafetyBriefing": "Safety demonstration", "PreSafetyBriefing": "P
                "Modular_Welcome": "Boarding welcome - the rest"}
 TYPED_RE = re.compile(r"^(?P<base>[A-Za-z_]+)@(?P<types>[A-Za-z0-9+]+)(?:~v(?P<n>\d+))?$")
 TYPE_CODE = re.compile(r"^[A-Z0-9]{2,4}$")
-AIRCRAFT_TYPES = ["A318", "A319", "A320", "A321", "A19N", "A20N", "A21N", "A332", "A333", "A338", "A339", "A342", "A343",
-                  "A359", "A35K", "A388", "B712", "B732", "B733", "B734", "B735", "B736", "B737", "B738", "B739", "B37M",
-                  "B38M", "B39M", "B3XM", "B744", "B748", "B752", "B753", "B762", "B763", "B772", "B77L", "B77W", "B788",
-                  "B789", "B78X", "E170", "E175", "E190", "E195", "E290", "E295", "CRJ2", "CRJ7", "CRJ9", "DH8D", "AT76", "BCS1", "BCS3"]
+ICAO_TYPES = frozenset("""
+A124 A140 A148 A158 A19N A20N A21N A225 A306 A30B A310 A318 A319 A320 A321 A332 A333 A337 A338 A339 A342 A343 A345
+A346 A359 A35K A388 A3ST A748 AC68 AC90 AN12 AN24 AN26 AN28 AN30 AN32 AN72 AT43 AT44 AT45 AT46 AT72 AT73 AT75 AT76 ATP
+B190 B212 B37M B38M B39M B3XM B461 B462 B463 B701 B703 B712 B720 B721 B722 B731 B732 B733 B734 B735 B736 B737 B738
+B739 B741 B742 B743 B744 B748 B74D B74R B74S B752 B753 B762 B763 B764 B772 B773 B778 B779 B77L B77W B788 B789 B78X
+BA11 BCS1 BCS3 BE20 BE55 BE58 BE99 BE9L BELF BLCF BN2P C130 C152 C172 C182 C208 C210 C25B C25C C500 C510 C525 C550
+C56X C680 C700 C750 C919 CL2T CL30 CL44 CL60 CONC CONI CRJ1 CRJ2 CRJ7 CRJ9 CRJX D228 D328 DA40 DA42 DC10 DC3 DC6 DC85
+DC86 DC87 DC91 DC92 DC93 DC94 DC95 DH2T DH8A DH8B DH8C DH8D DH8E DHC2 DHC3 DHC4 DHC6 DHC7 DOVE E110 E120 E135 E145
+E170 E175 E190 E195 E290 E295 E35L E50P E545 E550 E55P E75L E75S F100 F27 F28 F2TH F50 F70 F900 FA50 FA7X G159 G280
+GL5T GL7T GLEX GLF4 GLF5 GLF6 H25B H25C HERN I114 IL18 IL62 IL76 IL86 IL96 J328 JS31 JS32 JS41 L101 L188 L410 LJ35
+LJ45 LJ60 MD11 MD81 MD82 MD83 MD87 MD88 MD90 N262 P28A P28B P68 PA31 PA44 PA46 PC12 PC24 PC6T RJ1H RJ70 RJ85 S210 S58T
+S601 S61 S76 S92 SB20 SC7 SF34 SH33 SH36 SR22 SU25 SU95 T134 T144 T154 T204 TBM9 TRIS Y12 YK40 YK42 YS11
+""".split())   # ICAO aircraft type designators (Doc 8643) for airliners, regional, turboprop and common GA types
+AIRCRAFT_TYPES = sorted(ICAO_TYPES)
 
 
 def typed_stem(base: str, types: list[str], n: int = 1) -> str:
@@ -53,15 +63,16 @@ def parse_typed(stem: str):
     return m["base"], [t.upper() for t in m["types"].split("+") if t], int(m["n"] or 1)
 
 
-def clean_types(types) -> list[str]:
-    """Validated, de-duplicated type list. ALL on its own means every aircraft; at least one type is required."""
+def clean_types(types, strict: bool = True) -> list[str]:
+    """Validated, de-duplicated type list. ALL on its own means every aircraft; at least one type is required.
+    strict: only real ICAO type designators are accepted (a pack from someone else is read leniently)."""
     out: list[str] = []
     for t in types or []:
         t = str(t).strip().upper()
         if not t:
             continue
-        if t != "ALL" and not TYPE_CODE.match(t):
-            raise StudioError(f"'{t}' is not an aircraft type code (like A320 or B38M).")
+        if t != "ALL" and (not TYPE_CODE.match(t) or (strict and t not in ICAO_TYPES)):
+            raise StudioError(f"'{t}' is not an ICAO aircraft type (use codes like A320, B738 or B38M).")
         if t not in out:
             out.append(t)
     if not out or "ALL" in out:
@@ -936,7 +947,7 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
         elif folder == "main" and parse_typed(stem):
             base, types, n = parse_typed(stem)
             try:
-                entry = {"base": base, "types": clean_types(types), "n": n}
+                entry = {"base": base, "types": clean_types(types, False), "n": n}
             except StudioError:
                 continue
             if entry not in project.setdefault("typed", []):
@@ -953,7 +964,7 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
         if folder == "main" and parse_typed(path.stem):   # types in a canonical order (sorted), so the clip matches its entry
             base, types, n = parse_typed(path.stem)
             try:
-                name = typed_stem(base, clean_types(types), n) + path.suffix
+                name = typed_stem(base, clean_types(types, False), n) + path.suffix
             except StudioError:
                 continue
         shutil.copyfile(path, pack / folder / name)

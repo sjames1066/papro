@@ -2154,8 +2154,8 @@ class UIMixin:
             if voice not in voices:
                 return {"error": "That voice is not in your library."}
             aircraft = str(data.get("aircraft", "")).upper().strip()
-            if aircraft and not re.fullmatch(r"[A-Z0-9]{2,4}", aircraft):
-                return {"error": "Aircraft type must be an ICAO code like A320 or B38M."}
+            if aircraft and aircraft not in papro_studio.ICAO_TYPES:
+                return {"error": f"'{aircraft}' is not an ICAO aircraft type (use codes like A320, B738 or B38M)."}
         except AppError as exc:
             return {"error": str(exc)}
         key = hashlib.sha1(f"{icao}|{voice}|{dest}|{arrival}|{aircraft}|{boost_percent(cfg)}|{cfg.get('join_style')}".encode()).hexdigest()[:12]

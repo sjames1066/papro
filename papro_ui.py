@@ -530,6 +530,7 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
 #view-studio{overflow-anchor:none}
 .addline{display:flex;gap:8px;margin:8px 0}
 .addline input,.addline textarea{flex:1;font:inherit}
+#t-ac.bad{border-color:var(--err);box-shadow:0 0 0 2px rgba(255,107,129,.25)}
 .typbtn{margin-left:10px;padding:3px 10px;font-size:12px;border-radius:999px;background:rgba(107,47,214,.16);color:var(--text);border:1px solid var(--line)}
 .typpop{position:fixed;z-index:60;background:var(--surface,#1c1c26);border:1px solid var(--line);border-radius:12px;padding:10px;box-shadow:0 12px 36px rgba(0,0,0,.45);width:250px;max-height:340px;overflow:auto}
 .typpop label{display:flex;align-items:center;gap:8px;padding:3px 4px;font-size:13px;cursor:pointer}.typpop .tg{display:grid;grid-template-columns:1fr 1fr;gap:0 6px}
@@ -586,7 +587,7 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
       <label class="tlab">Pack<select class="voice" id="t-air"></select></label>
       <label class="tlab">Voice<select class="voice" id="t-voice"></select></label>
       <label class="tlab">Destination<select class="voice" id="t-dest"></select></label>
-      <label class="tlab">Aircraft<select class="voice" id="t-ac" title="Which aircraft type to build for: packs can have PAs that only play on some types"></select></label>
+      <label class="tlab">Aircraft type<input type="text" id="t-ac" list="t-aclist" maxlength="4" placeholder="Any (generic)" autocomplete="off" style="width:130px;text-transform:uppercase" title="ICAO aircraft type to build for, e.g. A320. Empty = the normal PAs. Packs can have PAs that only play on some types."><datalist id="t-aclist"></datalist></label>
       <label class="tlab">Local arrival time<input type="text" id="t-time" value="14:35" style="width:90px"><span id="t-spoken"></span></label>
       <button class="ghost" id="t-build">Rebuild (re-roll variations)</button>
     </div>
@@ -1032,7 +1033,7 @@ async function testInit(){
   const keep={air:$("#t-air").value,voice:$("#t-voice").value,dest:$("#t-dest").value,ac:$("#t-ac").value};
   const a=$("#t-air"); a.innerHTML=""; for(const x of tOpts){const o=el("option",null,x.icao+" - "+x.name);o.value=x.icao;a.appendChild(o)}
   if(!tOpts.length){$("#t-voice").innerHTML="";$("#t-dest").innerHTML="";tMsg("No pack in your library has a recorded airport yet. Import a pack (Download Packs tab) or record one in Pack Studio and use \"Use in PAPro now\".");return}
-  a.onchange=()=>testFillVoices(); $("#t-voice").onchange=()=>testFillDest(); $("#t-ac").onchange=()=>testBuild(false); $("#t-dest").onchange=()=>testBuild(false);
+  a.onchange=()=>testFillVoices(); $("#t-voice").onchange=()=>testFillDest(); $("#t-ac").oninput=()=>$("#t-ac").classList.remove("bad");$("#t-ac").onchange=()=>{$("#t-ac").value=$("#t-ac").value.trim().toUpperCase();if(testAcOk())testBuild(false)}; $("#t-dest").onchange=()=>testBuild(false);
   $("#t-time").onchange=()=>{const m=$("#t-time").value.trim().match(/^(\d{1,2})[:.]?(\d{2})$/); if(m&&+m[1]<24&&+m[2]<60)$("#t-time").value=m[1].padStart(2,"0")+":"+m[2]; tSpoken(); testBuild(false)};
   $("#t-time").oninput=tSpoken;
   $("#t-build").onclick=()=>testBuild(true);
@@ -1044,11 +1045,11 @@ async function testInit(){
   if([...a.options].some(o=>o.value===keep.air))a.value=keep.air;
   testFillVoices(keep);
 }
-function testFillAc(keep){const x=tOpts.find(a=>a.icao===$("#t-air").value),sel=$("#t-ac"),mine=(x&&x.aircraft_types)||[];sel.innerHTML="";
-  const g=el("option",null,"Generic (no aircraft type)");g.value="";sel.appendChild(g);
-  const add=(t,label)=>{const o=el("option",null,label||t);o.value=t;sel.appendChild(o)};
-  mine.forEach(t=>add(t,t+" (has its own PAs)"));tAllTypes.filter(t=>!mine.includes(t)).forEach(t=>add(t));
-  const want=keep&&keep.ac!=null?keep.ac:(mine[0]||"");sel.value=[...sel.options].some(o=>o.value===want)?want:""}
+function testFillAc(keep){const x=tOpts.find(a=>a.icao===$("#t-air").value),mine=(x&&x.aircraft_types)||[],dl=$("#t-aclist");dl.innerHTML="";
+  [...mine,...tAllTypes.filter(t=>!mine.includes(t))].forEach(t=>{const o=el("option");o.value=t;dl.appendChild(o)});
+  $("#t-ac").value=keep&&keep.ac!=null?keep.ac:(mine[0]||"");$("#t-ac").classList.remove("bad")}
+function testAcOk(){const v=$("#t-ac").value.trim().toUpperCase(),ok=!v||tAllTypes.includes(v);$("#t-ac").classList.toggle("bad",!ok);
+  $("#t-ac").title=ok?"":"“"+v+"” is not an ICAO aircraft type";if(!ok)tMsg("“"+v+"” is not an ICAO aircraft type. Use codes like A320, B738 or B38M, or leave it empty for the normal PAs.");return ok}
 function testFillVoices(keep){testFillAc(keep);const x=tOpts.find(a=>a.icao===$("#t-air").value),v=$("#t-voice"); v.innerHTML="";
   for(const y of x.voices){const o=el("option",null,y.name);o.value=y.key;v.appendChild(o)}
   if(keep&&keep.voice&&[...v.options].some(o=>o.value===keep.voice))v.value=keep.voice; testFillDest(keep)}
@@ -1085,8 +1086,8 @@ function testPlay(i){ // play one clip; in playlist mode move on to the next whe
 }
 async function testAll(){ if(tBusy)return; if(!tKey){await testBuild(false)} if(!tRows.length)return; tPlaylist=true; testPlay(0)}
 async function testBuild(rebuild){
-  if(tBusy)return; tBusy=true; testStop(); tMsg("Building your announcements..."); $("#t-all").disabled=true;
-  const r=await api("test_build",{icao:$("#t-air").value,voice:$("#t-voice").value,dest:$("#t-dest").value,arrival:$("#t-time").value,aircraft:$("#t-ac").value,rebuild:rebuild});
+  if(tBusy||!testAcOk())return; tBusy=true; testStop(); tMsg("Building your announcements..."); $("#t-all").disabled=true;
+  const r=await api("test_build",{icao:$("#t-air").value,voice:$("#t-voice").value,dest:$("#t-dest").value,arrival:$("#t-time").value,aircraft:$("#t-ac").value.trim().toUpperCase(),rebuild:rebuild});
   tBusy=false; $("#t-all").disabled=false;
   if(!r.ok){tKey="";tRows=[];tMsg(r.error||"Could not build - PAPro did not answer.");return}
   tKey=r.key; tRows=[]; const L=$("#t-list"); L.innerHTML=""; const groups={};
@@ -1221,19 +1222,25 @@ function togglePlay(c,id){
 function stopPlay(){if(player){const a=player.audio;player=null;a.pause();a.currentTime=0}syncPlayer()}
 function typesPicker(c,r,anchor){
   document.querySelectorAll(".typpop").forEach(x=>x.remove());
-  const pop=el("div","typpop"),cur=new Set(r.types),all=el("label"),ac=el("input");ac.type="checkbox";ac.checked=cur.has("ALL");all.append(ac,document.createTextNode("All aircraft"));pop.append(all,el("hr"));
-  const grid=el("div","tg");pop.append(grid);const boxes=[];
-  const known=c.aircraft_types||[];[...r.types.filter(t=>t!=="ALL"&&!known.includes(t)),...known].forEach(t=>{const l=el("label"),b=el("input");b.type="checkbox";b.value=t;b.checked=cur.has(t);l.append(b,document.createTextNode(t));grid.append(l);boxes.push(b);
-    b.onchange=()=>{if(b.checked)ac.checked=false;else if(!boxes.some(x=>x.checked))ac.checked=true}});
-  ac.onchange=()=>{if(ac.checked)boxes.forEach(b=>b.checked=false);else if(!boxes.some(b=>b.checked))ac.checked=true};
-  const other=el("input");other.type="text";other.placeholder="Another type code, e.g. A20N";other.maxLength=4;other.style.textTransform="uppercase";pop.append(other);
-  document.body.append(pop);const rc=anchor.getBoundingClientRect();pop.style.left=Math.max(8,Math.min(innerWidth-266,rc.left))+"px";pop.style.top=Math.min(innerHeight-pop.offsetHeight-8,rc.bottom+6)+"px";
-  let closed=false;const close=async()=>{if(closed)return;closed=true;document.removeEventListener("mousedown",away,true);
-    let types=ac.checked?["ALL"]:boxes.filter(b=>b.checked).map(b=>b.value);const o=other.value.trim().toUpperCase();if(o){types=types.filter(t=>t!=="ALL");if(!types.includes(o))types.push(o)}
-    pop.remove();if(!types.length)types=["ALL"];if(JSON.stringify([...types].sort())===JSON.stringify([...r.types].sort()))return;
-    const res=await studio("typed_types",{...pid(c),slot:r.id,types});if(res&&res.ok)toast("Now used on: "+(types.includes("ALL")?"all aircraft":types.join(", ")));studioSig="";renderStudio()};
+  const valid=new Set(c.aircraft_types||[]);let types=r.types.filter(t=>t!=="ALL");
+  const pop=el("div","typpop"),all=el("label"),ac=el("input");ac.type="checkbox";ac.checked=!types.length;all.append(ac,document.createTextNode("All aircraft"));pop.append(all,el("hr"));
+  const chips=el("div","chiprow");chips.style.minHeight="28px";const inp=el("input");inp.type="text";inp.maxLength=4;inp.placeholder="Type an ICAO code, e.g. A320";inp.style.textTransform="uppercase";inp.setAttribute("list","typlist");inp.autocomplete="off";
+  const err=el("div","small");err.style.cssText="color:var(--err);min-height:16px;margin-top:4px";
+  const dl=el("datalist");dl.id="typlist";(c.aircraft_types||[]).forEach(t=>{const o=el("option");o.value=t;dl.append(o)});
+  const draw=()=>{chips.textContent="";types.forEach(t=>{const b=el("button","ghost",t+" ✕");b.style.padding="2px 9px";b.onclick=()=>{types=types.filter(x=>x!==t);ac.checked=!types.length;draw()};chips.append(b)});ac.checked=!types.length};
+  const add=()=>{const v=inp.value.trim().toUpperCase();if(!v)return true;
+    if(!valid.has(v)){err.textContent="“"+v+"” is not an ICAO aircraft type (codes like A320, B738, B38M)";return false}
+    err.textContent="";if(!types.includes(v))types.push(v);inp.value="";draw();return true};
+  ac.onchange=()=>{if(ac.checked){types=[];draw()}else if(!types.length)ac.checked=true};
+  inp.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();add()}});inp.addEventListener("input",()=>{err.textContent="";if(inp.value.trim().length>=3&&valid.has(inp.value.trim().toUpperCase()))add()});
+  pop.append(chips,inp,dl,err);draw();
+  document.body.append(pop);const rc=anchor.getBoundingClientRect();pop.style.left=Math.max(8,Math.min(innerWidth-266,rc.left))+"px";pop.style.top=Math.min(innerHeight-pop.offsetHeight-8,rc.bottom+6)+"px";inp.focus();
+  let closed=false;const close=async()=>{if(closed)return;if(inp.value.trim()&&!add()){inp.focus();return}
+    closed=true;document.removeEventListener("mousedown",away,true);pop.remove();dl.remove();
+    const next=types.length?types:["ALL"];if(JSON.stringify([...next].sort())===JSON.stringify([...r.types].sort()))return;
+    const res=await studio("typed_types",{...pid(c),slot:r.id,types:next});if(res&&res.ok)toast("Now used on: "+(next.includes("ALL")?"all aircraft":next.join(", ")));studioSig="";renderStudio()};
   const away=e=>{if(!pop.contains(e.target)&&e.target!==anchor)close()};setTimeout(()=>document.addEventListener("mousedown",away,true),0);
-  other.addEventListener("keydown",e=>{if(e.key==="Enter")close()});
+  pop.addEventListener("keydown",e=>{if(e.key==="Escape"){inp.value="";close()}});
 }
 function slotRow(c,r){
   const d=el("div","slot"+(r.done?" done":"")+(r.skipped?" skipped":""));
