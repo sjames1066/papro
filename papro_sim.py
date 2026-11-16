@@ -61,8 +61,9 @@ class SimWatcher:
     """Background thread: connects to MSFS when it is running and calls
     on_event("takeoff") or on_event("landed", "HH:MM") (local time where you landed)."""
 
-    def __init__(self, on_event, running, stop: threading.Event, slow_kt: float = 60.0, on_aircraft=None):
+    def __init__(self, on_event, running, stop: threading.Event, slow_kt: float = 60.0, on_aircraft=None, on_telemetry=None):
         self.on_event, self.running, self.stop = on_event, running, stop
+        self.on_telemetry = on_telemetry
         self.on_aircraft, self._aircraft = on_aircraft, None
         self.detector = LandingDetector(slow_kt)
         self.thread = threading.Thread(target=self.loop, daemon=True)
@@ -91,6 +92,31 @@ class SimWatcher:
                 return str(value)
         return ""
 
+    def _get(self, requests, *names):
+        """First name the aircraft answers to, or None (the value is not reported / the name is unknown)."""
+        for name in names:
+            try:
+                value = requests.get(name)
+            except Exception:
+                continue
+            if value is not None:
+                return value
+        return None
+
+    def read_telemetry(self, requests, ground: bool, agl: float, speed: float) -> dict:
+        g = lambda *n: self._get(requests, *n)   # noqa: E731
+        engines = [g(f"GENERAL_ENG_COMBUSTION:{i}") for i in (1, 2)]
+        known = [e for e in engines if e is not None]
+        return {
+            "t": time.time(), "on_ground": ground, "agl": agl, "gs": speed,
+            "vs": g("VERTICAL_SPEED"), "alt": g("INDICATED_ALTITUDE", "PLANE_ALTITUDE") or 0.0,
+            "parking_brake": g("BRAKE_PARKING_POSITION", "BRAKE_PARKING_INDICATOR"),
+            "beacon": g("LIGHT_BEACON", "LIGHT_BEACON_ON"),
+            "landing_light": g("LIGHT_LANDING", "LIGHT_LANDING_ON"),
+            "seatbelt": g("CABIN_SEATBELTS_ALERT_SWITCH"),
+            "eng_running": any(known) if known else None,
+        }
+
     def loop(self) -> None:
         try:
             from SimConnect import AircraftRequests, SimConnect
@@ -116,6 +142,11 @@ class SimWatcher:
                 if ground is None or agl is None or speed is None:
                     self.stop.wait(1)
                     continue
+                if self.on_telemetry:
+                    try:
+                        self.on_telemetry(self.read_telemetry(requests, bool(ground), float(agl), float(speed)))
+                    except Exception:
+                        log.exception("Telemetry callback failed")
                 event = self.detector.feed(bool(ground), float(agl), float(speed))
                 if event == "takeoff":
                     self.on_event("takeoff", None)

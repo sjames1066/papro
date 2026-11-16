@@ -18,7 +18,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install -r requirements.txt pyinstaller
-      - run: python -m PyInstaller --noconfirm --clean --onefile --noconsole --name papro --icon papro.ico --hidden-import pystray._win32 --collect-all SimConnect papro.py
+      - run: python -m PyInstaller --noconfirm --clean --onefile --noconsole --name papro --icon papro.ico --hidden-import pystray._win32 --collect-all SimConnect --collect-all sounddevice papro.py
       - uses: actions/upload-artifact@v4
         with:
           name: PAPro

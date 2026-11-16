@@ -7,7 +7,7 @@ echo Installing build tools (one time)...
 if errorlevel 1 goto failed
 echo.
 echo Building PAPro (a folder of files, not one self-extracting file: antivirus programs trust that more) ...
-"%PYEXE%" -m PyInstaller --noconfirm --clean --onedir --noconsole --name papro --icon papro.ico --hidden-import pystray._win32 --add-data "airport_names.json;." --collect-all SimConnect papro.py
+"%PYEXE%" -m PyInstaller --noconfirm --clean --onedir --noconsole --name papro --icon papro.ico --hidden-import pystray._win32 --add-data "airport_names.json;." --collect-all SimConnect --collect-all sounddevice papro.py
 if errorlevel 1 goto failed
 for /f "tokens=3 delims= " %%V in ('findstr /b /c:"VERSION = " papro.py') do set "PAProVER=%%~V"
 echo PAPro version: %PAProVER%

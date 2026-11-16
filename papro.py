@@ -150,6 +150,8 @@ DEFAULT_CONFIG = {
     "segment_pause_ms": 60,           # pause between the pieces of a joined PA (see the parts folder)
     "pa_knob_on": True,               # the on-screen PA knob (aircraft whose PAs PAPro plays itself): pushed up = PAs audible
     "pa_knob_volume": 70,             # ... and how loud (0-100)
+    "pa_playback": True,              # play the PAs in PAPro itself for aircraft that can't use the Fenix folder
+    "pa_output_device": "",           # sound output for those PAs ("" = the Windows default)
     "quit_with_msfs": True,           # when started with MSFS: close PAPro when the sim closes
     # Which pack files each folder replaces. Variants (e.g. BoardingWelcome[Morning].ogg) are found in the pack.
     "mappings": [
@@ -1370,6 +1372,19 @@ def pick_extra(cfg: dict, base: Path, key: str) -> Path | None:
     return next((p for p in files if p.name == used[key]), None)
 
 
+PLAYBACK_DIR = DATA_DIR / "playback"          # where PAs are built for aircraft that PAPro plays itself
+_PLAYBACK = {"on": False}                      # set from the sim: the loaded aircraft is not a supported (Fenix) one
+KNOB = {"on": True, "volume": 70}              # the on-screen PA knob, mirrored here for the audio thread
+
+
+def playback_target() -> Path | None:
+    return PLAYBACK_DIR if _PLAYBACK["on"] else None
+
+
+def knob_gain() -> float:
+    return (max(0, min(100, int(KNOB["volume"]))) / 100.0) if KNOB["on"] else 0.0
+
+
 def clock_tag() -> str:
     hour = time.localtime().tm_hour
     return "night" if hour < 6 else "morning" if hour < 12 else "afternoon" if hour < 18 else "evening"
@@ -1757,7 +1772,8 @@ def rebuild_landing(cfg: dict, arrival: str | None) -> str:
         return f"Landed at {dest} - no {airline} airline pack installed"
     stored = state.get("variants", {}).get(f"{airline}_{dest}")
     message = apply_destination(cfg, airline, dest, choose=choose_default, variant=stored, arrival=arrival, only={"dest"},
-                                voice=state.get("voice_used", {}).get(f"{airline}_{dest}") or None)
+                                voice=state.get("voice_used", {}).get(f"{airline}_{dest}") or None,
+                                target_dir=playback_target())
     state = load_state()
     state["live"] = f"{airline}_{dest}"  # the next SimBrief check must not undo this
     save_state(state)
@@ -1805,7 +1821,7 @@ def update(cfg: dict, force: bool = False, airline: str | None = None, dest: str
     code = check_airline_code(code)
     if not re.fullmatch(r"[A-Z0-9]{3,4}", flight["icao"]):
         raise AppError(f"'{flight['icao']}' is not a valid airport code.")
-    key = f"{code}_{flight['icao']}_{flight.get('arrival') or ''}_{flight.get('aircraft') or ''}"  # a new landing time or aircraft rebuilds the PAs
+    key = f"{code}_{flight['icao']}_{flight.get('arrival') or ''}_{flight.get('aircraft') or ''}{'_pb' if _PLAYBACK['on'] else ''}"  # a new landing time or aircraft rebuilds the PAs
     state = load_state()
     shown = {"airline": code, "dest": flight["icao"], "name": flight.get("name", ""),
              "number": flight.get("number", ""), "callsign": flight.get("callsign", ""), "aircraft": flight.get("aircraft", "")}
@@ -1822,7 +1838,8 @@ def update(cfg: dict, force: bool = False, airline: str | None = None, dest: str
         state.pop("last", None)
         save_state(state)
         return False, f"{code} to {flight['icao']}: no {code} airline pack installed"
-    message = apply_destination(cfg, code, flight["icao"], variant=variant, arrival=flight.get("arrival"))
+    message = apply_destination(cfg, code, flight["icao"], variant=variant, arrival=flight.get("arrival"),
+                                target_dir=playback_target())
     state = load_state()
     state["last"] = key
     state["applied"] = APPLIED_MARK in message
@@ -2454,6 +2471,7 @@ class UIMixin:
                     set_config_value("pa_knob_volume", max(0, min(100, int(data["volume"]))))
                 except (TypeError, ValueError):
                     return {"error": "The volume must be a number from 0 to 100."}
+            self.sync_knob()
         elif name == "settings":
             mode = data.get("autostart")
             if mode not in ("off", "windows", "msfs"):
@@ -3076,9 +3094,67 @@ class TrayApp(UIMixin):
 
     def aircraft_event(self, info: dict | None) -> None:
         """From the SimConnect watcher: the aircraft now loaded in the sim (None when the sim is closed)."""
+        before = _PLAYBACK["on"]
         self.aircraft = info
         if info:
-            log.info("Aircraft: %s (%s)", info["title"], "PAs supported" if info["supported"] else "not supported yet")
+            log.info("Aircraft: %s (%s)", info["title"], "PAs supported" if info["supported"] else "PAPro plays the PAs itself")
+        try:
+            _PLAYBACK["on"] = bool(info and not info["supported"] and load_config().get("pa_playback", True))
+        except AppError:
+            _PLAYBACK["on"] = False
+        if _PLAYBACK["on"] != before:   # build the PAs where they are needed (the Fenix folder / PAPro's own playback folder)
+            state = load_state()
+            state.pop("last", None)
+            state.pop("live", None)
+            save_state(state)
+            self.wake.set()
+
+    def sync_knob(self) -> None:
+        try:
+            cfg = load_config()
+            KNOB["on"] = bool(cfg.get("pa_knob_on", True))
+            KNOB["volume"] = max(0, min(100, int(cfg.get("pa_knob_volume", 70))))
+        except (AppError, TypeError, ValueError):
+            pass
+
+    def play_key(self, key: str) -> None:
+        """An announcement is due: find it in the pack built for this flight and queue it."""
+        path = None
+        try:
+            from papro_play import resolve
+
+            path = resolve(PLAYBACK_DIR, key, clock_tag())
+        except Exception:
+            log.exception("Could not look up the %s announcement", key)
+        if not path:
+            log.info("PA due: %s - no recording in the pack", key)
+            return
+        log.info("PA due: %s -> %s", key, path.name)
+        self.player_for().play(path)
+
+    def player_for(self):
+        if getattr(self, "player", None) is None:
+            from papro_play import Player, SoundDeviceBackend
+
+            self.sync_knob()
+            self.player = Player(knob_gain, SoundDeviceBackend(load_config().get("pa_output_device") or None))
+        return self.player
+
+    def telemetry(self, reading: dict) -> None:
+        """From the SimConnect watcher, about once a second: drives the phase engine for aircraft PAPro plays for."""
+        if not _PLAYBACK["on"]:
+            return
+        engine = getattr(self, "phases", None)
+        if engine is None:
+            from papro_phases import PhaseEngine
+
+            engine = self.phases = PhaseEngine(self.play_key)
+        engine.feed(reading)
+        if "deboard_complete" in engine.done:   # flight over: a minute later get ready for the next one
+            self._reset_at = getattr(self, "_reset_at", None) or reading["t"] + 60
+            if reading["t"] >= self._reset_at:
+                engine.reset()
+                self._reset_at = None
 
     def sim_event(self, event: str, clock: str | None) -> None:
         """From the SimConnect watcher: "takeoff" (a new flight) or "landed" with the local time at the airport."""
@@ -3098,6 +3174,8 @@ class TrayApp(UIMixin):
             except Exception as exc:
                 log.exception("Landing PA error")
                 self.set_status(f"Error: {exc}", notify=True)
+            if _PLAYBACK["on"] and getattr(self, "phases", None):
+                self.phases.landed_event(time.time())
 
     def toggle_auto(self) -> None:
         self.auto = not self.auto
@@ -3138,6 +3216,11 @@ class TrayApp(UIMixin):
             self.updating = False
 
     def quit(self) -> None:
+        try:
+            if getattr(self, "player", None):
+                self.player.close()
+        except Exception:
+            pass
         self.stop.set()
         self.wake.set()
         try:
@@ -3266,6 +3349,7 @@ class TrayApp(UIMixin):
         except (AppError, OSError):
             pass  # reported later when the first update runs
         self.refresh_catalog()
+        self.sync_knob()
         try:
             cfg = load_config()
             needs_name = not (str(cfg.get("simbrief_username", "")).strip() or str(cfg.get("simbrief_userid", "")).strip())
@@ -3280,7 +3364,8 @@ class TrayApp(UIMixin):
             import papro_sim
 
             papro_sim.SimWatcher(self.sim_event, msfs_running, self.stop,
-                                float(load_config().get("landing_speed_knots", 60)), on_aircraft=self.aircraft_event).start()
+                                float(load_config().get("landing_speed_knots", 60)), on_aircraft=self.aircraft_event,
+                                on_telemetry=self.telemetry).start()
         except Exception:
             log.exception("Could not start the landing watcher")
         self.icon.run()
@@ -3350,6 +3435,7 @@ def main() -> int:
     parser.add_argument("--uninstall", metavar="ICAO", help="uninstall an airline pack")
     parser.add_argument("--restore", metavar="ICAO", help="put an airline's original generic announcements back")
     parser.add_argument("--once", action="store_true", help="update once and exit (no tray icon)")
+    parser.add_argument("--probe-aircraft", nargs="*", metavar="NAME", help="with MSFS running: write probe-report.txt (what the loaded aircraft reports) for mapping its PA knob")
     parser.add_argument("--background", action="store_true", help="start in the tray without opening the window (used by the startup entries)")
     parser.add_argument("--airline", help="with --once: airline ICAO instead of the SimBrief plan's")
     parser.add_argument("--variant", help="with --once: which recording to use when a destination has several (e.g. T5, or Standard)")
@@ -3368,6 +3454,12 @@ def main() -> int:
     except Exception:
         pass
 
+    if args.probe_aircraft is not None:
+        import papro_probe
+
+        print(papro_probe.run(args.probe_aircraft, DATA_DIR / "probe-report.txt"))
+        print(f"\nSaved to {DATA_DIR / 'probe-report.txt'}")
+        return 0
     cli = (args.community or args.add_airline or args.list_packs or args.install or args.uninstall
            or args.restore or args.once)
     if not cli:
