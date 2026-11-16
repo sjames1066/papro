@@ -29,6 +29,46 @@ MUSIC_NAME = re.compile(r"^\w[\w .&'()-]{0,59}$")
 AIRCRAFT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 .\-/]{0,29}$")
 AIRCRAFT_PRESETS = ["Airbus A319", "Airbus A320", "Airbus A321", "Airbus A330", "Airbus A350", "Airbus A380", "Boeing 737",
                     "Boeing 737 MAX", "Boeing 777", "Boeing 787", "Embraer 175", "Embraer 195"]
+# Aircraft-specific PAs: a custom take of a PA that only plays for some aircraft types (ICAO type designators). The types are
+# part of the file name - SafetyBriefing@A320+A319.ogg - so they travel with the pack. ALL = every aircraft.
+TYPED_BASES = {"SafetyBriefing": "Safety demonstration", "PreSafetyBriefing": "Pre-safety briefing",
+               "Modular_Welcome": "Boarding welcome - the rest"}
+TYPED_RE = re.compile(r"^(?P<base>[A-Za-z_]+)@(?P<types>[A-Za-z0-9+]+)(?:~v(?P<n>\d+))?$")
+TYPE_CODE = re.compile(r"^[A-Z0-9]{2,4}$")
+AIRCRAFT_TYPES = ["A318", "A319", "A320", "A321", "A19N", "A20N", "A21N", "A332", "A333", "A338", "A339", "A342", "A343",
+                  "A359", "A35K", "A388", "B712", "B732", "B733", "B734", "B735", "B736", "B737", "B738", "B739", "B37M",
+                  "B38M", "B39M", "B3XM", "B744", "B748", "B752", "B753", "B762", "B763", "B772", "B77L", "B77W", "B788",
+                  "B789", "B78X", "E170", "E175", "E190", "E195", "E290", "E295", "CRJ2", "CRJ7", "CRJ9", "DH8D", "AT76", "BCS1", "BCS3"]
+
+
+def typed_stem(base: str, types: list[str], n: int = 1) -> str:
+    return f"{base}@{'+'.join(types)}" + (f"~v{n}" if n > 1 else "")
+
+
+def parse_typed(stem: str):
+    """'SafetyBriefing@A320+A319~v2' -> ('SafetyBriefing', ['A320', 'A319'], 2); None for anything else."""
+    m = TYPED_RE.match(stem)
+    if not m or m["base"] not in TYPED_BASES:
+        return None
+    return m["base"], [t.upper() for t in m["types"].split("+") if t], int(m["n"] or 1)
+
+
+def clean_types(types) -> list[str]:
+    """Validated, de-duplicated type list. ALL on its own means every aircraft; at least one type is required."""
+    out: list[str] = []
+    for t in types or []:
+        t = str(t).strip().upper()
+        if not t:
+            continue
+        if t != "ALL" and not TYPE_CODE.match(t):
+            raise StudioError(f"'{t}' is not an aircraft type code (like A320 or B38M).")
+        if t not in out:
+            out.append(t)
+    if not out or "ALL" in out:
+        return ["ALL"]
+    return sorted(out)[:12]
+
+
 EXTRA_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _-]{0,39}$")
 
 GENERAL = [  # (file name, label, what to say). Names are Fenix's announcement types; every one is optional except the modular pair.
@@ -290,6 +330,12 @@ def slot_list(project: dict) -> list[dict]:
         add("Boarding music", "main", f"BoardingMusic~{name}", f"Track: {name}",
             "Upload a track you have the rights to use. It is shown in the cabin crew panel under this name; no PA sound is applied.")
         out[-1]["music"] = True
+    for entry in project.get("typed", []):   # custom takes for particular aircraft types
+        stem = typed_stem(entry["base"], entry["types"], entry.get("n", 1))
+        shown = "all aircraft" if entry["types"] == ["ALL"] else ", ".join(entry["types"])
+        add("Aircraft PAs", "main", stem, f"{TYPED_BASES[entry['base']]} ({shown})",
+            "this announcement as it should sound on the aircraft types you choose. It replaces the normal one on those types.")
+        out[-1].update({"typed": True, "base": entry["base"], "types": entry["types"], "n": entry.get("n", 1)})
     for name in project.get("extras", []):
         add("Bolt-ons", "extra", name, f"Bolt-on: {name}", "A short announcement that is sometimes added to the welcome.")
     return out
@@ -486,6 +532,73 @@ def remove_variant(root: Path, project: dict, base: str, n: int) -> None:
     project.get("scripts", {}).pop(slot_id, None)
     if slot_id in project.get("skipped", []):
         project["skipped"].remove(slot_id)
+    save(root, project)
+
+
+def add_typed(root: Path, project: dict, base: str, types=None) -> dict:
+    """A new aircraft-specific PA. Returns its entry."""
+    if base not in TYPED_BASES:
+        raise StudioError("That announcement cannot be made aircraft-specific.")
+    types = clean_types(types or ["ALL"])
+    entries = project.setdefault("typed", [])
+    if len(entries) >= 60:
+        raise StudioError("That is plenty of aircraft PAs - 60 is the most.")
+    n = 1
+    while any(e["base"] == base and e["types"] == types and e.get("n", 1) == n for e in entries):
+        n += 1
+    entry = {"base": base, "types": types, "n": n}
+    entries.append(entry)
+    save(root, project)
+    return entry
+
+
+def _typed_entry(project: dict, slot_id: str) -> dict:
+    stem = slot_id.split("/", 1)[-1]
+    parsed = parse_typed(stem)
+    if not parsed:
+        raise StudioError("That is not an aircraft PA.")
+    for e in project.get("typed", []):
+        if (e["base"], e["types"], e.get("n", 1)) == parsed:
+            return e
+    raise StudioError("That aircraft PA does not exist.")
+
+
+def set_typed_types(root: Path, project: dict, slot_id: str, types) -> str:
+    """Change which aircraft types a PA applies to: its files are renamed to match. Returns the new slot id."""
+    entry = _typed_entry(project, slot_id)
+    types = clean_types(types)
+    if types == entry["types"]:
+        return slot_id
+    old_stem = typed_stem(entry["base"], entry["types"], entry.get("n", 1))
+    n = 1
+    while any(e is not entry and e["base"] == entry["base"] and e["types"] == types and e.get("n", 1) == n for e in project["typed"]):
+        n += 1
+    new_stem = typed_stem(entry["base"], types, n)
+    folder = project_dir(root, project["icao"], project["voice"])
+    for d, prefix in ((folder / "raw", "main__"), (folder / "pack" / "main", "")):
+        if d.is_dir():
+            for path in list(d.iterdir()):
+                if path.is_file() and path.stem == prefix + old_stem:
+                    path.rename(path.with_name(prefix + new_stem + path.suffix))
+    old_id, new_id = f"main/{old_stem}", f"main/{new_stem}"
+    for key in ("slots", "scripts"):
+        if old_id in project.get(key, {}):
+            project[key][new_id] = project[key].pop(old_id)
+    project["skipped"] = [new_id if i == old_id else i for i in project.get("skipped", [])]
+    entry["types"], entry["n"] = types, n
+    save(root, project)
+    return new_id
+
+
+def remove_typed(root: Path, project: dict, slot_id: str) -> None:
+    entry = _typed_entry(project, slot_id)
+    try:
+        delete_slot(root, project, slot_id)
+    except StudioError:
+        pass
+    project["typed"] = [e for e in project["typed"] if e is not entry and e != entry]
+    project.get("scripts", {}).pop(slot_id, None)
+    project["skipped"] = [i for i in project.get("skipped", []) if i != slot_id]
     save(root, project)
 
 
@@ -820,6 +933,14 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
             if int(n) not in project.setdefault("variants", {}).setdefault(base, []):
                 project["variants"][base].append(int(n))
                 project["variants"][base].sort()
+        elif folder == "main" and parse_typed(stem):
+            base, types, n = parse_typed(stem)
+            try:
+                entry = {"base": base, "types": clean_types(types), "n": n}
+            except StudioError:
+                continue
+            if entry not in project.setdefault("typed", []):
+                project["typed"].append(entry)
         elif folder == "main" and stem.startswith("BoardingMusic~") and MUSIC_NAME.match(stem[14:]):
             project["music"].append(stem[14:])
     project["airports"].sort()
@@ -828,7 +949,14 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
         if progress:
             progress(i / len(files))
         (pack / folder).mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(path, pack / folder / path.name)
+        name = path.name
+        if folder == "main" and parse_typed(path.stem):   # types in a canonical order (sorted), so the clip matches its entry
+            base, types, n = parse_typed(path.stem)
+            try:
+                name = typed_stem(base, clean_types(types), n) + path.suffix
+            except StudioError:
+                continue
+        shutil.copyfile(path, pack / folder / name)
     for stem in MODE_SLOTS:  # a clip already called SafetyBriefing[Manual].ogg keeps that mode
         if (pack / "main" / f"{stem}[Manual].ogg").is_file() and not (pack / "main" / f"{stem}.ogg").is_file():
             project.setdefault("modes", {})[f"main/{stem}"] = "Manual"

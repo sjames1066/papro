@@ -529,6 +529,7 @@ def fetch_flight(cfg: dict) -> dict:
         "name": str(dest.get("name", "")).strip(),
         "airline": str((data.get("general") or {}).get("icao_airline", "")).strip().upper(),
         "arrival": arrival_clock(data),
+        "aircraft": str((data.get("aircraft") or {}).get("icaocode", "")).strip().upper(),   # ICAO type, e.g. A320
         **flight_labels(data),
     }
 
@@ -1273,8 +1274,40 @@ def part_file(base: Path, name: str) -> Path | None:
 VARIANT_RE = re.compile(r"^(?P<base>.+?)~v(?P<n>\d+)\.ogg$", re.IGNORECASE)   # AfterTakeoff~v2.ogg: another take of AfterTakeoff.ogg
 
 
+TYPED_RE = re.compile(r"^(?P<base>[A-Za-z_]+)@(?P<types>[A-Za-z0-9+]+)(?:~v\d+)?(?P<tags>(?:\[[^\]]*\])*)\.ogg$", re.IGNORECASE)
+_AIRCRAFT_LOCAL = threading.local()   # the Test tab builds for a chosen aircraft type without touching the real flight
+
+
+def typed_info(name: str):
+    """'SafetyBriefing@A320+A319~v2.ogg' -> ('SafetyBriefing.ogg', {'A320', 'A319'}): the file name it replaces, and the
+    aircraft types it is for ('ALL' = every aircraft). None for an ordinary file."""
+    m = TYPED_RE.match(name)
+    if not m:
+        return None
+    return f"{m['base']}{m['tags']}.ogg", {t.upper() for t in m["types"].split("+") if t}
+
+
+def current_aircraft_type() -> str:
+    """ICAO type of the aircraft in the flight plan (e.g. A320), or "" when unknown."""
+    override = getattr(_AIRCRAFT_LOCAL, "value", None)
+    if override is not None:
+        return override.upper()
+    return str((load_state().get("flight") or {}).get("aircraft", "")).upper()
+
+
+def typed_choice(key: str, generic: list[Path], typed: list[Path]) -> Path | None:
+    """Pick the take of a PA for this aircraft. Takes made for the aircraft's own type win; takes marked ALL join the
+    ordinary ones. One is chosen at random once per flight."""
+    ac = current_aircraft_type()
+    specific = [p for p in typed if ac and ac in typed_info(p.name)[1]]
+    if specific:
+        return choose_variant(f"{key}@{ac}", specific)
+    pool = generic + [p for p in typed if "ALL" in typed_info(p.name)[1]]
+    return choose_variant(key, pool) if pool else None
+
+
 def is_variant(name: str) -> bool:
-    return bool(VARIANT_RE.match(name)) and not name.lower().startswith("boardingmusic")
+    return bool(VARIANT_RE.match(name)) and not name.lower().startswith("boardingmusic") and not typed_info(name)
 
 
 def choose_variant(key: str, options: list[Path]) -> Path:
@@ -1299,7 +1332,9 @@ def modular_piece(base: Path, kind: str) -> Path | None:
         return None
     takes = [found] + sorted(p for p in found.parent.iterdir() if p.is_file() and is_variant(p.name)
                              and VARIANT_RE.match(p.name)["base"].lower() == found.stem.lower())
-    return choose_variant(f"{base.parent.name}/{base.name}/{found.stem}", takes)
+    typed = sorted(p for p in found.parent.iterdir() if p.is_file() and typed_info(p.name)
+                   and typed_info(p.name)[0].lower() == found.name.lower())   # Modular_Welcome@A320.ogg: only for some aircraft
+    return typed_choice(f"{base.parent.name}/{base.name}/{found.stem}", takes, typed) or found
 
 
 def is_modular(name: str) -> bool:
@@ -1414,7 +1449,7 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
     if not fenix_dir.is_dir():  # e.g. the folder was deleted: put the complete generic pack back first
         fenix_dir.mkdir(parents=True)
         for path in pristine.iterdir():
-            if path.is_file() and path.suffix.lower() == ".ogg" and not is_modular(path.name) and not is_variant(path.name):
+            if path.is_file() and path.suffix.lower() == ".ogg" and not is_modular(path.name) and not is_variant(path.name) and not typed_info(path.name):
                 install_file(path, fenix_dir / path.name, boost)
 
     # Your general PAs in Airlines\<ICAO>\main are the source of truth for everything PAPro doesn't swap per
@@ -1425,11 +1460,14 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
     if not only and (pristine == lib_dir / MAIN_FOLDER or own_main):
         managed = {name for m in cfg["mappings"] for name in target_names(pristine, m, own_main)}
         sources: dict[str, Path] = {}
+        typed_files: dict[str, dict[str, Path]] = {}   # installed name -> {file name: path}, for takes made for some aircraft only
         for folder in (lib_dir / MAIN_FOLDER if pristine == lib_dir / MAIN_FOLDER else None, own_main):   # the voice's files win
             if folder is None:
                 continue
             for path in sorted(folder.iterdir()):
-                if path.is_file() and path.suffix.lower() == ".ogg" and path.name not in managed and not is_modular(path.name) \
+                if path.is_file() and path.suffix.lower() == ".ogg" and typed_info(path.name) and not is_modular(path.name):
+                    typed_files.setdefault(typed_info(path.name)[0], {})[path.name] = path   # aircraft-specific takes
+                elif path.is_file() and path.suffix.lower() == ".ogg" and path.name not in managed and not is_modular(path.name) \
                         and not is_variant(path.name):
                     sources[path.name] = path
         # extra takes of a PA (AfterTakeoff~v2.ogg): one of them is picked at random for each flight and installed under
@@ -1448,6 +1486,12 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
         for base_name, found in takes.items():
             if base_name in sources or any(n.lower() == base_name.lower() for n in sources):
                 sources[base_name] = choose_variant(f"{airline}/{voice_dir.name}/{base_name}", [sources[base_name], *found.values()])
+        for name, found in typed_files.items():   # a take for this flight's aircraft type replaces the ordinary PA
+            if name in managed:
+                continue
+            chosen_take = typed_choice(f"{airline}/{voice_dir.name}/{name}", [sources[name]] if name in sources else [], list(found.values()))
+            if chosen_take:
+                sources[name] = chosen_take
         for name, path in sources.items():
             dst = fenix_dir / name
             if sync_needed(path, dst, boost):
@@ -1585,7 +1629,7 @@ def restore_generic(cfg: dict, icao: str) -> str:
         raise AppError(f"No saved original {icao} announcements yet (PAPro saves them the first time it changes a pack).")
     fenix_dir.mkdir(parents=True, exist_ok=True)
     for path in sorted(source.iterdir()):
-        if path.is_file() and path.suffix.lower() == ".ogg" and not is_modular(path.name) and not is_variant(path.name):
+        if path.is_file() and path.suffix.lower() == ".ogg" and not is_modular(path.name) and not is_variant(path.name) and not typed_info(path.name):
             install_file(path, fenix_dir / path.name)
     state = load_state()
     state.pop("last", None)
@@ -1609,7 +1653,7 @@ def airline_has_pack(cfg: dict, code: str) -> bool:
 def update(cfg: dict, force: bool = False, airline: str | None = None, dest: str | None = None,
            variant: str | None = None) -> tuple[bool, str]:
     """Look up the flight (or use the given one) and apply it. Returns (changed, message)."""
-    flight = {"icao": dest.upper(), "airline": "", "arrival": None, "number": "", "callsign": ""} if dest \
+    flight = {"icao": dest.upper(), "airline": "", "arrival": None, "number": "", "callsign": "", "aircraft": ""} if dest \
         else fetch_flight(cfg)
     code = (airline or cfg.get("airline_override") or flight["airline"] or "").strip().upper()
     if not code:
@@ -1617,10 +1661,10 @@ def update(cfg: dict, force: bool = False, airline: str | None = None, dest: str
     code = check_airline_code(code)
     if not re.fullmatch(r"[A-Z0-9]{3,4}", flight["icao"]):
         raise AppError(f"'{flight['icao']}' is not a valid airport code.")
-    key = f"{code}_{flight['icao']}_{flight.get('arrival') or ''}"  # a new landing time rebuilds the landing PA
+    key = f"{code}_{flight['icao']}_{flight.get('arrival') or ''}_{flight.get('aircraft') or ''}"  # a new landing time or aircraft rebuilds the PAs
     state = load_state()
     shown = {"airline": code, "dest": flight["icao"], "name": flight.get("name", ""),
-             "number": flight.get("number", ""), "callsign": flight.get("callsign", "")}
+             "number": flight.get("number", ""), "callsign": flight.get("callsign", ""), "aircraft": flight.get("aircraft", "")}
     if state.get("flight") != shown:
         state["flight"] = shown
         save_state(state)
@@ -2079,10 +2123,17 @@ class UIMixin:
                     parts = f.stem.split("_")
                     if len(parts) >= 2 and parts[0].upper() == code:
                         ports.setdefault(key, set()).add(parts[1].upper())
-            airlines.append({"icao": code, "name": airline_display_name(cfg, code, installed.get(code), ""),
+            types: set[str] = set()   # aircraft types that have their own PAs in this airline's voices
+            for vdir in voices.values():
+                if (vdir / MAIN_FOLDER).is_dir():
+                    for f in (vdir / MAIN_FOLDER).glob("*@*.ogg"):
+                        info = typed_info(f.name)
+                        if info:
+                            types |= info[1] - {"ALL"}
+            airlines.append({"icao": code, "name": airline_display_name(cfg, code, installed.get(code), ""), "aircraft_types": sorted(types),
                              "voices": [{"key": k, "name": voice_info(p, k)["name"], "airports": sorted(ports.get(k, []))}
                                         for k, p in voices.items()]})
-        return {"airlines": airlines}
+        return {"airlines": airlines, "all_types": papro_studio.AIRCRAFT_TYPES}
 
     def test_build(self, data: dict) -> dict:
         """Build the whole set of PAs for one airline / voice / destination in a scratch folder, with the real pipeline."""
@@ -2102,9 +2153,12 @@ class UIMixin:
             voice = str(data.get("voice", ""))
             if voice not in voices:
                 return {"error": "That voice is not in your library."}
+            aircraft = str(data.get("aircraft", "")).upper().strip()
+            if aircraft and not re.fullmatch(r"[A-Z0-9]{2,4}", aircraft):
+                return {"error": "Aircraft type must be an ICAO code like A320 or B38M."}
         except AppError as exc:
             return {"error": str(exc)}
-        key = hashlib.sha1(f"{icao}|{voice}|{dest}|{arrival}|{boost_percent(cfg)}|{cfg.get('join_style')}".encode()).hexdigest()[:12]
+        key = hashlib.sha1(f"{icao}|{voice}|{dest}|{arrival}|{aircraft}|{boost_percent(cfg)}|{cfg.get('join_style')}".encode()).hexdigest()[:12]
         sandbox = TEST_DIR / key
         pack = sandbox / "pack"
         message = ""
@@ -2112,6 +2166,7 @@ class UIMixin:
             shutil.rmtree(sandbox, ignore_errors=True)
             sandbox.mkdir(parents=True)
             _STATE_LOCAL.path = sandbox / "state.json"   # roll variations / bolt-ons here, not in the real state
+            _AIRCRAFT_LOCAL.value = aircraft              # the aircraft type to build for ("" = no type: generic PAs)
             try:
                 message = apply_destination(cfg, icao, dest, variant=STANDARD, arrival=arrival, voice=voice, target_dir=pack)
             except AppError as exc:
@@ -2123,6 +2178,7 @@ class UIMixin:
                 return {"error": f"Test build failed: {type(exc).__name__}: {exc}"}
             finally:
                 _STATE_LOCAL.path = None
+                _AIRCRAFT_LOCAL.value = None
             TEST_DIR.mkdir(parents=True, exist_ok=True)
             old = sorted((p for p in TEST_DIR.iterdir() if p.is_dir()), key=lambda p: p.stat().st_mtime)[:-10]
             for p in old:
@@ -2390,7 +2446,7 @@ class UIMixin:
                 "donate_url": project.get("donate_url", ""), "accent": project.get("accent", ""),
                 "description": project.get("description", ""), "version": project.get("version", "1.0.0"),
                 "effect": bool(project.get("effect", True)), "airports": project["airports"], "aircraft": project.get("aircraft", []), "aircraft_on": bool(project.get("aircraft_on")),
-                "aircraft_presets": papro_studio.AIRCRAFT_PRESETS, "extras": project["extras"], "music": project.get("music", []),
+                "aircraft_presets": papro_studio.AIRCRAFT_PRESETS, "typed_bases": papro_studio.TYPED_BASES, "aircraft_types": papro_studio.AIRCRAFT_TYPES, "extras": project["extras"], "music": project.get("music", []),
                 "logo": papro_studio.logo_path(STUDIO_DIR, project).is_file(), "has_script": bool(project.get("scripts")), "origin": bool(project.get("origin")), "upgrades": papro_studio.upgrade_preview(STUDIO_DIR, project), "target_pending": False, "rows": rows, "missing": len(papro_studio.missing(STUDIO_DIR, project)),
                 "target": target, "target_count": count, "target_source": label,
                 "done": sum(1 for r in rows if r["done"] or r["skipped"]), "total": len(rows)}
@@ -2538,6 +2594,13 @@ class UIMixin:
                     papro_studio.remove_variant(STUDIO_DIR, project, base, int(data.get("n", 0)))
                 else:
                     papro_studio.add_variant(STUDIO_DIR, project, base)
+            elif name == "typed_add":
+                entry = papro_studio.add_typed(STUDIO_DIR, project, str(data.get("base", "")), data.get("types"))
+                return {"ok": True, "slot": "main/" + papro_studio.typed_stem(entry["base"], entry["types"], entry.get("n", 1))}
+            elif name == "typed_types":
+                return {"ok": True, "slot": papro_studio.set_typed_types(STUDIO_DIR, project, str(data.get("slot", "")), data.get("types"))}
+            elif name == "typed_remove":
+                papro_studio.remove_typed(STUDIO_DIR, project, str(data.get("slot", "")))
             elif name == "aircraft":
                 if "on" in data:
                     papro_studio.set_aircraft_on(STUDIO_DIR, project, bool(data["on"]))

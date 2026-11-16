@@ -530,6 +530,10 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
 #view-studio{overflow-anchor:none}
 .addline{display:flex;gap:8px;margin:8px 0}
 .addline input,.addline textarea{flex:1;font:inherit}
+.typbtn{margin-left:10px;padding:3px 10px;font-size:12px;border-radius:999px;background:rgba(107,47,214,.16);color:var(--text);border:1px solid var(--line)}
+.typpop{position:fixed;z-index:60;background:var(--surface,#1c1c26);border:1px solid var(--line);border-radius:12px;padding:10px;box-shadow:0 12px 36px rgba(0,0,0,.45);width:250px;max-height:340px;overflow:auto}
+.typpop label{display:flex;align-items:center;gap:8px;padding:3px 4px;font-size:13px;cursor:pointer}.typpop .tg{display:grid;grid-template-columns:1fr 1fr;gap:0 6px}
+.typpop input[type=text]{width:100%;margin-top:8px}.typpop hr{border:0;border-top:1px solid var(--line);margin:6px 0}
 .chiprow{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
 .sdbar{position:sticky;bottom:0;background:linear-gradient(transparent,var(--bg,#0d0a1f) 30%);padding:18px 0 4px;display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
 .meter{height:14px;border-radius:99px;background:var(--surface2);overflow:hidden;position:relative;margin:8px 0 4px}
@@ -582,6 +586,7 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
       <label class="tlab">Pack<select class="voice" id="t-air"></select></label>
       <label class="tlab">Voice<select class="voice" id="t-voice"></select></label>
       <label class="tlab">Destination<select class="voice" id="t-dest"></select></label>
+      <label class="tlab">Aircraft<select class="voice" id="t-ac" title="Which aircraft type to build for: packs can have PAs that only play on some types"></select></label>
       <label class="tlab">Local arrival time<input type="text" id="t-time" value="14:35" style="width:90px"><span id="t-spoken"></span></label>
       <button class="ghost" id="t-build">Rebuild (re-roll variations)</button>
     </div>
@@ -1017,17 +1022,17 @@ function setView(v){view=v;for(const n of ["main","studio","dl","test"]){$("#vie
   if(v==="studio"){studioSig="";renderStudio()} if(v==="test")testInit()}
 let tOpts=null,tKey="",tAudio=null,tRows=[],tIdx=-1,tPlaylist=false,tBusy=false,tPaused=false;
 function tMsg(t){const L=$("#t-list");L.innerHTML="";L.appendChild(el("div","tmsg",t))}
-let tSig="";
+let tSig="",tAllTypes=[];
 async function testInit(){
   const r=await api("test_options"); if(!r.ok){tMsg(r.error||"Could not read your library.");return}
   // only voices that have at least one recorded airport can be built; re-read the library every time the tab opens,
   // so a pack imported or recorded since last time shows up straight away
   const list=r.airlines.map(a=>({...a,voices:a.voices.filter(v=>v.airports.length)})).filter(a=>a.voices.length);
-  const sig=JSON.stringify(list); if(sig===tSig&&tOpts)return; tSig=sig; tOpts=list;
-  const keep={air:$("#t-air").value,voice:$("#t-voice").value,dest:$("#t-dest").value};
+  const sig=JSON.stringify(list); if(sig===tSig&&tOpts)return; tSig=sig; tOpts=list; tAllTypes=r.all_types||[];
+  const keep={air:$("#t-air").value,voice:$("#t-voice").value,dest:$("#t-dest").value,ac:$("#t-ac").value};
   const a=$("#t-air"); a.innerHTML=""; for(const x of tOpts){const o=el("option",null,x.icao+" - "+x.name);o.value=x.icao;a.appendChild(o)}
   if(!tOpts.length){$("#t-voice").innerHTML="";$("#t-dest").innerHTML="";tMsg("No pack in your library has a recorded airport yet. Import a pack (Download Packs tab) or record one in Pack Studio and use \"Use in PAPro now\".");return}
-  a.onchange=testFillVoices; $("#t-voice").onchange=testFillDest; $("#t-dest").onchange=()=>testBuild(false);
+  a.onchange=()=>testFillVoices(); $("#t-voice").onchange=()=>testFillDest(); $("#t-ac").onchange=()=>testBuild(false); $("#t-dest").onchange=()=>testBuild(false);
   $("#t-time").onchange=()=>{const m=$("#t-time").value.trim().match(/^(\d{1,2})[:.]?(\d{2})$/); if(m&&+m[1]<24&&+m[2]<60)$("#t-time").value=m[1].padStart(2,"0")+":"+m[2]; tSpoken(); testBuild(false)};
   $("#t-time").oninput=tSpoken;
   $("#t-build").onclick=()=>testBuild(true);
@@ -1039,7 +1044,12 @@ async function testInit(){
   if([...a.options].some(o=>o.value===keep.air))a.value=keep.air;
   testFillVoices(keep);
 }
-function testFillVoices(keep){const x=tOpts.find(a=>a.icao===$("#t-air").value),v=$("#t-voice"); v.innerHTML="";
+function testFillAc(keep){const x=tOpts.find(a=>a.icao===$("#t-air").value),sel=$("#t-ac"),mine=(x&&x.aircraft_types)||[];sel.innerHTML="";
+  const g=el("option",null,"Generic (no aircraft type)");g.value="";sel.appendChild(g);
+  const add=(t,label)=>{const o=el("option",null,label||t);o.value=t;sel.appendChild(o)};
+  mine.forEach(t=>add(t,t+" (has its own PAs)"));tAllTypes.filter(t=>!mine.includes(t)).forEach(t=>add(t));
+  const want=keep&&keep.ac!=null?keep.ac:(mine[0]||"");sel.value=[...sel.options].some(o=>o.value===want)?want:""}
+function testFillVoices(keep){testFillAc(keep);const x=tOpts.find(a=>a.icao===$("#t-air").value),v=$("#t-voice"); v.innerHTML="";
   for(const y of x.voices){const o=el("option",null,y.name);o.value=y.key;v.appendChild(o)}
   if(keep&&keep.voice&&[...v.options].some(o=>o.value===keep.voice))v.value=keep.voice; testFillDest(keep)}
 function testFillDest(keep){const x=tOpts.find(a=>a.icao===$("#t-air").value),y=x.voices.find(v=>v.key===$("#t-voice").value),d=$("#t-dest"); d.innerHTML="";
@@ -1076,7 +1086,7 @@ function testPlay(i){ // play one clip; in playlist mode move on to the next whe
 async function testAll(){ if(tBusy)return; if(!tKey){await testBuild(false)} if(!tRows.length)return; tPlaylist=true; testPlay(0)}
 async function testBuild(rebuild){
   if(tBusy)return; tBusy=true; testStop(); tMsg("Building your announcements..."); $("#t-all").disabled=true;
-  const r=await api("test_build",{icao:$("#t-air").value,voice:$("#t-voice").value,dest:$("#t-dest").value,arrival:$("#t-time").value,rebuild:rebuild});
+  const r=await api("test_build",{icao:$("#t-air").value,voice:$("#t-voice").value,dest:$("#t-dest").value,arrival:$("#t-time").value,aircraft:$("#t-ac").value,rebuild:rebuild});
   tBusy=false; $("#t-all").disabled=false;
   if(!r.ok){tKey="";tRows=[];tMsg(r.error||"Could not build - PAPro did not answer.");return}
   tKey=r.key; tRows=[]; const L=$("#t-list"); L.innerHTML=""; const groups={};
@@ -1209,9 +1219,26 @@ function togglePlay(c,id){
   a.play().then(syncPlayer).catch(()=>{player=null;syncPlayer();toast("Could not play that")});syncPlayer();
 }
 function stopPlay(){if(player){const a=player.audio;player=null;a.pause();a.currentTime=0}syncPlayer()}
+function typesPicker(c,r,anchor){
+  document.querySelectorAll(".typpop").forEach(x=>x.remove());
+  const pop=el("div","typpop"),cur=new Set(r.types),all=el("label"),ac=el("input");ac.type="checkbox";ac.checked=cur.has("ALL");all.append(ac,document.createTextNode("All aircraft"));pop.append(all,el("hr"));
+  const grid=el("div","tg");pop.append(grid);const boxes=[];
+  const known=c.aircraft_types||[];[...r.types.filter(t=>t!=="ALL"&&!known.includes(t)),...known].forEach(t=>{const l=el("label"),b=el("input");b.type="checkbox";b.value=t;b.checked=cur.has(t);l.append(b,document.createTextNode(t));grid.append(l);boxes.push(b);
+    b.onchange=()=>{if(b.checked)ac.checked=false;else if(!boxes.some(x=>x.checked))ac.checked=true}});
+  ac.onchange=()=>{if(ac.checked)boxes.forEach(b=>b.checked=false);else if(!boxes.some(b=>b.checked))ac.checked=true};
+  const other=el("input");other.type="text";other.placeholder="Another type code, e.g. A20N";other.maxLength=4;other.style.textTransform="uppercase";pop.append(other);
+  document.body.append(pop);const rc=anchor.getBoundingClientRect();pop.style.left=Math.max(8,Math.min(innerWidth-266,rc.left))+"px";pop.style.top=Math.min(innerHeight-pop.offsetHeight-8,rc.bottom+6)+"px";
+  let closed=false;const close=async()=>{if(closed)return;closed=true;document.removeEventListener("mousedown",away,true);
+    let types=ac.checked?["ALL"]:boxes.filter(b=>b.checked).map(b=>b.value);const o=other.value.trim().toUpperCase();if(o){types=types.filter(t=>t!=="ALL");if(!types.includes(o))types.push(o)}
+    pop.remove();if(!types.length)types=["ALL"];if(JSON.stringify([...types].sort())===JSON.stringify([...r.types].sort()))return;
+    const res=await studio("typed_types",{...pid(c),slot:r.id,types});if(res&&res.ok)toast("Now used on: "+(types.includes("ALL")?"all aircraft":types.join(", ")));studioSig="";renderStudio()};
+  const away=e=>{if(!pop.contains(e.target)&&e.target!==anchor)close()};setTimeout(()=>document.addEventListener("mousedown",away,true),0);
+  other.addEventListener("keydown",e=>{if(e.key==="Enter")close()});
+}
 function slotRow(c,r){
   const d=el("div","slot"+(r.done?" done":"")+(r.skipped?" skipped":""));
   const nm=el("div","nm2",r.label); if(r.skipped)nm.append(el("em","sk","skipped")); else if(r.required&&!r.done)nm.append(el("em",null,"needed"));
+  if(r.typed){const tb=el("button","typbtn","✈ "+(r.types.includes("ALL")?"All aircraft":r.types.join(", "))+" ▾");tb.title="Aircraft types this announcement plays on";tb.onclick=e=>{e.stopPropagation();typesPicker(c,r,tb)};nm.append(tb)}
   if(r.modes){const ms=el("select","voice");ms.style.cssText="margin-left:10px;padding:3px 8px;font-size:12px";ms.title="How Fenix plays it: Prerecorded = chosen in the cabin crew panel; Manual = the purser announces it (adds [Manual] to the file name)";
     r.modes.forEach(m=>{const o=el("option",null,m);o.value=m;ms.append(o)});ms.value=r.mode;ms.onchange=()=>studio("mode",{...pid(c),slot:r.id,mode:ms.value});nm.append(ms)}
   d.append(nm);
@@ -1244,6 +1271,7 @@ function slotRow(c,r){
   const isAc=r.folder==="aircraft",isAp=r.folder==="airports"||isAc,apCode=r.folder==="airports"?r.id.slice(("airports/"+c.icao+"_").length):r.label;
   if(r.done||isAp){const p=el("button","pp","▶");p.dataset.id=r.id;p.title="Play";p.onclick=()=>togglePlay(c,r.id);const sp2=el("button","stp","⏹");sp2.dataset.id=r.id;sp2.title="Stop";sp2.style.display="none";sp2.onclick=stopPlay;const x=el("button","danger","✕");x.title=isAp?(isAc?"Remove this aircraft":"Remove this airport")+(r.done?" and its recording":""):"Remove";let armT=null;x.onclick=()=>{if(!x.classList.contains("arm")){x.classList.add("arm");x.textContent="Delete?";x.title="Click again to delete";armT=setTimeout(()=>{x.classList.remove("arm");x.textContent="✕";x.title="Remove"},3500);return}clearTimeout(armT);isAp?studio(isAc?"aircraft":"airport",{...pid(c),code:apCode,remove:true}):studio("delete",{...pid(c),slot:r.id})};if(r.done)act.append(p,sp2);act.append(x)}
   if(r.variantable){const av=el("button","ghost","+ Variation");av.title="Record another take of this announcement. PAPro picks one at random each flight.";av.onclick=async()=>{openGroups.add(r.group);await studio("variant",{...pid(c),base:r.stem});studioSig="";renderStudio()};act.append(av)}
+  if(r.typed){const xt=el("button","danger","✕");xt.title="Remove this aircraft PA";let armT=null;xt.onclick=()=>{if(!xt.classList.contains("arm")){xt.classList.add("arm");xt.textContent="Delete?";armT=setTimeout(()=>{xt.classList.remove("arm");xt.textContent="✕"},3000);return}clearTimeout(armT);studio("typed_remove",{...pid(c),slot:r.id})};act.append(xt)}
   if(r.variant_of){const xv=el("button","danger","✕");xv.title="Remove this variation";let armV=null;xv.onclick=()=>{if(!xv.classList.contains("arm")){xv.classList.add("arm");xv.textContent="Delete?";armV=setTimeout(()=>{xv.classList.remove("arm");xv.textContent="✕"},3500);return}clearTimeout(armV);studio("variant",{...pid(c),base:r.variant_of,n:r.variant_n,remove:true})};act.append(xv)}
   if(r.custom){const cs=el("button","sq ghost","✕");cs.title="Remove this item's script";cs.style.fontSize="11px";cs.onclick=()=>studio("script",{...pid(c),slot:r.id,text:""});act.insertBefore(cs,up.nextSibling)}
   d.append(act);return d;
@@ -1312,8 +1340,8 @@ function renderStudio(){
     ub.onclick=async()=>{const r=await studio("unskip_all",pid(c));if(r&&r.ok)toast(r.count+" announcement"+(r.count==1?"":"s")+" put back on the checklist")};pr.append(ub)}
   const bar=el("div","ptrack");const fill=el("i");fill.style.width=Math.round(100*c.done/c.total)+"%";bar.append(fill);pr.append(bar);root.append(pr);
   const groups=[];c.rows.forEach(r=>{let g=groups.find(x=>x.name===r.group);if(!g){g={name:r.group,rows:[]};groups.push(g)}g.rows.push(r)});
-  ["Airports","Aircraft","Boarding music","Bolt-ons"].forEach(n=>{if(!groups.find(x=>x.name===n))groups.push({name:n,rows:[]})});
-  const order=["BoardingWelcome","Landing","Airports","Aircraft","Refuelling","Other announcements","Boarding music","Bolt-ons"];groups.sort((a,b)=>order.indexOf(a.name)-order.indexOf(b.name));
+  ["Airports","Aircraft","Aircraft PAs","Boarding music","Bolt-ons"].forEach(n=>{if(!groups.find(x=>x.name===n))groups.push({name:n,rows:[]})});
+  const order=["BoardingWelcome","Landing","Airports","Aircraft","Refuelling","Other announcements","Aircraft PAs","Boarding music","Bolt-ons"];groups.sort((a,b)=>order.indexOf(a.name)-order.indexOf(b.name));
   groups.forEach(gr=>{
     const d=el("details","grp");d.open=openGroups.has(gr.name);d.ontoggle=()=>{d.open?openGroups.add(gr.name):openGroups.delete(gr.name)};
     const sm=el("summary",null,gr.name);sm.append(el("span",null,gr.rows.filter(r=>r.done||r.skipped).length+"/"+gr.rows.length));d.append(sm);
@@ -1333,6 +1361,12 @@ function renderStudio(){
         add.onclick=async()=>{if(!i.value.trim())return;const text=i.value;i.value="";i.blur();const r=await studio("aircraft",{...pid(c),code:text});if(!r.ok)i.value=text;openGroups.add("Aircraft");studioSig="";renderStudio()};
         i.addEventListener("keydown",e=>{if(e.key==="Enter")add.click()});line.append(i,add);d.append(line);
       }
+    }
+    if(gr.name==="Aircraft PAs"){
+      d.append(el("div","small","Your own versions of the safety demonstration, pre-safety briefing or boarding welcome for particular aircraft types (A320, B739, B38M...). On a flight with one of those types the matching version plays instead of the normal one; any other aircraft keeps the normal one. Pick the types after adding."));
+      const line=el("div","addline"),sel=el("select","voice");Object.entries(c.typed_bases||{}).forEach(([k,v])=>{const o=el("option",null,v);o.value=k;sel.append(o)});
+      const add=el("button",null,"Add aircraft PA");add.onclick=async()=>{const r=await studio("typed_add",{...pid(c),base:sel.value,types:["ALL"]});if(r.ok){openGroups.add("Aircraft PAs");toast("Added - choose its aircraft types with the ✈ button, then record it")}studioSig="";renderStudio()};
+      line.append(sel,add);d.append(line);
     }
     if(gr.name==="Boarding music"){
       d.append(el("div","small","Background music played while passengers board. Add a track name, then upload the audio - use only music you have the right to share. It is not recorded or processed, just converted to .ogg."));
