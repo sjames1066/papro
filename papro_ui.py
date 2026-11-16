@@ -531,6 +531,9 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
 .addline{display:flex;gap:8px;margin:8px 0}
 .addline input,.addline textarea{flex:1;font:inherit}
 #t-ac.bad{border-color:var(--err);box-shadow:0 0 0 2px rgba(255,107,129,.25)}
+.card h2.fold{cursor:pointer;user-select:none;display:flex;align-items:center;gap:8px}.card h2.fold::before{content:"▾";font-size:15px;color:var(--muted);transition:transform .15s}.card h2.fold[data-open="0"]::before{transform:rotate(-90deg)}
+.volwrap{position:relative;margin:30px 4px 4px;padding-top:6px}.volwrap input[type=range]{width:100%;margin:0}
+.volmark{position:absolute;top:-4px;width:0;height:30px;border-left:2px solid var(--warn);pointer-events:none}.volmark span{position:absolute;top:-17px;left:0;transform:translateX(-50%);font-size:11px;font-weight:600;color:var(--warn);white-space:nowrap}
 .typbtn{margin-left:10px;padding:3px 10px;font-size:12px;border-radius:999px;background:rgba(107,47,214,.16);color:var(--text);border:1px solid var(--line)}
 .typpop{position:fixed;z-index:60;background:var(--surface,#1c1c26);border:1px solid var(--line);border-radius:12px;padding:10px;box-shadow:0 12px 36px rgba(0,0,0,.45);width:250px;max-height:340px;overflow:auto}
 .typpop label{display:flex;align-items:center;gap:8px;padding:3px 4px;font-size:13px;cursor:pointer}.typpop .tg{display:grid;grid-template-columns:1fr 1fr;gap:0 6px}
@@ -1335,7 +1338,26 @@ function renderStudio(){
     const r=el("div","radio"+(c.effect===v?" sel":""));r.append(el("b",null,t),el("span",null,sub));r.onclick=async()=>{if(c.effect===v)return;toast("Reprocessing...");await studio("details",{...save(),effect:v});toast("Reprocessed with "+(v?"the PA sound":"no effect"))};ef.append(r)});
   card.append(ef);
   card.append(el("div","sd-meta","Record in a quiet room, about a hand's width from the microphone. Your untouched recording is always kept, so you can switch the effect on or off any time."));
+  { // the details can be folded away; the choice is remembered
+    const h=card.firstChild,body=el("div");[...card.children].slice(1).forEach(n=>body.append(n));card.append(body);
+    let open=true;try{open=localStorage.getItem("paproDetails")!=="0"}catch(e){}
+    h.classList.add("fold");const paint=()=>{h.dataset.open=open?"1":"0";body.style.display=open?"":"none"};paint();
+    h.title="Show or hide the voice details";h.onclick=()=>{open=!open;paint();try{localStorage.setItem("paproDetails",open?"1":"0")}catch(e){}};
+  }
   root.append(card);
+  { // pack volume: how much louder than the recordings this pack plays (the marker is the app-wide setting)
+    const vc=el("section","card");vc.style.marginTop="16px";const app=c.app_boost==null?30:c.app_boost,own=c.volume!=null,val=own?c.volume:app;
+    const head=el("div");head.style.cssText="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap";
+    const t=el("h2",null,"Pack volume"),lab=el("span","small");head.append(t,lab);vc.append(head);
+    vc.append(el("div","small","How loud this pack's announcements play in the sim, as a percentage louder than your recordings. The marker shows the app-wide setting (Settings → PA volume); drag away from it to give this pack its own level, which is saved with the pack."));
+    const wrap=el("div","volwrap"),rg=el("input");rg.type="range";rg.min=0;rg.max=100;rg.step=5;rg.value=val;
+    const mk=el("div","volmark");mk.style.left="calc(9px + (100% - 18px) * "+app/100+")";mk.title="App setting: +"+app+"%";const ml=el("span",null,"app +"+app+"%");mk.append(ml);
+    wrap.append(rg,mk);vc.append(wrap);
+    const rs=el("button","ghost","Use app setting");rs.style.cssText="margin-top:8px;padding:6px 12px";rs.style.display=own?"":"none";rs.onclick=async()=>{await studio("volume",{...pid(c),value:null});toast("This pack now follows the app setting")};vc.append(rs);
+    const text=v=>{lab.textContent=(v===0?"As recorded":"+"+v+"% louder")+(v===app?" · same as the app setting":own||v!==app?" · this pack's own level":"")};text(val);
+    rg.oninput=()=>text(+rg.value);rg.onchange=async()=>{const v=+rg.value;await studio("volume",{...pid(c),value:v===app&&!own?null:v});toast(v===app&&!own?"Using the app setting":"Pack volume saved: +"+v+"%")};
+    root.append(vc);
+  }
   if(c.upgrades&&c.upgrades.length){const b=el("section","card");b.style.cssText="margin-top:16px;display:flex;gap:14px;align-items:center;justify-content:space-between";
     b.append(el("div",null,c.upgrades.length+" clip"+(c.upgrades.length>1?"s use":" uses")+" Fenix's old file names (like CrewSeatsLanding). Upgrade them to the new names to use the new features."));
     const ub=el("button","primary","Review upgrade");ub.onclick=()=>{const l=$("#up-list");l.textContent="";c.upgrades.forEach(u=>{const r=el("div","facts");const d=el("div");d.append(el("i",null,u.old),el("span",null,"→ "+u.new));r.append(d);l.append(r)});

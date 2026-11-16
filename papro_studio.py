@@ -812,7 +812,22 @@ def voice_json(project: dict) -> dict:
     data = {"icao": project.get("icao", ""), "airline": project.get("airline", ""), "name": project["voice"], "artist": project.get("artist", ""), "credit_url": project.get("credit_url", ""),
             "donate_url": project.get("donate_url", ""), "accent": project.get("accent", ""),
             "description": project.get("description", "")}
-    return {k: v for k, v in data.items() if v}
+    out = {k: v for k, v in data.items() if v}
+    if project.get("volume") is not None:   # this pack's own output level (percent louder than the recordings)
+        out["volume"] = int(project["volume"])
+    return out
+
+
+def set_volume(root: Path, project: dict, value) -> None:
+    """The pack's output volume: percent louder than the recordings (0-100), or None to follow the app's setting."""
+    if value is None or value == "":
+        project.pop("volume", None)
+    else:
+        try:
+            project["volume"] = max(0, min(100, int(value)))
+        except (TypeError, ValueError):
+            raise StudioError("The volume must be a number from 0 to 100.")
+    save(root, project)
 
 
 def set_skip(root: Path, project: dict, slot_id: str, skip: bool) -> None:
@@ -924,6 +939,8 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
     project = create(root, icao, airline or icao, voice)
     for key, limit in (("artist", 80), ("accent", 40), ("description", 200)):
         project[key] = str(info.get(key, "")).strip()[:limit]
+    if isinstance(info.get("volume"), (int, float)) and not isinstance(info.get("volume"), bool):
+        project["volume"] = max(0, min(100, int(info["volume"])))
     for key in ("credit_url", "donate_url"):
         value = str(info.get(key, "")).strip()[:300]
         project[key] = value if re.match(r"https?://", value, re.I) else ""
