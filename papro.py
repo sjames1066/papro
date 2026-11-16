@@ -148,6 +148,8 @@ DEFAULT_CONFIG = {
     "landing_speed_knots": 60,        # the landing PA is built once you have landed and slowed to this ground speed
     "join_style": "flow",             # "flow": pieces are cropped tight and run into each other; "pauses": a short gap between them
     "segment_pause_ms": 60,           # pause between the pieces of a joined PA (see the parts folder)
+    "pa_knob_on": True,               # the on-screen PA knob (aircraft whose PAs PAPro plays itself): pushed up = PAs audible
+    "pa_knob_volume": 70,             # ... and how loud (0-100)
     "quit_with_msfs": True,           # when started with MSFS: close PAPro when the sim closes
     # Which pack files each folder replaces. Variants (e.g. BoardingWelcome[Morning].ogg) are found in the pack.
     "mappings": [
@@ -1951,6 +1953,7 @@ class UIMixin:
                 "local_time": bool(cfg.get("announce_local_time", True)),
                 "extra_chance": int(cfg.get("extra_chance", 25)),
                 "pa_boost": boost_percent(cfg),
+                "pa_knob": {"on": bool(cfg.get("pa_knob_on", True)), "volume": max(0, min(100, int(cfg.get("pa_knob_volume", 70))))},
                 "join_style": "pauses" if cfg.get("join_style") == "pauses" else "flow",
                 "autostart": current_autostart(),
                 "quit_with_msfs": bool(cfg.get("quit_with_msfs", True)),
@@ -2301,6 +2304,14 @@ class UIMixin:
             save_state(state)
             self.set_status(f"{alias} {'now uses ' + aliases[alias] + ' recordings' if name == 'alias_add' else 'alias removed'}")
             self.wake.set()
+        elif name == "pa_knob":   # the on-screen PA knob: push (audible / muted) and volume
+            if "on" in data:
+                set_config_value("pa_knob_on", bool(data["on"]))
+            if "volume" in data:
+                try:
+                    set_config_value("pa_knob_volume", max(0, min(100, int(data["volume"]))))
+                except (TypeError, ValueError):
+                    return {"error": "The volume must be a number from 0 to 100."}
         elif name == "settings":
             mode = data.get("autostart")
             if mode not in ("off", "windows", "msfs"):

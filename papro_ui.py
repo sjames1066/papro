@@ -368,6 +368,28 @@ header p{margin:0;color:var(--muted);font-size:12.5px}
 .card{background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,.015));border:1px solid var(--line);
       border-radius:18px;padding:20px 22px;backdrop-filter:blur(6px)}
 .label{font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);margin:0 0 12px}
+.herorow{display:flex;gap:16px;align-items:stretch;margin-bottom:26px}.herorow .hero{flex:1;min-width:0;margin-bottom:0}
+.knobbox{flex:none;width:182px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:14px 10px;background:linear-gradient(#1b1c21,#111216);border-color:#2b2d35}
+.knobbox .kt{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#9a9ca8;font-weight:600}
+.knob{position:relative;width:132px;height:132px;border-radius:50%;cursor:pointer;user-select:none;outline:none;-webkit-tap-highlight-color:transparent}
+.knob:focus-visible{box-shadow:0 0 0 3px rgba(255,255,255,.35)}
+.kscale{position:absolute;inset:0;width:100%;height:100%}.kscale line{stroke:#6f717c;stroke-width:2;stroke-linecap:round}.kscale line.lit{stroke:#f2f2f4}
+.kscale text{fill:#c9cad2;font-size:9px;font-weight:700;text-anchor:middle}
+/* a black matte knob with a knurled skirt and a white pointer, like an audio-control-panel volume knob */
+.kcap{position:absolute;inset:25px;border-radius:50%;display:flex;align-items:center;justify-content:space-between;padding:0 6px;
+  background:radial-gradient(circle at 50% 38%,#2a2b31 0 52%,#16171b 53% 100%);border:2px solid #0a0a0c;
+  box-shadow:0 6px 0 #050506,0 10px 14px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.14),inset 0 0 0 5px #1c1d22,inset 0 0 0 6px #34353c;transition:transform .12s,box-shadow .12s}
+.kcap::before{content:"";position:absolute;inset:-5px;border-radius:50%;background:repeating-conic-gradient(#25262c 0 4deg,#0e0e11 4deg 8deg);z-index:-1;box-shadow:0 0 0 1px #3a3b42}
+.kptr{position:absolute;left:50%;top:6px;width:4px;height:calc(50% - 8px);margin-left:-2px;border-radius:2px;background:#f4f4f6;transform-origin:50% calc(100% + 0px);
+  box-shadow:0 0 0 1px rgba(0,0,0,.4);transition:transform .12s,background .2s,opacity .2s}
+.kcap i{position:relative;font-style:normal;font-size:18px;color:#5d5f69;line-height:1;opacity:0;transition:opacity .15s}.knob:hover .kcap i{opacity:.9}
+.knob.on .kcap{box-shadow:0 6px 0 #050506,0 10px 14px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.14),inset 0 0 0 5px #1c1d22,inset 0 0 0 6px #34353c,0 0 0 2px rgba(255,255,255,.18)}
+.knob:not(.on) .kcap{transform:translateY(5px);box-shadow:0 1px 0 #050506,0 3px 6px rgba(0,0,0,.55),inset 0 3px 9px rgba(0,0,0,.6),inset 0 0 0 5px #17181c,inset 0 0 0 6px #2a2b31}
+.knob:not(.on) .kptr{background:#8b8d98;opacity:.7}
+.knobbox .kpa{font-size:21px;font-weight:700;letter-spacing:.16em;color:#f2f2f4;line-height:1;margin-top:4px;transition:color .2s,opacity .2s}
+.knobbox:has(.knob:not(.on)) .kpa{color:#7b7d88}
+.knobbox .kv{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums;color:#e8e8ec}.knobbox .kst{font-size:12px;color:#8e909c}
+@media(max-width:760px){.herorow{flex-direction:column}.knobbox{width:auto;flex-direction:row;gap:16px}}
 .hero.ok{border-color:rgba(80,200,140,.65);background:linear-gradient(rgba(80,200,140,.10),rgba(80,200,140,.04));box-shadow:0 0 0 1px rgba(80,200,140,.25),0 8px 30px rgba(80,200,140,.10)}
 .hero{display:flex;align-items:center;gap:20px;margin-bottom:26px}
 .hero .logo{width:68px;height:68px;border-radius:16px;flex:none;object-fit:cover;background:var(--surface2)}
@@ -568,7 +590,12 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
   <nav class="tabs"><button id="tab-main" class="on">Dashboard</button><button id="tab-studio">Pack Studio</button><button id="tab-dl">Download Packs</button><button id="tab-test">Test</button></nav>
   <div id="view-main">
   <div class="card updbar" id="updbar" style="display:none"><div><b id="upd-t"></b><span id="upd-s"></span></div><button class="primary" id="upd-go">Download</button></div>
-  <section class="card hero" id="hero"></section>
+  <div class="herorow"><section class="card hero" id="hero"></section>
+    <aside class="card knobbox" id="knobbox" style="display:none"><div class="kt">Captain's PA</div>
+      <div class="knob on" id="knob" tabindex="0" role="slider" aria-label="PA volume" aria-valuemin="0" aria-valuemax="100" title="Click the middle to mute / unmute. Click the left or right side, or scroll, to change the volume.">
+        <svg class="kscale" viewBox="0 0 140 140" id="kscale"></svg>
+        <div class="kcap"><div class="kptr" id="kptr"></div><i class="kl">&#8249;</i><i class="kr">&#8250;</i></div></div>
+      <div class="kpa" id="kpa">PA</div><div class="kv" id="kvol">70%</div><div class="kst" id="kst">PAs audible</div></aside></div>
   <div class="keepopen slim" id="keep-note"><button class="keepx" id="keep-x" title="Close this reminder" aria-label="Close this reminder">&times;</button><b>Keep PAPro running during your flight</b><span>It builds the landing announcement with the real local time once you have landed. Leave it in the tray until you have parked.</span>
     <label class="keepno"><input type="checkbox" id="keep-never"> Don't remind me again</label></div>
 
@@ -791,6 +818,24 @@ function renderUpd(){const a=snap.app_update,b=$("#updbar");if(!a||!a.url){b.sty
 $("#upd-go").onclick=()=>{if(snap.app_update&&snap.app_update.auto){$("#upd-go").disabled=true;toast("Downloading the update - PAPro will restart by itself",6000)}api("open",{what:"update"})};
 function renderKeep(){$("#keep-note").style.display=(keepClosed||snap.hide_reminder)?"none":""}
 $("#keep-x").onclick=async()=>{keepClosed=true;renderKeep();if($("#keep-never").checked)await api("hide_reminder",{hide:true})};
+// The on-screen PA knob, for aircraft whose PAs PAPro plays itself (not the Fenix): push = audible / muted, left-right or wheel = volume.
+let knobSave=null;
+function drawKnobScale(){const sv=$("#kscale");if(sv.firstChild)return;let h="";
+  for(let i=0;i<=10;i++){const a=(-135+27*i)*Math.PI/180,x1=70+Math.sin(a)*54,y1=70-Math.cos(a)*54,x2=70+Math.sin(a)*(i%5===0?64:60),y2=70-Math.cos(a)*(i%5===0?64:60);h+='<line data-i="'+i+'" x1="'+x1.toFixed(1)+'" y1="'+y1.toFixed(1)+'" x2="'+x2.toFixed(1)+'" y2="'+y2.toFixed(1)+'"/>'}
+  sv.innerHTML=h}
+function paintKnob(){const k=snap&&snap.settings&&snap.settings.pa_knob||{on:true,volume:70},st=window.knobLocal||k,on=!!st.on,v=st.volume;drawKnobScale();
+  $("#knob").classList.toggle("on",on);$("#kptr").style.transform="rotate("+(-135+270*v/100)+"deg)";$("#knob").setAttribute("aria-valuenow",v);
+  $("#kscale").querySelectorAll("line").forEach(l=>l.classList.toggle("lit",on&&(+l.dataset.i)*10<=v));
+  $("#kvol").textContent=v+"%";$("#kst").textContent=on?(v===0?"PAs audible (volume 0)":"PAs audible"):"Muted - playback continues"}
+function knobSet(p){window.knobLocal={...(window.knobLocal||(snap.settings&&snap.settings.pa_knob)||{on:true,volume:70}),...p};paintKnob();
+  clearTimeout(knobSave);knobSave=setTimeout(async()=>{const d=window.knobLocal;await api("pa_knob",{on:d.on,volume:d.volume});try{snap=await (await fetch("/api/state",{headers:{"X-Token":TOKEN}})).json()}catch(e){}window.knobLocal=null;paintKnob()},250)}
+(function initKnob(){const kn=$("#knob"),cur=()=>window.knobLocal||(snap&&snap.settings&&snap.settings.pa_knob)||{on:true,volume:70};
+  kn.onclick=e=>{const r=$(".kcap").getBoundingClientRect(),x=(e.clientX-r.left)/r.width,c=cur();
+    if(x<0.34)knobSet({volume:Math.max(0,c.volume-5)});else if(x>0.66)knobSet({volume:Math.min(100,c.volume+5)});else knobSet({on:!c.on})};
+  kn.addEventListener("wheel",e=>{e.preventDefault();const c=cur();knobSet({volume:Math.max(0,Math.min(100,c.volume+(e.deltaY<0?5:-5)))})},{passive:false});
+  kn.onkeydown=e=>{const c=cur();if(e.key==="ArrowLeft"||e.key==="ArrowDown"){e.preventDefault();knobSet({volume:Math.max(0,c.volume-5)})}
+    else if(e.key==="ArrowRight"||e.key==="ArrowUp"){e.preventDefault();knobSet({volume:Math.min(100,c.volume+5)})}else if(e.key===" "||e.key==="Enter"){e.preventDefault();knobSet({on:!c.on})}}})();
+function renderKnob(){const box=$("#knobbox"),show=!!(snap&&snap.aircraft&&!snap.aircraft.supported);box.style.display=show?"":"none";if(show&&!knobSave)paintKnob()}
 function renderHero(){
   const sig=JSON.stringify([snap.setup_needed,snap.company,snap.voices,snap.flight,snap.message,snap.applied,snap.updated,snap.busy,snap.logo_v,(snap.packs||[]).filter(p=>p.installed).length,snap.aircraft]);
   if(sig===heroSig) return; heroSig=sig;
@@ -1445,7 +1490,7 @@ async function tick(){
   try{
     const r=await fetch("/api/state",{headers:{"X-Token":TOKEN}}); snap=await r.json();
     $("#auto").classList.toggle("on",!!snap.auto); $("#ver").textContent="PAPro v"+(snap.version||"");
-    renderHero(); renderKeep(); renderUpd(); renderJob(); renderStudio(); renderPacks(); if($("#m-manage").classList.contains("show"))renderManage(); renderAliases(); renderWelcome(); renderPrompt();
+    renderHero(); renderKnob(); renderKeep(); renderUpd(); renderJob(); renderStudio(); renderPacks(); if($("#m-manage").classList.contains("show"))renderManage(); renderAliases(); renderWelcome(); renderPrompt();
     if(importWatch){const busy=(snap.packs||[]).some(p=>p.task&&p.task.kind==="install");
       if(busy)importWatch.seen=true;
       if(!busy&&(snap.installs_done||0)>importWatch.n){importWatch=null;setView("main");toast("Pack imported",4000)}   // finished: back to the Dashboard
