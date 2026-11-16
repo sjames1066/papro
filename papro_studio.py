@@ -80,6 +80,20 @@ def clean_types(types, strict: bool = True) -> list[str]:
     return sorted(out)[:12]
 
 
+LANGUAGES = {"en": "English", "de": "German", "fr": "French", "es": "Spanish", "it": "Italian", "pt": "Portuguese", "nl": "Dutch",
+             "sv": "Swedish", "da": "Danish", "no": "Norwegian", "fi": "Finnish", "is": "Icelandic", "pl": "Polish", "cs": "Czech",
+             "sk": "Slovak", "hu": "Hungarian", "ro": "Romanian", "bg": "Bulgarian", "el": "Greek", "tr": "Turkish", "ru": "Russian",
+             "uk": "Ukrainian", "ar": "Arabic", "he": "Hebrew", "hi": "Hindi", "zh": "Chinese", "ja": "Japanese", "ko": "Korean",
+             "th": "Thai", "vi": "Vietnamese", "id": "Indonesian", "ms": "Malay", "tl": "Filipino"}
+
+
+def clean_language(code) -> str:
+    code = str(code or "").strip().lower()
+    if code and code not in LANGUAGES:
+        raise StudioError(f"'{code}' is not a language PAPro knows.")
+    return code
+
+
 EXTRA_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _-]{0,39}$")
 
 GENERAL = [  # (file name, label, what to say). The file names are Fenix's announcement types; every one is optional except the modular pair.
@@ -870,6 +884,8 @@ def voice_json(project: dict) -> dict:
     data = {"icao": project.get("icao", ""), "airline": project.get("airline", ""), "name": project["voice"], "artist": project.get("artist", ""), "credit_url": project.get("credit_url", ""),
             "donate_url": project.get("donate_url", ""), "accent": project.get("accent", ""),
             "description": project.get("description", "")}
+    if project.get("language"):
+        data["language"] = project["language"]
     return {k: v for k, v in data.items() if v}
 
 
@@ -895,7 +911,15 @@ def missing(root: Path, project: dict) -> list[str]:
     return [s["label"] for s in status(root, project) if s["required"] and not s["done"] and not s["skipped"]]
 
 
-def export(root: Path, project: dict, out_dir: Path) -> dict:
+PA_BASES = []   # (file-name base, plain-English label) of every PA that can be set to play its languages in its own order
+for _stem, _label, _ in GENERAL:
+    _base = re.split(r"[\[~]", _stem, maxsplit=1)[0]
+    if not _base.startswith("Modular_") and _base not in [b for b, _ in PA_BASES]:
+        PA_BASES.append((_base, {"BoardingWelcome": "Welcome while boarding", "AfterLanding": "Landing", "CrewTakeSeats": "Crew, take your seats",
+                                 "CabinDim": "Cabin lights dimmed", "CabinSecured": "Cabin secure report"}.get(_base, _label)))
+
+
+def export(root: Path, project: dict, out_dir: Path, languages: dict | None = None) -> dict:
     """Write <ICAO>_<Voice>.zip (laid out like Airlines\\<ICAO>, ready for the library or for make_pack/catalog) and
     a catalog entry. Raises StudioError if required recordings are missing."""
     todo = missing(root, project)
@@ -918,6 +942,8 @@ def export(root: Path, project: dict, out_dir: Path) -> dict:
             archive.writestr(f"{inside}/scripts.json", json.dumps(project["scripts"], indent=2, ensure_ascii=False))
         if project.get("skipped"):
             archive.writestr(f"{inside}/skipped.json", json.dumps(sorted(project["skipped"]), indent=2))
+        if languages and languages.get("enabled"):   # the airline's language order travels with its packs
+            archive.writestr("languages.json", json.dumps(languages, indent=2))
         archive.writestr("voice.json", json.dumps({"icao": project["icao"], "airline": project.get("airline", "")}, indent=2))
         if logo_path(root, project).is_file():
             archive.write(logo_path(root, project), "logo.png")
@@ -982,6 +1008,8 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
     project = create(root, icao, airline or icao, voice)
     for key, limit in (("artist", 80), ("accent", 40), ("description", 200)):
         project[key] = str(info.get(key, "")).strip()[:limit]
+    if str(info.get("language", "")).strip().lower() in LANGUAGES:
+        project["language"] = str(info["language"]).strip().lower()
     for key in ("credit_url", "donate_url"):
         value = str(info.get(key, "")).strip()[:300]
         project[key] = value if re.match(r"https?://", value, re.I) else ""

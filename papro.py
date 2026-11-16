@@ -763,7 +763,7 @@ def extract_pack(zip_path: Path, out_dir: Path) -> None:
         with zipfile.ZipFile(zip_path) as archive:
             for info in archive.infolist():
                 parts = [p for p in info.filename.replace("\\", "/").split("/") if p]
-                if info.is_dir() or not parts or (parts[0] not in ZIP_FOLDERS and parts not in (["voice.json"], ["logo.png"], ["scripts.json"])):
+                if info.is_dir() or not parts or (parts[0] not in ZIP_FOLDERS and parts not in (["voice.json"], ["logo.png"], ["scripts.json"], ["languages.json"])):
                     continue
                 if any(p == ".." or ":" in p for p in parts):
                     raise AppError("Pack zip contains an unsafe path - refusing to install it.")
@@ -1226,7 +1226,7 @@ def list_voices(lib_dir: Path) -> dict[str, Path]:
 def voice_info(path: Path, key: str) -> dict:
     """What the window shows for a voice: voice.json in its folder ({"name","artist","credit_url","accent",
     "description"}, all optional). Without it, the folder name is the name."""
-    info = {"id": key, "name": key, "artist": "", "credit_url": "", "donate_url": "", "accent": "", "description": ""}
+    info = {"id": key, "name": key, "artist": "", "credit_url": "", "donate_url": "", "accent": "", "description": "", "language": ""}
     try:
         data = json.loads((path / "voice.json").read_text(encoding="utf-8-sig"))
     except (OSError, ValueError):
@@ -1236,6 +1236,9 @@ def voice_info(path: Path, key: str) -> dict:
             value = str(data.get(field, "")).strip()[:200]
             if value:
                 info[field] = value
+        lang = str(data.get("language", "")).strip().lower()
+        if lang in papro_studio.LANGUAGES:
+            info["language"] = lang
     if not _is_http(info["credit_url"]):
         info["credit_url"] = ""  # "TBC" and the like: nothing to link to
     if not _is_http(info["donate_url"]):
@@ -1421,9 +1424,148 @@ def landing_pieces(lib_dir: Path, clip: Path, arrival: str | None, want_time: bo
     return pieces + [rest], note
 
 
+LANGUAGES_FILE = "languages.json"   # Airlines\\<ICAO>\\languages.json: {"enabled": true, "order": ["de", "en"], "per_pa": {"SafetyBriefing": ["en", "de"]}}
+
+
+def load_languages(lib_dir: Path) -> dict:
+    """The airline's language settings (see LANGUAGES_FILE), cleaned: {"enabled", "order", "per_pa"}."""
+    out = {"enabled": False, "order": [], "per_pa": {}}
+    try:
+        data = json.loads((lib_dir / LANGUAGES_FILE).read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return out
+    if not isinstance(data, dict):
+        return out
+    known = papro_studio.LANGUAGES
+    out["enabled"] = bool(data.get("enabled"))
+    out["order"] = [c for c in dict.fromkeys(str(x).lower() for x in data.get("order") or []) if c in known]
+    per = data.get("per_pa") if isinstance(data.get("per_pa"), dict) else {}
+    for base, order in per.items():
+        if isinstance(order, list) and re.fullmatch(r"[A-Za-z_]{2,40}", str(base)):
+            clean = [c for c in dict.fromkeys(str(x).lower() for x in order) if c in known]
+            if clean:
+                out["per_pa"][str(base)] = clean
+    return out
+
+
+def save_languages(lib_dir: Path, enabled: bool, order: list, per_pa: dict) -> dict:
+    lib_dir.mkdir(parents=True, exist_ok=True)
+    data = {"enabled": bool(enabled), "order": order, "per_pa": per_pa}
+    (lib_dir / LANGUAGES_FILE).write_text(json.dumps(data, indent=2), encoding="utf-8")
+    return load_languages(lib_dir)
+
+
+def language_voices(lib_dir: Path) -> dict[str, list[str]]:
+    """{language code: [voice keys]} for the voices of an airline that say what language they are in."""
+    found: dict[str, list[str]] = {}
+    for key, path in list_voices(lib_dir).items():
+        lang = voice_info(path, key)["language"]
+        if lang:
+            found.setdefault(lang, []).append(key)
+    return found
+
+
+def language_plan(lib_dir: Path, voice: str | None) -> list[tuple[str, str]] | None:
+    """[(language, voice key), ...] in announcement order when the airline speaks several languages, else None. A language
+    with several voices uses the chosen voice if it speaks that language, otherwise the first."""
+    cfg_l = load_languages(lib_dir)
+    if not cfg_l["enabled"]:
+        return None
+    avail = language_voices(lib_dir)
+    plan = []
+    for code in cfg_l["order"]:
+        voices = avail.get(code)
+        if voices:
+            plan.append((code, voice if voice in voices else voices[0]))
+    return plan if len(plan) >= 2 else None
+
+
+_MULTI_ACTIVE = threading.local()
+
+
 def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, variant: str | None = None,
                       arrival: str | None = None, only: set[str] | None = None, voice: str | None = None,
                       target_dir: Path | None = None) -> str:
+    """Apply a destination. An airline with several languages is built once per language and the languages are
+    played one after the other (in the order set in Pack Studio); everything else is the plain single-voice build."""
+    if not getattr(_MULTI_ACTIVE, "on", False):
+        try:
+            source = check_airline_code(load_aliases(cfg).get(check_airline_code(airline), airline))
+            plan = language_plan(airline_folder(cfg, source), voice)
+        except AppError:
+            plan = None
+        if plan:
+            return _apply_multilingual(cfg, airline, dest_icao, plan, choose, variant, arrival, only, voice, target_dir)
+    return _apply_single(cfg, airline, dest_icao, choose, variant, arrival, only, voice, target_dir)
+
+
+def _apply_multilingual(cfg, airline, dest_icao, plan, choose, variant, arrival, only, voice, target_dir) -> str:
+    """Build every language into its own scratch folder with the normal pipeline, then join the languages one after the
+    other, PA by PA, into the Fenix folder."""
+    airline = check_airline_code(airline)
+    source = check_airline_code(load_aliases(cfg).get(airline, airline))
+    lib_dir = airline_folder(cfg, source)
+    langs = load_languages(lib_dir)
+    boost = boost_percent(cfg)
+    fenix_dir = target_dir or airline_packs_dir(cfg) / airline
+    generic_source(cfg, airline, fenix_dir)   # saves the original announcements before the first change, as a single-language build does
+    flat = {**cfg, "pa_boost": 0}   # each language is built untouched; the volume boost is applied once, to the joined result
+    fenix_dir.mkdir(parents=True, exist_ok=True)
+    messages, built_dirs = [], {}
+    _MULTI_ACTIVE.on = True
+    try:
+        with tempfile.TemporaryDirectory(dir=DATA_DIR) as work:
+            chosen = variant
+            for code, vkey in plan:
+                sub = Path(work) / code
+                messages.append(_apply_single(flat, airline, dest_icao, choose, chosen, arrival, only, vkey, sub))
+                built_dirs[code] = sub
+                if chosen is None:   # a terminal / variant picked for the first language applies to the others too
+                    chosen = load_state().get("variants", {}).get(f"{airline}_{dest_icao}")
+            state = load_state()
+            state.setdefault("voice_used", {})[f"{airline}_{dest_icao}"] = voice or plan[0][1]
+            save_state(state)
+            only_bases = {m["base"] for m in cfg["mappings"] if only and m["folder"] in only}
+            names = sorted({p.name for d in built_dirs.values() for p in d.iterdir()
+                            if p.is_file() and p.suffix.lower() == ".ogg"})
+            pause = int(cfg.get("language_pause_ms", 450))
+            joined = 0
+            for name in names:
+                base = re.split(r"[\[~]", Path(name).stem, maxsplit=1)[0]
+                if only and base not in only_bases:
+                    continue
+                order = langs["per_pa"].get(base) or langs["order"]
+                files = [built_dirs[c] / name for c in order if c in built_dirs and (built_dirs[c] / name).is_file()]
+                if name.startswith("BoardingMusic"):
+                    files = files[:1]
+                unique = []
+                for f in files:   # a PA both languages left as the original generic file is said once
+                    if not any(papro_audio.same_audio(f, u) for u in unique):
+                        unique.append(f)
+                if not unique:
+                    continue
+                if len(unique) == 1:
+                    install_file(unique[0], fenix_dir / name, boost)
+                    continue
+                if papro_audio is None or not papro_audio.have_backend():
+                    raise AppError("Joining languages needs the numpy and soundfile libraries (use the latest papro.exe).")
+                out = Path(work) / ("joined_" + name)
+                try:
+                    papro_audio.join(unique, out, pause, False)
+                except (papro_audio.AudioError, OSError) as exc:
+                    raise AppError(f"Could not join the languages for {name}: {exc}") from exc
+                install_file(out, fenix_dir / name, boost)
+                joined += 1
+    finally:
+        _MULTI_ACTIVE.on = False
+    names_txt = " then ".join(papro_studio.LANGUAGES.get(c, c) for c, _ in plan)
+    first = messages[0]
+    return f"{first.split(' - ')[0]} - languages: {names_txt}" + (APPLIED_MARK if APPLIED_MARK in " ".join(messages) else "")
+
+
+def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant: str | None = None,
+                  arrival: str | None = None, only: set[str] | None = None, voice: str | None = None,
+                  target_dir: Path | None = None) -> str:
     """Apply a destination. If several recordings exist for it (terminals etc.) `choose` is asked which to use
     (`variant` skips the question)."""
     airline = check_airline_code(airline)  # the airline in the Fenix livery, e.g. SHT
@@ -2401,6 +2543,20 @@ class UIMixin:
         return {"ok": True}
 
     # Pack Studio ---------------------------------------------------------
+    def language_snapshot(self, project: dict) -> dict:
+        """The airline's language settings and the languages its voices speak, for Pack Studio's Languages panel."""
+        lib = airline_folder(load_config(), project["icao"])
+        langs = load_languages(lib)
+        avail = {code: list(keys) for code, keys in language_voices(lib).items()}
+        shown = {k: voice_info(p, k)["name"] for k, p in list_voices(lib).items()}
+        mine = project.get("language", "")
+        if mine and project["voice"] not in avail.get(mine, []):   # this voice, even before it is saved to the library
+            avail.setdefault(mine, []).append(project["voice"])
+        order = [c for c in langs["order"] if c in avail] + [c for c in avail if c not in langs["order"]]
+        return {"enabled": langs["enabled"], "order": order, "per_pa": langs["per_pa"],
+                "available": [{"code": c, "name": papro_studio.LANGUAGES.get(c, c), "voices": [shown.get(k, k) for k in avail[c]]} for c in avail],
+                "known": papro_studio.LANGUAGES, "pas": [{"base": b, "label": l} for b, l in papro_studio.PA_BASES]}
+
     def studio_target(self, cfg: dict, icao: str) -> tuple[float, int, str]:
         """Loudness (LUFS) every clip is set to -> (LUFS, 0, ""). A fixed level, no measuring."""
         return papro_studio.DEFAULT_TARGET, 0, ""
@@ -2464,7 +2620,7 @@ class UIMixin:
                 "donate_url": project.get("donate_url", ""), "accent": project.get("accent", ""),
                 "description": project.get("description", ""), "version": project.get("version", "1.0.0"),
                 "effect": bool(project.get("effect", True)), "airports": project["airports"], "aircraft": project.get("aircraft", []), "aircraft_on": bool(project.get("aircraft_on")),
-                "app_boost": boost_percent(cfg), "aircraft_presets": papro_studio.AIRCRAFT_PRESETS, "typed_bases": papro_studio.TYPED_BASES, "aircraft_types": papro_studio.AIRCRAFT_TYPES, "extras": project["extras"], "music": project.get("music", []),
+                "app_boost": boost_percent(cfg), "languages": self.language_snapshot(project), "language": project.get("language", ""), "aircraft_presets": papro_studio.AIRCRAFT_PRESETS, "typed_bases": papro_studio.TYPED_BASES, "aircraft_types": papro_studio.AIRCRAFT_TYPES, "extras": project["extras"], "music": project.get("music", []),
                 "logo": papro_studio.logo_path(STUDIO_DIR, project).is_file(), "has_script": bool(project.get("scripts")), "origin": bool(project.get("origin")), "upgrades": papro_studio.upgrade_preview(STUDIO_DIR, project), "target_pending": False, "rows": rows, "missing": len(papro_studio.missing(STUDIO_DIR, project)),
                 "target": target, "target_count": count, "target_source": label,
                 "done": sum(1 for r in rows if r["done"] or r["skipped"]), "total": len(rows)}
@@ -2574,6 +2730,10 @@ class UIMixin:
                         if value and not _is_http(value):
                             return {"error": "Links must start with http:// or https://"}
                         project[key] = value
+                if "language" in data:
+                    project["language"] = papro_studio.clean_language(data["language"])
+                    if not project["language"]:
+                        project.pop("language")
                 effect = bool(data.get("effect", project.get("effect", True)))
                 changed = effect != bool(project.get("effect", True))
                 project["effect"] = effect
@@ -2612,6 +2772,15 @@ class UIMixin:
                     papro_studio.remove_variant(STUDIO_DIR, project, base, int(data.get("n", 0)))
                 else:
                     papro_studio.add_variant(STUDIO_DIR, project, base)
+            elif name == "lang_save":
+                lib = airline_folder(cfg, project["icao"])
+                order = [str(c).lower() for c in data.get("order") or []]
+                per_pa = data.get("per_pa") if isinstance(data.get("per_pa"), dict) else {}
+                for code in set(order) | {str(c).lower() for o in per_pa.values() if isinstance(o, list) for c in o}:
+                    papro_studio.clean_language(code)
+                known_bases = {b for b, _ in papro_studio.PA_BASES}
+                per_pa = {b: [str(c).lower() for c in o] for b, o in per_pa.items() if b in known_bases and isinstance(o, list) and o}
+                save_languages(lib, bool(data.get("enabled")), order, per_pa)
             elif name == "typed_add":
                 entry = papro_studio.add_typed(STUDIO_DIR, project, str(data.get("base", "")), data.get("types"))
                 return {"ok": True, "slot": "main/" + papro_studio.typed_stem(entry["base"], entry["types"], entry.get("n", 1))}
@@ -2646,7 +2815,8 @@ class UIMixin:
             elif name == "delete":
                 papro_studio.delete_slot(STUDIO_DIR, project, str(data.get("slot", "")))
             elif name == "export":
-                result = papro_studio.export(STUDIO_DIR, project, STUDIO_DIR / "exports")
+                result = papro_studio.export(STUDIO_DIR, project, STUDIO_DIR / "exports",
+                                             load_languages(airline_folder(cfg, project["icao"])))
                 open_path(Path(result["zip"]).parent)
                 return {"ok": True, **result}
             elif name == "install":

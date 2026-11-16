@@ -1367,11 +1367,41 @@ function renderStudio(){
   const mic=el("button",null,"🎧 Audio settings");mic.onclick=openMic;
   sp.append(mic);
   top.append(sp);root.append(top);
+  { // languages: which language plays first, for airlines like Lufthansa that announce in two
+    const L=c.languages||{available:[],order:[],per_pa:{},enabled:false,known:{},pas:[]},lc=el("section","card");lc.style.marginBottom="16px";
+    const hd=el("h2",null,"Languages");lc.append(hd);
+    lc.append(el("div","small","Some airlines announce in two languages, one after the other (for example German, then English). Make one voice for each language, set the language in Voice details below, then choose the order here. PAPro builds every announcement in each language and plays them in this order."));
+    const names=Object.fromEntries(L.available.map(a=>[a.code,a.name]));
+    if(L.available.length<2){const t=el("div","small",c.language?"Only "+(names[c.language]||c.language)+" is set up for "+c.icao+" so far. Add another voice in a second language to use this.":"No language is set for this voice yet. Choose one in Voice details below.");t.style.marginTop="10px";lc.append(t)}
+    else{
+      const en=el("label","check");en.style.margin="12px 0 8px";const cb=el("input");cb.type="checkbox";cb.checked=!!L.enabled;en.append(cb,document.createTextNode(" Announce in several languages"));lc.append(en);
+      let order=[...L.order],per={...L.per_pa};
+      const save=async()=>{const r=await studio("lang_save",{...pid(c),enabled:cb.checked,order,per_pa:per});if(r.ok)toast("Language order saved")};
+      cb.onchange=save;
+      const list=el("div");list.style.cssText="display:flex;flex-direction:column;gap:6px;max-width:420px";
+      const draw=()=>{list.textContent="";order.forEach((code,i)=>{const row=el("div","facts");row.style.cssText="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--line);border-radius:10px";
+        const v=(L.available.find(a=>a.code===code)||{voices:[]}).voices.join(", ");row.append(el("b",null,(i+1)+". "+(names[code]||code)));const sm=el("span","small","  "+v);sm.style.flex="1";row.append(sm);
+        const up=el("button","ghost","↑"),dn=el("button","ghost","↓");up.style.padding=dn.style.padding="2px 9px";up.disabled=i===0;dn.disabled=i===order.length-1;
+        up.onclick=()=>{[order[i-1],order[i]]=[order[i],order[i-1]];draw();save()};dn.onclick=()=>{[order[i+1],order[i]]=[order[i],order[i+1]];draw();save()};row.append(up,dn);list.append(row)})};
+      draw();const lab=el("div","small","Language order (the first one is said first)");lab.style.margin="4px 0 6px";lc.append(lab,list);
+      const dt=el("details","grp");dt.style.marginTop="14px";dt.append(el("summary",null,"Different order for particular announcements"));
+      dt.append(el("div","small","Leave on “Default order” unless an announcement should be said in another order, for example the safety demonstration in English first."));
+      const tab=el("div");tab.style.cssText="display:grid;grid-template-columns:1fr auto;gap:6px 14px;margin-top:8px;max-width:560px;align-items:center";
+      L.pas.forEach(pa=>{const sel=el("select","voice");const d0=el("option",null,"Default order");d0.value="";sel.append(d0);
+        order.forEach(code=>{const o=el("option",null,(names[code]||code)+" first");o.value=code;sel.append(o)});
+        sel.value=(per[pa.base]||[])[0]||"";sel.onchange=()=>{if(sel.value){per[pa.base]=[sel.value,...order.filter(x=>x!==sel.value)]}else delete per[pa.base];save()};
+        tab.append(el("span","small",pa.label),sel)});
+      dt.append(tab);lc.append(dt)}
+    root.append(lc);
+  }
   const card=el("section","card");card.append(el("h2",null,"Voice details"));
   const g=el("div","sd-grid");
   g.append(field("Voice artist","artist",c,"Your name"),field("Accent","accent",c,"British"),field("Short description","description",c,"Calm and collected",true),
            field("Credit link (your site / socials)","credit_url",c,"https://..."),field("Support link (Ko-fi, Patreon...)","donate_url",c,"https://ko-fi.com/..."),field("Pack version","version",c,"1.0.0"));
   card.append(g);
+  { const lw=el("label","wide","Language this voice speaks (for airlines that announce in more than one language)"),ls=el("select","voice");ls.style.cssText="margin-top:4px;max-width:320px";
+    const o0=el("option",null,"Not set");o0.value="";ls.append(o0);Object.entries((c.languages&&c.languages.known)||{}).forEach(([k,v])=>{const o=el("option",null,v);o.value=k;ls.append(o)});ls.value=c.language||"";
+    ls.onchange=async()=>{const r=await api("studio_details",{...pid(c),language:ls.value,effect:c.effect});if(r.ok)toast("Saved");await refreshNow()};lw.append(ls);g.append(lw)}
   const lg=el("div","logorow"),im=el("img","logoimg");im.alt="Pack logo";
   im.src=c.logo?"/studio/logo?"+new URLSearchParams({icao:c.icao,voice:c.voice,t:TOKEN,v:Date.now()}):"/logo/"+c.icao+".png?t="+TOKEN+"&v="+(snap.logo_v||0);
   const lt=el("div",null);lt.append(el("div","nm2","Pack logo"),el("div","small",c.logo?"Shown in the pack list and the window header, and included in the exported zip.":"Optional. A png, jpg or webp - a square or wide logo on a transparent or light background works best."));

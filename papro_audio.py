@@ -6,6 +6,7 @@ is on the PATH, so running PAPro from source still works.
 
 from __future__ import annotations
 
+import filecmp
 import logging
 import shutil
 import subprocess
@@ -151,6 +152,17 @@ def _crossfade(a: np.ndarray, b: np.ndarray, rate: int, overlap_ms: int) -> np.n
     angle = np.linspace(0.0, np.pi / 2, n, dtype="float32")[:, None]
     mixed = a[-n:] * np.cos(angle) + b[:n] * np.sin(angle)
     return np.concatenate([a[:-n], mixed, b[n:]])
+
+
+def same_audio(a: Path, b: Path) -> bool:
+    """Do two clips sound identical? (Compared as decoded audio: two encodes of the same sound differ in their bytes.)"""
+    try:
+        if filecmp.cmp(a, b, shallow=False):
+            return True
+        (da, ra), (db, rb) = _read(Path(a)), _read(Path(b))
+    except (AudioError, OSError):
+        return False
+    return ra == rb and da.shape == db.shape and bool(np.allclose(da, db, atol=2e-3))
 
 
 def join(paths: list[Path], out: Path, pause_ms: int = 60, flow: bool = False, overlap_ms: int = 14) -> None:
