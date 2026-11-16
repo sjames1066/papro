@@ -10,7 +10,7 @@ import logging
 import threading
 import time
 
-log = logging.getLogger("fcac")
+log = logging.getLogger("papro")
 
 
 class LandingDetector:
@@ -44,17 +44,52 @@ def round_clock(seconds: float, step_min: int = 5) -> str:
     return f"{minutes // 60:02d}:{minutes % 60:02d}"
 
 
+SUPPORTED_MAKERS = ("fenix",)   # aircraft whose own PA sounds PAPro can replace (the Fenix A320 reads its announcements from a folder)
+
+
+def classify_aircraft(title: str) -> dict | None:
+    """What the sim says is loaded -> {"title": ..., "supported": bool}. Supported = PAs can be played in the sim by
+    swapping the aircraft's own announcement files (the Fenix A32X series)."""
+    title = " ".join(str(title or "").replace("\x00", " ").split())
+    if not title:
+        return None
+    low = title.lower()
+    return {"title": title, "supported": any(m in low for m in SUPPORTED_MAKERS)}
+
+
 class SimWatcher:
     """Background thread: connects to MSFS when it is running and calls
     on_event("takeoff") or on_event("landed", "HH:MM") (local time where you landed)."""
 
-    def __init__(self, on_event, running, stop: threading.Event, slow_kt: float = 60.0):
+    def __init__(self, on_event, running, stop: threading.Event, slow_kt: float = 60.0, on_aircraft=None):
         self.on_event, self.running, self.stop = on_event, running, stop
+        self.on_aircraft, self._aircraft = on_aircraft, None
         self.detector = LandingDetector(slow_kt)
         self.thread = threading.Thread(target=self.loop, daemon=True)
 
     def start(self) -> None:
         self.thread.start()
+
+    def _report_aircraft(self, info) -> None:
+        if info != self._aircraft:
+            self._aircraft = info
+            if self.on_aircraft:
+                try:
+                    self.on_aircraft(info)
+                except Exception:
+                    log.exception("Aircraft callback failed")
+
+    def _read_title(self, requests) -> str:
+        for name in ("TITLE", "ATC_MODEL"):
+            try:
+                value = requests.get(name)
+            except Exception:
+                continue
+            if isinstance(value, (bytes, bytearray)):
+                value = bytes(value).decode("utf-8", "replace")
+            if value and str(value).strip():
+                return str(value)
+        return ""
 
     def loop(self) -> None:
         try:
@@ -67,12 +102,14 @@ class SimWatcher:
             try:
                 if sm is None:
                     if not self.running():
+                        self._report_aircraft(None)
                         self.stop.wait(15)
                         continue
                     sm = SimConnect()
                     requests = AircraftRequests(sm, _time=500)
                     log.info("Connected to MSFS (SimConnect)")
                     self.detector = LandingDetector(self.detector.slow_kt)
+                self._report_aircraft(classify_aircraft(self._read_title(requests)))
                 ground = requests.get("SIM_ON_GROUND")
                 agl = requests.get("PLANE_ALT_ABOVE_GROUND")
                 speed = requests.get("GROUND_VELOCITY")
@@ -95,4 +132,5 @@ class SimWatcher:
             except Exception as exc:  # sim closed, connection lost...: try again later
                 log.info("SimConnect: %s - will retry", exc)
                 sm = requests = None
+                self._report_aircraft(None)
                 self.stop.wait(10)

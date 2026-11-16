@@ -1,8 +1,8 @@
 """
-Build an airline pack zip for FCAC and add it to your catalog.json.
+Build an airline pack zip for PAPro and add it to your catalog.json.
 
     python make_pack.py --icao BAW --name "British Airways" --version 1.0.0 ^
-        --airline-dir "C:\\FCAC\\Airlines\\BAW" ^
+        --airline-dir "C:\\PAPro\\Airlines\\BAW" ^
         --out dist ^
         --url https://github.com/YOU/REPO/releases/download/baw-1.0.0/BAW.zip
 
@@ -11,10 +11,10 @@ Build an airline pack zip for FCAC and add it to your catalog.json.
 
 The zip contains:
     main/   the airline's general PAs (copied to ...\\AirlinePacks\\<ICAO> and kept in Airlines\\<ICAO>\\main)
-    time/   greetings and local-time clips FCAC joins into the welcome and landing PAs (Welcome_Morning.ogg, Hour_04.ogg ...)
+    time/   greetings and local-time clips PAPro joins into the welcome and landing PAs (Welcome_Morning.ogg, Hour_04.ogg ...)
     extra/  bolt-on announcements, one of which is sometimes added to the welcome PA
     voices/ optional extra voice artists, each laid out like the airline folder
-    airports/ <ICAO>_<destination ICAO>.ogg  just the airport's name; FCAC mixes it into the welcome aboard and landing PAs
+    airports/ <ICAO>_<destination ICAO>.ogg  just the airport's name; PAPro mixes it into the welcome aboard and landing PAs
     dep/, dest/  older packs: a finished welcome / "welcome to <airport>" clip per airport (still read)
     fuel/   the refuelling tag-on (and, in older packs, <ICAO>_<destination ICAO>.ogg)
 
@@ -97,7 +97,7 @@ def main() -> int:
     parser.add_argument("--url", help="download URL of the zip (default: <ICAO>.zip next to the catalog)")
     parser.add_argument("--logo-url", help="https:// link to the airline's logo image (shown in the pack list); you supply the artwork")
     parser.add_argument("--github", metavar="USER/REPO",
-                        help="build --url for a GitHub Release tagged <icao>-<version>, e.g. sjames1066/fcac")
+                        help="build --url for a GitHub Release tagged <icao>-<version>, e.g. sjames1066/papro")
     args = parser.parse_args()
 
     icao = args.icao.upper()

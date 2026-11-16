@@ -1,7 +1,7 @@
 """Join announcement pieces (.ogg) into one .ogg file.
 
-Uses `soundfile` + `numpy` (bundled in FCAC.exe). If soundfile is not installed it falls back to ffmpeg when that
-is on the PATH, so running FCAC from source still works.
+Uses `soundfile` + `numpy` (bundled in papro.exe). If soundfile is not installed it falls back to ffmpeg when that
+is on the PATH, so running PAPro from source still works.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from pathlib import Path
 
 import numpy as np
 
-log = logging.getLogger("fcac")
+log = logging.getLogger("papro")
 
 try:
     import soundfile as sf
@@ -261,7 +261,7 @@ def _compress(x: np.ndarray, rate: int, threshold_db: float = -26.0, ratio: floa
 
 
 def pa_effect(data: np.ndarray, rate: int) -> np.ndarray:
-    """The FCAC cabin-PA sound: a band-limited overhead-speaker voice (about 420 Hz to 3.7 kHz), a nasal presence peak,
+    """The PAPro cabin-PA sound: a band-limited overhead-speaker voice (about 420 Hz to 3.7 kHz), a nasal presence peak,
     a little edge, firm compression and some grit."""
     mono = data.mean(axis=1) if data.shape[1] > 1 else data[:, 0]
 

@@ -1,6 +1,6 @@
-name: Build FCAC.exe
+name: Build papro.exe
 
-# Push a tag like v1.0.0 and this builds FCAC.exe on Windows and attaches it to a GitHub Release.
+# Push a tag like v1.0.0 and this builds papro.exe on Windows and attaches it to a GitHub Release.
 on:
   push:
     tags: ["v*"]
@@ -18,13 +18,13 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install -r requirements.txt pyinstaller
-      - run: python -m PyInstaller --noconfirm --clean --onefile --noconsole --name FCAC --icon fcac.ico --hidden-import pystray._win32 --collect-all SimConnect fcac.py
+      - run: python -m PyInstaller --noconfirm --clean --onefile --noconsole --name papro --icon papro.ico --hidden-import pystray._win32 --collect-all SimConnect papro.py
       - uses: actions/upload-artifact@v4
         with:
-          name: FCAC
-          path: dist/FCAC.exe
+          name: PAPro
+          path: dist/papro.exe
       - name: Attach to the release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/FCAC.exe
+          files: dist/papro.exe

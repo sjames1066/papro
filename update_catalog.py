@@ -9,7 +9,7 @@ from pathlib import Path
 version, installer = sys.argv[1], Path(sys.argv[2])
 here = Path(__file__).resolve().parent
 catalog_path = here / "catalog.json"
-REMOTE = "https://raw.githubusercontent.com/sjames1066/fcac/main/catalog.json"
+REMOTE = "https://raw.githubusercontent.com/sjames1066/papro/main/catalog.json"
 try:   # start from the live catalog so the pack list is never lost
     with urllib.request.urlopen(REMOTE, timeout=20) as reply:
         catalog = json.loads(reply.read().decode("utf-8"))
@@ -23,10 +23,10 @@ digest = hashlib.sha256(installer.read_bytes()).hexdigest()
 app = catalog.setdefault("app", {})
 app.update({
     "version": version,
-    "installer": f"https://github.com/sjames1066/fcac/releases/download/v{version}/FCAC-Setup-{version}.exe",
+    "installer": f"https://github.com/sjames1066/papro/releases/download/v{version}/PAPro-Setup-{version}.exe",
     "sha256": digest,
 })
-app.setdefault("url", "https://github.com/sjames1066/fcac/releases/latest")
+app.setdefault("url", "https://github.com/sjames1066/papro/releases/latest")
 catalog_path.write_text(json.dumps(catalog, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-print(f"{catalog_path} now announces FCAC {version}")
+print(f"{catalog_path} now announces PAPro {version}")
 print(f"SHA-256 {digest}")

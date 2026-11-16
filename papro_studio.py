@@ -1,7 +1,7 @@
-"""FCAC Studio: record or upload the pieces of an airline pack, give them the cabin-PA sound, set them to the
+"""PAPro Studio: record or upload the pieces of an airline pack, give them the cabin-PA sound, set them to the
 loudness of the original Fenix announcements and export a ready-to-share pack zip.
 
-No GUI code here; fcac.py calls these functions and fcac_ui.py shows them. A project lives in
+No GUI code here; papro.py calls these functions and papro_ui.py shows them. A project lives in
 <studio>/<ICAO>/<voice>/ with raw/ (what was recorded or uploaded, untouched), pack/ (the processed pack, laid out like
 Airlines\\<ICAO>) and project.json.
 """
@@ -17,7 +17,7 @@ import sys
 import zipfile
 from pathlib import Path
 
-import fcac_audio
+import papro_audio
 
 DEFAULT_TARGET = -18.9     # LUFS every clip is set to (tested in the sim against the original Fenix announcements)
 PACKS_REPO = "sjames1066/fcac-packs"   # where exported packs are published as releases (tag = the zip name without .zip)
@@ -71,7 +71,7 @@ MINUTES = {0: "o'clock", 5: "oh five", 10: "ten", 15: "fifteen", 20: "twenty", 2
            35: "thirty-five", 40: "forty", 45: "forty-five", 50: "fifty", 55: "fifty-five"}
 
 
-VARIANT_BASES = ("Modular_Welcome", "AfterTakeoff")   # PAs that can have extra takes; FCAC picks one at random each flight
+VARIANT_BASES = ("Modular_Welcome", "AfterTakeoff")   # PAs that can have extra takes; PAPro picks one at random each flight
 MODE_SLOTS = ("CabinService", "AfterTakeoff", "SafetyBriefing", "Decompression")  # Prerecorded by default; "Manual" adds [Manual] to the file name
 MODES = ("Prerecorded", "Manual")
 
@@ -97,7 +97,7 @@ def logo_path(root: Path, project: dict) -> Path:
 
 
 def set_logo(root: Path, project: dict, body: bytes) -> None:
-    """Keep the pack's logo as a PNG (at most 512 px). FCAC shows it in the pack list and the window header."""
+    """Keep the pack's logo as a PNG (at most 512 px). PAPro shows it in the pack list and the window header."""
     import io
     from PIL import Image
     if not body or len(body) > LOGO_MAX:
@@ -106,7 +106,7 @@ def set_logo(root: Path, project: dict, body: bytes) -> None:
         image = Image.open(io.BytesIO(body))
         image.load()
     except Exception:
-        raise StudioError("That is not an image FCAC can read. Use a png, jpg or webp.")
+        raise StudioError("That is not an image PAPro can read. Use a png, jpg or webp.")
     image = image.convert("RGBA")
     image.thumbnail((512, 512))
     path = logo_path(root, project)
@@ -402,7 +402,7 @@ def reference_loudness(files: list[Path], progress=None) -> tuple[float, int]:
         if progress:
             progress(i / max(1, min(len(files), 12)))
         try:
-            value = fcac_audio.file_loudness(path)
+            value = papro_audio.file_loudness(path)
         except Exception:
             continue
         if value is not None and value > -50:
@@ -462,7 +462,7 @@ def set_aircraft_on(root: Path, project: dict, on: bool) -> None:
 
 
 def add_variant(root: Path, project: dict, base: str) -> int:
-    """Add another take of a PA (FCAC picks one at random for each flight). Returns its number (2, 3, ...)."""
+    """Add another take of a PA (PAPro picks one at random for each flight). Returns its number (2, 3, ...)."""
     if base not in VARIANT_BASES:
         raise StudioError("That announcement cannot have variations.")
     taken = project.setdefault("variants", {}).setdefault(base, [])
@@ -578,11 +578,11 @@ def process_slot(root: Path, project: dict, slot: dict, target: float) -> dict:
         raise StudioError("Nothing recorded for that yet.")
     try:
         if slot.get("music"):
-            result = fcac_audio.convert_music(raws[0], folder / "pack" / slot["folder"] / slot["file"])
+            result = papro_audio.convert_music(raws[0], folder / "pack" / slot["folder"] / slot["file"])
         else:
-            result = fcac_audio.process_clip(raws[0], folder / "pack" / slot["folder"] / slot["file"], target,
+            result = papro_audio.process_clip(raws[0], folder / "pack" / slot["folder"] / slot["file"], target,
                                              bool(project.get("effect", True)))
-    except fcac_audio.AudioError as exc:
+    except papro_audio.AudioError as exc:
         raise StudioError(str(exc))
     result["target"] = target
     project["skipped"] = [i for i in project.get("skipped", []) if i != slot["id"]]
@@ -856,7 +856,7 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
 
 
 def install_to_library(root: Path, project: dict, airline_dir: Path) -> Path:
-    """Copy the project into Airlines\\<ICAO>\\voices\\<Voice> (or back over the pack it was opened from) so FCAC can
+    """Copy the project into Airlines\\<ICAO>\\voices\\<Voice> (or back over the pack it was opened from) so PAPro can
     use it straight away."""
     origin = Path(project["origin"]) if project.get("origin") else None
     dest = origin if origin and origin.is_dir() else airline_dir / "voices" / slug(project["voice"])
@@ -870,7 +870,7 @@ def install_to_library(root: Path, project: dict, airline_dir: Path) -> Path:
         project["replaced"] = []
         save(root, project)
     music = sorted((src / "main").glob("BoardingMusic*.ogg"))
-    if music:  # boarding music is the airline's, not a voice's: it goes where FCAC copies the general PAs from
+    if music:  # boarding music is the airline's, not a voice's: it goes where PAPro copies the general PAs from
         (airline_dir / "main").mkdir(parents=True, exist_ok=True)
         for path in music:
             shutil.copyfile(path, airline_dir / "main" / path.name)

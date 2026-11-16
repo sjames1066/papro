@@ -6,11 +6,11 @@ echo Installing build tools (one time)...
 "%PYEXE%" -m pip install -r requirements.txt pyinstaller
 if errorlevel 1 goto failed
 echo.
-echo Building FCAC (a folder of files, not one self-extracting file: antivirus programs trust that more) ...
-"%PYEXE%" -m PyInstaller --noconfirm --clean --onedir --noconsole --name FCAC --icon fcac.ico --hidden-import pystray._win32 --add-data "airport_names.json;." --collect-all SimConnect fcac.py
+echo Building PAPro (a folder of files, not one self-extracting file: antivirus programs trust that more) ...
+"%PYEXE%" -m PyInstaller --noconfirm --clean --onedir --noconsole --name papro --icon papro.ico --hidden-import pystray._win32 --add-data "airport_names.json;." --collect-all SimConnect papro.py
 if errorlevel 1 goto failed
-for /f "tokens=3 delims= " %%V in ('findstr /b /c:"VERSION = " fcac.py') do set "FCACVER=%%~V"
-echo FCAC version: %FCACVER%
+for /f "tokens=3 delims= " %%V in ('findstr /b /c:"VERSION = " papro.py') do set "PAProVER=%%~V"
+echo PAPro version: %PAProVER%
 set "ISCC="
 for %%P in ("%LOCALAPPDATA%\Programs\Inno Setup 6" "%ProgramFiles(x86)%\Inno Setup 6" "%ProgramFiles%\Inno Setup 6" "%ProgramFiles(x86)%\Inno Setup 7" "%ProgramFiles%\Inno Setup 7") do if not defined ISCC if exist "%%~P\ISCC.exe" set "ISCC=%%~P\ISCC.exe"
 if not defined ISCC for /f "delims=" %%I in ('where ISCC.exe 2^>nul') do if not defined ISCC set "ISCC=%%I"
@@ -19,23 +19,23 @@ if defined ISCC echo Inno Setup compiler: %ISCC%
 if not defined ISCC goto noinno
 echo.
 echo Building the installer ...
-"%ISCC%" /DMyVersion=%FCACVER% installer.iss
+"%ISCC%" /DMyVersion=%PAProVER% installer.iss
 if errorlevel 1 goto failed
 echo.
-echo Done. Your installer is  %~dp0dist\FCAC-Setup-%FCACVER%.exe
+echo Done. Your installer is  %~dp0dist\PAPro-Setup-%PAProVER%.exe
 echo.
 echo.
-"%PYEXE%" update_catalog.py %FCACVER% "%~dp0dist\FCAC-Setup-%FCACVER%.exe"
+"%PYEXE%" update_catalog.py %PAProVER% "%~dp0dist\PAPro-Setup-%PAProVER%.exe"
 echo.
-echo To publish: 1) create the GitHub release v%FCACVER% and attach the installer above,
-echo             2) then upload C:\FCAC\catalog.json (NOT the one in dist) to the fcac repository on GitHub.
+echo To publish: 1) create the GitHub release v%PAProVER% and attach the installer above,
+echo             2) then upload C:\PAPro\catalog.json (NOT the one in dist) to the papro repository on GitHub.
 start "" "%~dp0dist"
 pause
 exit /b 0
 
 :noinno
 echo.
-echo Done. The program folder is  %~dp0dist\FCAC   (run FCAC.exe inside it)
+echo Done. The program folder is  %~dp0dist\papro   (run papro.exe inside it)
 echo To also make an installer, install Inno Setup 6 from https://jrsoftware.org/isdl.php and run this again.
 start "" "%~dp0dist"
 pause
@@ -48,7 +48,7 @@ pause
 exit /b 1
 
 :nopython
-echo Could not find Python on this PC. Run "Setup FCAC.bat" first.
+echo Could not find Python on this PC. Run "Setup PAPro.bat" first.
 pause
 exit /b 1
 

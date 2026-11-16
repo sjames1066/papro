@@ -26,7 +26,7 @@ pause
 exit /b 1
 
 :nopython
-echo Could not find Python on this PC. Run "Setup FCAC.bat" first.
+echo Could not find Python on this PC. Run "Setup PAPro.bat" first.
 pause
 exit /b 1
 

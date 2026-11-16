@@ -1,8 +1,8 @@
 """
-FCAC icon: a phone-app-style rounded tile (purple to orange) with a white airliner and cabin-announcement waves.
-Drawn with Pillow so it ships inside the app. Run this file to export fcac.ico and fcac_icon.png:
+PAPro icon: a phone-app-style rounded tile (purple to orange) with a white airliner and cabin-announcement waves.
+Drawn with Pillow so it ships inside the app. Run this file to export papro.ico and papro_icon.png:
 
-    python fcac_icon.py
+    python papro_icon.py
 """
 
 from __future__ import annotations
@@ -95,16 +95,16 @@ def _build(detail: bool) -> Image.Image:
 
 
 def make_icon(size: int = 256) -> Image.Image:
-    """The FCAC icon as an RGBA image. Small sizes drop the waves so the aircraft stays readable."""
+    """The PAPro icon as an RGBA image. Small sizes drop the waves so the aircraft stays readable."""
     return _build(detail=size > 40).resize((size, size), Image.LANCZOS)
 
 
 def main() -> int:
     here = Path(__file__).resolve().parent
     big = make_icon(256)
-    big.save(here / "fcac_icon.png")
-    big.save(here / "fcac.ico", format="ICO", sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
-    print(f"Wrote {here / 'fcac.ico'} and {here / 'fcac_icon.png'}")
+    big.save(here / "papro_icon.png")
+    big.save(here / "papro.ico", format="ICO", sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
+    print(f"Wrote {here / 'papro.ico'} and {here / 'papro_icon.png'}")
     return 0
 
 

@@ -1,5 +1,5 @@
 r"""
-FCAC - Fenix Cabin Announcements Configurator: system tray app for custom MSFS 2024 cabin announcements.
+PAPro - Cabin announcements for MSFS: system tray app for custom MSFS 2024 cabin announcements.
 
 * Reads the airline and destination of your latest SimBrief flight plan.
 * Takes the matching recording  <AIRLINE>_<ICAO>.ogg  from  Airlines\<AIRLINE>\airports (older packs: dep | dest | fuel)  and
@@ -8,14 +8,14 @@ FCAC - Fenix Cabin Announcements Configurator: system tray app for custom MSFS 2
 * Downloads and installs airline packs from an online catalog into the same Airlines folder, with one-click uninstall.
 
 Command line (handy for testing; with no arguments the tray app starts):
-    python fcac.py --community              show the detected MSFS 2024 Community folder
-    python fcac.py --add-airline BAW AAL    create Airlines\BAW\main|time|extra|airports|fuel (and AAL)
-    python fcac.py --list-packs             list packs in the catalog
-    python fcac.py --install BAW            download + install a pack
-    python fcac.py --uninstall BAW          remove an installed pack (restores any pack that was there before)
-    python fcac.py --restore BAW            put the airline's original generic announcements back
-    python fcac.py --once                   one update from SimBrief
-    python fcac.py --once --airline BAW --dest BIKF     skip SimBrief, force a flight
+    python papro.py --community              show the detected MSFS 2024 Community folder
+    python papro.py --add-airline BAW AAL    create Airlines\BAW\main|time|extra|airports|fuel (and AAL)
+    python papro.py --list-packs             list packs in the catalog
+    python papro.py --install BAW            download + install a pack
+    python papro.py --uninstall BAW          remove an installed pack (restores any pack that was there before)
+    python papro.py --restore BAW            put the airline's original generic announcements back
+    python papro.py --once                   one update from SimBrief
+    python papro.py --once --airline BAW --dest BIKF     skip SimBrief, force a flight
 """
 
 from __future__ import annotations
@@ -42,36 +42,72 @@ from urllib.request import url2pathname
 import requests
 
 try:
-    import fcac_audio  # joins announcement pieces (needs numpy + soundfile)
+    import papro_audio  # joins announcement pieces (needs numpy + soundfile)
 except Exception:  # missing libraries must not stop the rest of the app
-    fcac_audio = None
-import fcac_studio  # Pack Studio (record / upload, PA sound, loudness, export); imports fcac_audio itself
+    papro_audio = None
+import papro_studio  # Pack Studio (record / upload, PA sound, loudness, export); imports papro_audio itself
 
-APP_NAME = "FCAC - Fenix Cabin Announcements Configurator"
-VERSION = "1.0.7"
+APP_NAME = "PAPro - Cabin announcements for MSFS"
+VERSION = "1.1.0"
 BASE_DIR = (
     Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 )
-CONFIG_PATH = Path(os.environ.get("FCAC_CONFIG", BASE_DIR / "config.json"))
+CONFIG_PATH = Path(os.environ.get("PAPRO_CONFIG") or os.environ.get("FCAC_CONFIG") or BASE_DIR / "config.json")
+
+
+def _migrate_from_fcac() -> None:
+    """The installed app used to live in ...\\Programs\\FCAC. Bring its settings, aliases and Airlines library
+    into the new PAPro folder the first time PAPro runs (nothing is overwritten)."""
+    if not getattr(sys, "frozen", False) or CONFIG_PATH.exists():
+        return
+    old = BASE_DIR.parent / "FCAC"
+    if old == BASE_DIR or not old.is_dir():
+        return
+    try:
+        cfg_old = old / "config.json"
+        if cfg_old.is_file():
+            text = cfg_old.read_text(encoding="utf-8").replace("sjames1066/fcac/", "sjames1066/papro/")
+            CONFIG_PATH.write_text(text, encoding="utf-8")
+        for name in ("aliases.json",):
+            if (old / name).is_file() and not (BASE_DIR / name).exists():
+                shutil.copyfile(old / name, BASE_DIR / name)
+        if (old / "Airlines").is_dir() and not (BASE_DIR / "Airlines").exists():
+            shutil.move(str(old / "Airlines"), str(BASE_DIR / "Airlines"))
+    except OSError:
+        pass
+
+
+_migrate_from_fcac()
 ALIASES_PATH = CONFIG_PATH.with_name("aliases.json")
 DEFAULT_ALIASES = {"SHT": "BAW", "CFE": "BAW", "EFW": "BAW"}  # BA Shuttle, BA CityFlyer, BA EuroFlyer -> the BAW pack
 
 
 def _data_dir() -> Path:
-    env = os.environ.get("FCAC_DATA")
+    env = os.environ.get("PAPRO_DATA") or os.environ.get("FCAC_DATA")
     if env:
         return Path(env)
     if sys.platform.startswith("win"):
-        return Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "FCAC"
-    return Path.home() / ".fcac"
+        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+        new, old = base / "PAPro", base / "FCAC"
+    else:
+        new, old = Path.home() / ".papro", Path.home() / ".fcac"
+    if old.is_dir() and not new.exists():   # this app used to be called FCAC: carry its recordings, packs and state over
+        try:
+            old.rename(new)
+        except OSError:
+            try:
+                shutil.copytree(old, new)
+            except OSError:
+                return old
+    return new
 
 
 DATA_DIR = _data_dir()
-GENERIC_DIR = DATA_DIR / "generic"    # untouched copy of an airline's generic announcements (saved before FCAC changes them)
+GENERIC_DIR = DATA_DIR / "generic"    # untouched copy of an airline's generic announcements (saved before PAPro changes them)
 BACKUPS_DIR = DATA_DIR / "backups"    # packs that were already in the Fenix folder before we installed ours
 STATE_PATH = DATA_DIR / "state.json"
 TEST_DIR = DATA_DIR / "test"            # scratch builds for the Test tab (never touches the Fenix folder or the real state)
-_STATE_LOCAL = threading.local()        # a thread can point FCAC's state at another file (the Test tab's scratch builds)
+_STATE_LOCAL = threading.local()        # a thread can point PAPro's state at another file (the Test tab's scratch builds)
 STUDIO_DIR = DATA_DIR / "studio"        # Pack Studio projects (recordings, processed clips, exports)
 LOG_PATH = DATA_DIR / "announcer.log"
 for _d in (DATA_DIR, GENERIC_DIR, BACKUPS_DIR):
@@ -94,7 +130,7 @@ MAX_DOWNLOAD_BYTES = 1024 * 1024 * 1024
 DEFAULT_CONFIG = {
     "simbrief_username": "",
     "simbrief_userid": "",
-    "catalog_url": "https://raw.githubusercontent.com/sjames1066/fcac/main/catalog.json",
+    "catalog_url": "https://raw.githubusercontent.com/sjames1066/papro/main/catalog.json",
     "community_dir": "",              # leave empty to auto-detect
     "airlines_dir": "",               # your recordings library; empty = an 'Airlines' folder next to the app
     "announcements_folder": "fnx-airline-packs",
@@ -104,15 +140,15 @@ DEFAULT_CONFIG = {
     "auto_poll": True,
     "poll_interval_seconds": 60,
     "notifications": True,
-    "minimize_to_tray": False,        # minimizing the FCAC window hides it in the tray instead of the taskbar
-    "close_to_tray": False,           # closing the FCAC window: False = FCAC quits, True = it keeps running in the tray
-    "pa_boost": 30,                   # percent louder than the recordings when FCAC puts a PA into the Fenix folder (0 = untouched)
+    "minimize_to_tray": False,        # minimizing the PAPro window hides it in the tray instead of the taskbar
+    "close_to_tray": False,           # closing the PAPro window: False = PAPro quits, True = it keeps running in the tray
+    "pa_boost": 30,                   # percent louder than the recordings when PAPro puts a PA into the Fenix folder (0 = untouched)
     "extra_chance": 25,               # percent of flights that get one random bolt-on from the extra folder (0 = never)
     "announce_local_time": True,      # say "where the local time is ..." in the landing PA (needs the parts pieces)
     "landing_speed_knots": 60,        # the landing PA is built once you have landed and slowed to this ground speed
     "join_style": "flow",             # "flow": pieces are cropped tight and run into each other; "pauses": a short gap between them
     "segment_pause_ms": 60,           # pause between the pieces of a joined PA (see the parts folder)
-    "quit_with_msfs": True,           # when started with MSFS: close FCAC when the sim closes
+    "quit_with_msfs": True,           # when started with MSFS: close PAPro when the sim closes
     # Which pack files each folder replaces. Variants (e.g. BoardingWelcome[Morning].ogg) are found in the pack.
     "mappings": [
         {"folder": "dep", "base": "BoardingWelcome", "exclude_tags": ["Refueling"], "default_name": "BoardingWelcome"},
@@ -122,7 +158,7 @@ DEFAULT_CONFIG = {
     ],
 }
 
-log = logging.getLogger("fcac")
+log = logging.getLogger("papro")
 
 DEBUG = False
 
@@ -189,13 +225,13 @@ def load_aliases(cfg: dict) -> dict[str, str]:
 
 
 # --------------------------------------------------------------------------- starting with Windows / with MSFS
-EXE_XML_NAME = "FCAC"                       # name of our entry in MSFS's EXE.xml
+EXE_XML_NAME = "PAPro"                       # name of our entry in MSFS's EXE.xml
 MSFS_PROCESS = "FlightSimulator2024.exe"
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
 
 def launch_command() -> tuple[str, str]:
-    """(program, arguments) that start this app: the .exe itself, or pythonw + fcac.py."""
+    """(program, arguments) that start this app: the .exe itself, or pythonw + papro.py."""
     if getattr(sys, "frozen", False):
         return sys.executable, "--background"
     exe = Path(sys.executable)
@@ -228,7 +264,7 @@ _EXE_XML_NEW = (
 
 
 def _is_ours(block: str) -> bool:
-    return re.search(rf"<Name>\s*{EXE_XML_NAME}\s*</Name>", block, re.IGNORECASE) is not None
+    return re.search(rf"<Name>\s*({EXE_XML_NAME}|FCAC)\s*</Name>", block, re.IGNORECASE) is not None   # FCAC: the old name
 
 
 def exe_xml_without_ours(text: str) -> str:
@@ -246,7 +282,7 @@ def exe_xml_with_ours(text: str, program: str, args: str) -> str:
     )
     close = re.search(r"[ \t]*</SimBase\.Document>", text, re.IGNORECASE)
     if not close:
-        raise AppError("EXE.xml has an unexpected layout - FCAC left it alone.")
+        raise AppError("EXE.xml has an unexpected layout - PAPro left it alone.")
     return text[: close.start()] + block + text[close.start():]
 
 
@@ -262,7 +298,7 @@ def _write_exe_xml(path: Path, text: str) -> None:
 
 
 def set_msfs_autostart(enabled: bool) -> list[Path]:
-    """Add or remove FCAC in MSFS's EXE.xml, so the sim starts it. Returns the files that were changed."""
+    """Add or remove PAPro in MSFS's EXE.xml, so the sim starts it. Returns the files that were changed."""
     dirs = msfs_config_dirs()
     if enabled and not dirs:
         raise AppError("Could not find MSFS 2024's settings folder (run the sim once, then try again).")
@@ -298,13 +334,13 @@ def set_windows_autostart(enabled: bool) -> None:
     program, args = launch_command()
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
-            if enabled:
-                winreg.SetValueEx(key, "FCAC", 0, winreg.REG_SZ, f'"{program}" {args}'.strip())
-            else:
+            for name in ("PAPro", "FCAC"):   # FCAC: what an older version called its entry
                 try:
-                    winreg.DeleteValue(key, "FCAC")
+                    winreg.DeleteValue(key, name)
                 except FileNotFoundError:
                     pass
+            if enabled:
+                winreg.SetValueEx(key, "PAPro", 0, winreg.REG_SZ, f'"{program}" {args}'.strip())
     except OSError as exc:
         raise AppError(f"Could not change the Windows startup entry: {exc}") from exc
 
@@ -314,8 +350,13 @@ def windows_autostart_enabled() -> bool:
         import winreg
 
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:
-            winreg.QueryValueEx(key, "FCAC")
-            return True
+            for name in ("PAPro", "FCAC"):
+                try:
+                    winreg.QueryValueEx(key, name)
+                    return True
+                except FileNotFoundError:
+                    continue
+            return False
     except (ImportError, OSError):
         return False
 
@@ -328,7 +369,7 @@ def current_autostart() -> str:
 
 
 def apply_autostart(mode: str) -> str:
-    """Make `mode` ("off", "windows", "msfs") the only way FCAC starts by itself."""
+    """Make `mode` ("off", "windows", "msfs") the only way PAPro starts by itself."""
     if mode not in ("off", "windows", "msfs"):
         raise AppError("Unknown startup option.")
     if mode != "windows" and sys.platform.startswith("win"):
@@ -553,7 +594,7 @@ def _version_tuple(text: str) -> tuple:
 
 
 def app_update() -> dict | None:
-    """The newer FCAC the catalog announces, if there is one."""
+    """The newer PAPro the catalog announces, if there is one."""
     if APP_LATEST and _version_tuple(APP_LATEST["version"]) > _version_tuple(VERSION):
         info = dict(APP_LATEST)
         info["auto"] = bool(info.get("installer")) and bool(getattr(sys, "frozen", False))   # the installed program (not the Python source) can update itself
@@ -578,7 +619,7 @@ def load_catalog(cfg: dict) -> list[dict]:
     except (requests.RequestException, OSError, ValueError) as exc:
         raise AppError(f"Could not load the pack catalog: {exc}") from exc
 
-    app = data.get("app")   # {"version": "1.0.2", "url": "https://...", "notes": "..."}: the newest FCAC
+    app = data.get("app")   # {"version": "1.0.2", "url": "https://...", "notes": "..."}: the newest PAPro
     APP_LATEST.clear()
     if isinstance(app, dict) and str(app.get("version", "")).strip():
         link = str(app.get("url", "")).strip()
@@ -887,7 +928,7 @@ def airline_display_name(cfg: dict, icao: str, record: dict | None = None, catal
     except OSError:
         pass
     try:
-        for proj in fcac_studio.list_projects(STUDIO_DIR):
+        for proj in papro_studio.list_projects(STUDIO_DIR):
             if str(proj.get("icao", "")).upper() == icao.upper() and str(proj.get("airline", "")).strip().upper() not in ("", icao.upper()):
                 return str(proj["airline"])
     except Exception:
@@ -912,7 +953,7 @@ def library_voices(cfg: dict, icao: str) -> list[str]:
 
 
 def remove_voice(cfg: dict, icao: str, key: str) -> str:
-    """Take one voice out of an airline: its folder is moved to the FCAC backups folder, not deleted."""
+    """Take one voice out of an airline: its folder is moved to the PAPro backups folder, not deleted."""
     icao = check_airline_code(icao)
     folder = airline_folder(cfg, icao) / VOICES_FOLDER / key
     if not key or key == DEFAULT_VOICE or Path(key).name != key or not folder.is_dir():
@@ -962,7 +1003,7 @@ def uninstall_pack(cfg: dict, icao: str) -> str:
         state.pop("last", None)
         save_state(state)
         log.info("Removed library folder %s (kept in backups)", icao)
-        return f"Removed {icao} (a copy of the recordings is in the FCAC backups folder)"
+        return f"Removed {icao} (a copy of the recordings is in the PAPro backups folder)"
     try:
         fenix_dir = airline_packs_dir(cfg) / icao
         if fenix_dir.exists():
@@ -1033,12 +1074,12 @@ def boost_percent(cfg: dict) -> int:
 
 def boosted_copy(src: Path, dst: Path, percent: int) -> bool:
     """Write a louder copy of an .ogg. False = could not (no audio library...), so the caller copies it unchanged."""
-    if fcac_audio is None or not fcac_audio.have_backend():
+    if papro_audio is None or not papro_audio.have_backend():
         return False
     try:
-        fcac_audio.boost(src, dst, percent)
+        papro_audio.boost(src, dst, percent)
         return True
-    except (fcac_audio.AudioError, OSError, ValueError) as exc:
+    except (papro_audio.AudioError, OSError, ValueError) as exc:
         log.warning("Could not make %s louder (%s) - copied as recorded", src.name, exc)
         dst.unlink(missing_ok=True)
         return False
@@ -1087,8 +1128,8 @@ def install_file(src: Path, dst: Path, boost: int = 0) -> None:
 def generic_source(cfg: dict, airline: str, fenix_dir: Path) -> Path | None:
     """Where the airline's ORIGINAL announcements are kept, so an airport without a recording can go back to them.
 
-    Order: Airlines\\<ICAO>\\main (the airline's general PAs; a catalog pack installs them there), then FCAC's saved
-    snapshot. The snapshot is taken from the Fenix pack the first time FCAC is about to change it.
+    Order: Airlines\\<ICAO>\\main (the airline's general PAs; a catalog pack installs them there), then PAPro's saved
+    snapshot. The snapshot is taken from the Fenix pack the first time PAPro is about to change it.
     """
     library_main = airline_folder(cfg, airline) / MAIN_FOLDER
     if has_ogg(library_main):
@@ -1129,7 +1170,7 @@ def variant_name(label: str) -> str:
     return label or STANDARD
 
 
-CHOOSER = None  # set by the tray app: asks in the FCAC window which recording to use
+CHOOSER = None  # set by the tray app: asks in the PAPro window which recording to use
 
 
 def choose_default(title: str, prompt: str, options: list[str]) -> tuple[str, bool]:
@@ -1376,7 +1417,7 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
             if path.is_file() and path.suffix.lower() == ".ogg" and not is_modular(path.name) and not is_variant(path.name):
                 install_file(path, fenix_dir / path.name, boost)
 
-    # Your general PAs in Airlines\<ICAO>\main are the source of truth for everything FCAC doesn't swap per
+    # Your general PAs in Airlines\<ICAO>\main are the source of truth for everything PAPro doesn't swap per
     # destination (SafetyBriefing, ArmDoors...): copy any that are new or changed into the Fenix pack.
     synced = 0
     voice_main = voice_dir / MAIN_FOLDER
@@ -1477,12 +1518,12 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
                         pieces = welcome_pieces(voice_dir, clip, tag, [t for t in tail if t]) if tag else None
                 if pieces:
                     out = Path(work) / name
-                    if fcac_audio is None or not fcac_audio.have_backend():
+                    if papro_audio is None or not papro_audio.have_backend():
                         raise AppError("Joining PA pieces needs the numpy and soundfile libraries "
-                                       "(run Setup FCAC.bat again, or use the latest FCAC.exe).")
+                                       "(run Setup PAPro.bat again, or use the latest papro.exe).")
                     try:
-                        fcac_audio.join(pieces, out, pause, flow)
-                    except (fcac_audio.AudioError, OSError) as exc:
+                        papro_audio.join(pieces, out, pause, flow)
+                    except (papro_audio.AudioError, OSError) as exc:
                         raise AppError(f"Could not join the pieces for {name}: {exc}") from exc
                     install_file(out, dst, boost)
                     log.info("Built %s = %s", name, " + ".join(p.stem for p in pieces))
@@ -1541,7 +1582,7 @@ def restore_generic(cfg: dict, icao: str) -> str:
     fenix_dir = airline_packs_dir(cfg) / icao
     source = generic_source(cfg, icao, fenix_dir)
     if not source:
-        raise AppError(f"No saved original {icao} announcements yet (FCAC saves them the first time it changes a pack).")
+        raise AppError(f"No saved original {icao} announcements yet (PAPro saves them the first time it changes a pack).")
     fenix_dir.mkdir(parents=True, exist_ok=True)
     for path in sorted(source.iterdir()):
         if path.is_file() and path.suffix.lower() == ".ogg" and not is_modular(path.name) and not is_variant(path.name):
@@ -1556,7 +1597,7 @@ APPLIED_MARK = " - your announcements are in place"   # the dashboard turns this
 
 
 def airline_has_pack(cfg: dict, code: str) -> bool:
-    """Is there anything to play for this airline (its recordings, after any alias)? If not FCAC does nothing: it creates
+    """Is there anything to play for this airline (its recordings, after any alias)? If not PAPro does nothing: it creates
     no folders and sends nothing to the Fenix folder."""
     try:
         folder = airline_folder(cfg, load_aliases(cfg).get(code, code))
@@ -1612,7 +1653,7 @@ ACTIVE_BOLD = _bold_sans("Active")
 
 
 def make_icon_image():
-    from fcac_icon import make_icon
+    from papro_icon import make_icon
 
     return make_icon(64)
 
@@ -1651,7 +1692,7 @@ def _font(size: int):
     from PIL import ImageFont
 
     try:
-        from fcac_fonts import INTER
+        from papro_fonts import INTER
 
         return ImageFont.truetype(io.BytesIO(base64.b64decode(INTER["Bold"])), size)
     except Exception:
@@ -1751,20 +1792,20 @@ def logo_png(cfg: dict, icao: str) -> bytes:
     return _logo_cache[("mono", icao)]
 
 
-# --------------------------------------------------------------------------- the FCAC window (see fcac_ui.py)
+# --------------------------------------------------------------------------- the PAPro window (see papro_ui.py)
 class UIMixin:
     """What the window shows and does. Needs: lock, catalog, catalog_error, status, auto, wake, set_status(),
     refresh_catalog(), refresh_menu(), poll_once(), run_task()."""
 
     def _ui_init(self) -> None:
-        import fcac_ui
+        import papro_ui
 
         self.tasks: dict[str, dict] = {}
         self.prompt: dict | None = None
         self.logo_version = 0
         self.installs_done = 0
         self.updating = False
-        self.ui = fcac_ui.UIServer(self, DATA_DIR / "ui-profile")
+        self.ui = papro_ui.UIServer(self, DATA_DIR / "ui-profile")
 
     def open_window(self) -> None:
         self.ui.open_window()
@@ -1885,6 +1926,7 @@ class UIMixin:
             "packs": packs,
             "catalog_error": self.catalog_error,
             "app_update": app_update(),
+            "aircraft": getattr(self, "aircraft", None),
             "update_checked": int(getattr(self, "update_checked", 0) * 1000),
             "logo_v": self.logo_version,
             "installs_done": self.installs_done,
@@ -1896,7 +1938,7 @@ class UIMixin:
         return self.status.startswith("Unchanged:") or "landing PA built from the sim" in self.status
 
     def _welcome_info(self, cfg: dict, state: dict) -> dict | None:
-        """First run only: what FCAC is going to change, so the user isn't surprised."""
+        """First run only: what PAPro is going to change, so the user isn't surprised."""
         if state.get("welcomed"):
             return None
         try:
@@ -1957,7 +1999,7 @@ class UIMixin:
                 image = Image.open(io.BytesIO(body))
                 image.load()
             except Exception:
-                return {"error": "That is not an image FCAC can read. Use a png, jpg or webp."}
+                return {"error": "That is not an image PAPro can read. Use a png, jpg or webp."}
             image = image.convert("RGBA")
             image.thumbnail((512, 512))
             for old in ("logo.jpg", "logo.jpeg", "logo.webp"):
@@ -1975,7 +2017,7 @@ class UIMixin:
             return monogram(icao[:4] or "?"), "image/png"
 
     def ui_icon(self) -> bytes:
-        from fcac_icon import make_icon
+        from papro_icon import make_icon
 
         return _png_bytes(make_icon(128))
 
@@ -1992,7 +2034,7 @@ class UIMixin:
 
     def window_closed(self) -> None:
         """The page says it is going away. Unless "keep running in the tray" is on in Settings, closing the window quits
-        FCAC. A page reload also says this, so only quit if the window's browser process has really ended."""
+        PAPro. A page reload also says this, so only quit if the window's browser process has really ended."""
         try:
             if load_config().get("close_to_tray"):
                 return
@@ -2009,7 +2051,7 @@ class UIMixin:
 
     # things the page can ask for
     # ------------------------------------------------------------------ Test tab
-    TEST_LABELS = {stem: label for stem, label, _ in fcac_studio.GENERAL}
+    TEST_LABELS = {stem: label for stem, label, _ in papro_studio.GENERAL}
 
     def test_options(self) -> dict:
         try:
@@ -2268,7 +2310,7 @@ class UIMixin:
             return r if r.get("error") else {"ok": True, **r}
         elif name == "test_build":
             return self.test_build(data)
-        elif name == "check_update":   # re-read catalog.json now: the newest FCAC and the pack list
+        elif name == "check_update":   # re-read catalog.json now: the newest PAPro and the pack list
             try:
                 self.catalog = load_catalog(load_config())
                 self.catalog_error = ""
@@ -2287,7 +2329,7 @@ class UIMixin:
     # Pack Studio ---------------------------------------------------------
     def studio_target(self, cfg: dict, icao: str) -> tuple[float, int, str]:
         """Loudness (LUFS) every clip is set to -> (LUFS, 0, ""). A fixed level, no measuring."""
-        return fcac_studio.DEFAULT_TARGET, 0, ""
+        return papro_studio.DEFAULT_TARGET, 0, ""
 
     def studio_job(self, label: str | None, fraction: float | None = None) -> None:
         """What the Studio is busy with, shown as a loading bar in the window."""
@@ -2299,7 +2341,7 @@ class UIMixin:
             sources.append(("your Fenix airline packs", airline_packs_dir(cfg)))
         except (AppError, OSError):
             pass
-        result = (fcac_studio.DEFAULT_TARGET, 0, "")
+        result = (papro_studio.DEFAULT_TARGET, 0, "")
         for label, folder in sources:
             try:
                 files = sorted(p for p in folder.rglob("*.ogg") if not is_modular(p.name)) if folder.is_dir() else []
@@ -2307,7 +2349,7 @@ class UIMixin:
                 files = []
             if files:
                 step = max(1, len(files) // 10)
-                value, count = fcac_studio.reference_loudness(files[::step], lambda f: self.studio_job("Measuring the original announcements", f))
+                value, count = papro_studio.reference_loudness(files[::step], lambda f: self.studio_job("Measuring the original announcements", f))
                 if count:
                     result = (value, count, label)
                     break
@@ -2323,7 +2365,7 @@ class UIMixin:
 
     def studio_snapshot(self, cfg: dict) -> dict:
         current = getattr(self, "studio_current", None)
-        out = {"projects": fcac_studio.list_projects(STUDIO_DIR), "current": None, "folder": str(STUDIO_DIR),
+        out = {"projects": papro_studio.list_projects(STUDIO_DIR), "current": None, "folder": str(STUDIO_DIR),
                "job": getattr(self, "_studio_job", None)}
         if not current:  # packs already in the library that can be opened for editing
             out["library"] = []
@@ -2337,55 +2379,55 @@ class UIMixin:
                 pass
         if current:
             try:
-                project = fcac_studio.load(STUDIO_DIR, *current)
-            except fcac_studio.StudioError:
+                project = papro_studio.load(STUDIO_DIR, *current)
+            except papro_studio.StudioError:
                 return out
-            target, count, label = fcac_studio.DEFAULT_TARGET, 0, ""
-            rows = fcac_studio.status(STUDIO_DIR, project)
+            target, count, label = papro_studio.DEFAULT_TARGET, 0, ""
+            rows = papro_studio.status(STUDIO_DIR, project)
             out["current"] = {
                 "icao": project["icao"], "airline": project["airline"], "voice": project["voice"],
                 "artist": project.get("artist", ""), "credit_url": project.get("credit_url", ""),
                 "donate_url": project.get("donate_url", ""), "accent": project.get("accent", ""),
                 "description": project.get("description", ""), "version": project.get("version", "1.0.0"),
                 "effect": bool(project.get("effect", True)), "airports": project["airports"], "aircraft": project.get("aircraft", []), "aircraft_on": bool(project.get("aircraft_on")),
-                "aircraft_presets": fcac_studio.AIRCRAFT_PRESETS, "extras": project["extras"], "music": project.get("music", []),
-                "logo": fcac_studio.logo_path(STUDIO_DIR, project).is_file(), "has_script": bool(project.get("scripts")), "origin": bool(project.get("origin")), "upgrades": fcac_studio.upgrade_preview(STUDIO_DIR, project), "target_pending": False, "rows": rows, "missing": len(fcac_studio.missing(STUDIO_DIR, project)),
+                "aircraft_presets": papro_studio.AIRCRAFT_PRESETS, "extras": project["extras"], "music": project.get("music", []),
+                "logo": papro_studio.logo_path(STUDIO_DIR, project).is_file(), "has_script": bool(project.get("scripts")), "origin": bool(project.get("origin")), "upgrades": papro_studio.upgrade_preview(STUDIO_DIR, project), "target_pending": False, "rows": rows, "missing": len(papro_studio.missing(STUDIO_DIR, project)),
                 "target": target, "target_count": count, "target_source": label,
                 "done": sum(1 for r in rows if r["done"] or r["skipped"]), "total": len(rows)}
         return out
 
     def studio_project(self, data: dict) -> dict:
-        return fcac_studio.load(STUDIO_DIR, check_airline_code(str(data.get("icao", ""))), str(data.get("voice", "")))
+        return papro_studio.load(STUDIO_DIR, check_airline_code(str(data.get("icao", ""))), str(data.get("voice", "")))
 
     def studio_upload(self, icao: str, voice: str, slot: str, filename: str, body: bytes) -> dict:
         try:
-            project = fcac_studio.load(STUDIO_DIR, check_airline_code(icao), voice)
+            project = papro_studio.load(STUDIO_DIR, check_airline_code(icao), voice)
             if slot == "@logo":
-                fcac_studio.set_logo(STUDIO_DIR, project, body)
+                papro_studio.set_logo(STUDIO_DIR, project, body)
                 return {"ok": True}
             target = self.studio_target(load_config(), project["icao"])[0]
-            return {"ok": True, **fcac_studio.store_raw(STUDIO_DIR, project, slot, body, filename, target)}
-        except (fcac_studio.StudioError, AppError) as exc:
+            return {"ok": True, **papro_studio.store_raw(STUDIO_DIR, project, slot, body, filename, target)}
+        except (papro_studio.StudioError, AppError) as exc:
             return {"error": str(exc)}
 
     def studio_logo(self, icao: str, voice: str) -> bytes | None:
         try:
-            path = fcac_studio.logo_path(STUDIO_DIR, fcac_studio.load(STUDIO_DIR, check_airline_code(icao), voice))
+            path = papro_studio.logo_path(STUDIO_DIR, papro_studio.load(STUDIO_DIR, check_airline_code(icao), voice))
             return path.read_bytes() if path.is_file() else None
-        except (fcac_studio.StudioError, AppError, OSError):
+        except (papro_studio.StudioError, AppError, OSError):
             return None
 
     def studio_audio(self, icao: str, voice: str, slot: str) -> bytes | None:
         try:
-            path = fcac_studio.processed_file(STUDIO_DIR, fcac_studio.load(STUDIO_DIR, check_airline_code(icao), voice), slot)
+            path = papro_studio.processed_file(STUDIO_DIR, papro_studio.load(STUDIO_DIR, check_airline_code(icao), voice), slot)
             return path.read_bytes() if path else None
-        except (fcac_studio.StudioError, AppError, OSError):
+        except (papro_studio.StudioError, AppError, OSError):
             return None
 
     def studio_action(self, name: str, data: dict) -> dict:
         try:
             if name == "create":
-                project = fcac_studio.create(STUDIO_DIR, str(data.get("icao", "")), str(data.get("airline", "")), str(data.get("voice", "")))
+                project = papro_studio.create(STUDIO_DIR, str(data.get("icao", "")), str(data.get("airline", "")), str(data.get("voice", "")))
                 self.studio_current = (project["icao"], project["voice"])
                 return {"ok": True}
             if name == "import":
@@ -2402,10 +2444,10 @@ class UIMixin:
 
                 def work() -> None:
                     try:
-                        project = fcac_studio.import_pack(STUDIO_DIR, icao, names.get(icao, icao), found[key], key,
+                        project = papro_studio.import_pack(STUDIO_DIR, icao, names.get(icao, icao), found[key], key,
                                                           lambda f: self.studio_job("Opening the pack - copying its clips", f))
                         self.studio_current = (project["icao"], project["voice"])
-                    except (fcac_studio.StudioError, OSError) as exc:
+                    except (papro_studio.StudioError, OSError) as exc:
                         log.warning("Could not open pack for editing: %s", exc)
                         self.set_status(f"Could not open that pack: {exc}", notify=False)
                     finally:
@@ -2417,29 +2459,29 @@ class UIMixin:
                 project = self.studio_project(data)
                 self.studio_current = (project["icao"], project["voice"])
                 try:   # recordings that were saved but never processed (a crash, or an old bug) are finished now
-                    todo = fcac_studio.unprocessed(STUDIO_DIR, project)
+                    todo = papro_studio.unprocessed(STUDIO_DIR, project)
                     if todo:
                         target = self.studio_target(load_config(), project["icao"])[0]
                         for slot in todo:
                             try:
-                                fcac_studio.process_slot(STUDIO_DIR, project, slot, target)
-                            except fcac_studio.StudioError:
+                                papro_studio.process_slot(STUDIO_DIR, project, slot, target)
+                            except papro_studio.StudioError:
                                 pass
                 except Exception:
                     log.exception("Could not finish unprocessed recordings")
                 try:   # the PA sound was changed since this pack was last processed: redo the clips from your untouched recordings
-                    if project.get("effect", True) and project.get("fx") != fcac_studio.EFFECT_VERSION:
-                        if any(fcac_studio.raw_takes(fcac_studio.project_dir(STUDIO_DIR, project["icao"], project["voice"]) / "raw", s)
-                               for s in fcac_studio.slot_list(project)):
-                            fcac_studio.reprocess_all(STUDIO_DIR, project, fcac_studio.DEFAULT_TARGET)
-                        project["fx"] = fcac_studio.EFFECT_VERSION
-                        fcac_studio.save(STUDIO_DIR, project)
+                    if project.get("effect", True) and project.get("fx") != papro_studio.EFFECT_VERSION:
+                        if any(papro_studio.raw_takes(papro_studio.project_dir(STUDIO_DIR, project["icao"], project["voice"]) / "raw", s)
+                               for s in papro_studio.slot_list(project)):
+                            papro_studio.reprocess_all(STUDIO_DIR, project, papro_studio.DEFAULT_TARGET)
+                        project["fx"] = papro_studio.EFFECT_VERSION
+                        papro_studio.save(STUDIO_DIR, project)
                 except Exception:
                     log.exception("Could not re-process with the new PA sound")
                 return {"ok": True}
             if name == "discard":
                 project = self.studio_project(data)
-                fcac_studio.discard(STUDIO_DIR, project["icao"], project["voice"])
+                papro_studio.discard(STUDIO_DIR, project["icao"], project["voice"])
                 if getattr(self, "studio_current", None) == (project["icao"], project["voice"]):
                     self.studio_current = None
                 return {"ok": True}
@@ -2461,73 +2503,73 @@ class UIMixin:
                 effect = bool(data.get("effect", project.get("effect", True)))
                 changed = effect != bool(project.get("effect", True))
                 project["effect"] = effect
-                fcac_studio.save(STUDIO_DIR, project)
+                papro_studio.save(STUDIO_DIR, project)
                 if changed:
-                    fcac_studio.reprocess_all(STUDIO_DIR, project, self.studio_target(cfg, project["icao"])[0])
+                    papro_studio.reprocess_all(STUDIO_DIR, project, self.studio_target(cfg, project["icao"])[0])
             elif name == "upgrade":
-                count = fcac_studio.upgrade_names(STUDIO_DIR, project)
+                count = papro_studio.upgrade_names(STUDIO_DIR, project)
                 return {"ok": True, "renamed": count}
             elif name == "mode":
-                fcac_studio.set_mode(STUDIO_DIR, project, str(data.get("slot", "")), str(data.get("mode", "")))
+                papro_studio.set_mode(STUDIO_DIR, project, str(data.get("slot", "")), str(data.get("mode", "")))
             elif name == "script" and data.get("slot"):  # a script for one clip
-                slot = fcac_studio.find_slot(project, str(data["slot"]))
+                slot = papro_studio.find_slot(project, str(data["slot"]))
                 words = str(data.get("text", "")).strip()[:4000]
                 scripts = project.setdefault("scripts", {})
                 if words:
                     scripts[slot["id"]] = words
                 else:
                     scripts.pop(slot["id"], None)
-                fcac_studio.save(STUDIO_DIR, project)
+                papro_studio.save(STUDIO_DIR, project)
                 return {"ok": True}
             elif name == "script":
                 if data.get("clear"):
                     project.pop("scripts", None)
                     skipped = 0
                 else:
-                    found, skipped = fcac_studio.parse_script(project, str(data.get("text", ""))[:60000])
+                    found, skipped = papro_studio.parse_script(project, str(data.get("text", ""))[:60000])
                     if not found:
                         return {"error": "No lines in that script matched a clip. Use lines like  Hour 4: Four  or  time/Hour_04: Four."}
                     project.setdefault("scripts", {}).update(found)
-                fcac_studio.save(STUDIO_DIR, project)
+                papro_studio.save(STUDIO_DIR, project)
                 return {"ok": True, "matched": len(project.get("scripts", {})), "skipped": skipped}
             elif name == "variant":
                 base = str(data.get("base", ""))
                 if data.get("remove"):
-                    fcac_studio.remove_variant(STUDIO_DIR, project, base, int(data.get("n", 0)))
+                    papro_studio.remove_variant(STUDIO_DIR, project, base, int(data.get("n", 0)))
                 else:
-                    fcac_studio.add_variant(STUDIO_DIR, project, base)
+                    papro_studio.add_variant(STUDIO_DIR, project, base)
             elif name == "aircraft":
                 if "on" in data:
-                    fcac_studio.set_aircraft_on(STUDIO_DIR, project, bool(data["on"]))
+                    papro_studio.set_aircraft_on(STUDIO_DIR, project, bool(data["on"]))
                 elif data.get("remove"):
-                    fcac_studio.remove_aircraft(STUDIO_DIR, project, str(data.get("code", "")))
+                    papro_studio.remove_aircraft(STUDIO_DIR, project, str(data.get("code", "")))
                 else:
-                    added, skipped = fcac_studio.add_aircraft(STUDIO_DIR, project, str(data.get("code", ""))[:2000])
+                    added, skipped = papro_studio.add_aircraft(STUDIO_DIR, project, str(data.get("code", ""))[:2000])
                     if not added:
                         return {"error": "Not an aircraft name: " + ", ".join(skipped[:5])} if skipped else {"ok": True, "added": 0}
                     return {"ok": True, "added": len(added), "skipped": skipped}
             elif name == "airport":
                 if data.get("remove"):
-                    fcac_studio.remove_airport(STUDIO_DIR, project, str(data.get("code", "")))
+                    papro_studio.remove_airport(STUDIO_DIR, project, str(data.get("code", "")))
                 else:
-                    added, skipped = fcac_studio.add_airports(STUDIO_DIR, project, str(data.get("code", ""))[:5000])
+                    added, skipped = papro_studio.add_airports(STUDIO_DIR, project, str(data.get("code", ""))[:5000])
                     if not added and not skipped:
                         return {"ok": True, "added": 0}
                     if not added:
                         return {"error": "Not an airport code: " + ", ".join(skipped[:8]) + ". Use 4-letter ICAO codes like EGLL, separated by commas, semicolons or spaces."}
                     return {"ok": True, "added": len(added), "skipped": skipped}
             elif name == "music":
-                (fcac_studio.remove_music if data.get("remove") else fcac_studio.add_music)(STUDIO_DIR, project, str(data.get("name", "")))
+                (papro_studio.remove_music if data.get("remove") else papro_studio.add_music)(STUDIO_DIR, project, str(data.get("name", "")))
             elif name == "extra":
-                (fcac_studio.remove_extra if data.get("remove") else fcac_studio.add_extra)(STUDIO_DIR, project, str(data.get("name", "")))
+                (papro_studio.remove_extra if data.get("remove") else papro_studio.add_extra)(STUDIO_DIR, project, str(data.get("name", "")))
             elif name == "delete":
-                fcac_studio.delete_slot(STUDIO_DIR, project, str(data.get("slot", "")))
+                papro_studio.delete_slot(STUDIO_DIR, project, str(data.get("slot", "")))
             elif name == "export":
-                result = fcac_studio.export(STUDIO_DIR, project, STUDIO_DIR / "exports")
+                result = papro_studio.export(STUDIO_DIR, project, STUDIO_DIR / "exports")
                 open_path(Path(result["zip"]).parent)
                 return {"ok": True, **result}
             elif name == "install":
-                dest = fcac_studio.install_to_library(STUDIO_DIR, project, airline_folder(cfg, project["icao"]))
+                dest = papro_studio.install_to_library(STUDIO_DIR, project, airline_folder(cfg, project["icao"]))
                 self.logo_version += 1
                 state = load_state()
                 state.pop("last", None)
@@ -2535,21 +2577,21 @@ class UIMixin:
                 self.wake.set()
                 finished = bool(project.get("origin"))
                 if finished:  # edits to a pack that came from your library are saved: it is no longer a pack in progress
-                    fcac_studio.discard(STUDIO_DIR, project["icao"], project["voice"])
+                    papro_studio.discard(STUDIO_DIR, project["icao"], project["voice"])
                     self.studio_current = None
                 return {"ok": True, "path": str(dest), "finished": finished}
             elif name == "skip":
-                fcac_studio.set_skip(STUDIO_DIR, project, str(data.get("slot", "")), bool(data.get("skip", True)))
+                papro_studio.set_skip(STUDIO_DIR, project, str(data.get("slot", "")), bool(data.get("skip", True)))
             elif name == "unskip_all":
-                return {"ok": True, "count": fcac_studio.unskip_all(STUDIO_DIR, project)}
+                return {"ok": True, "count": papro_studio.unskip_all(STUDIO_DIR, project)}
             elif name == "logo_remove":
-                fcac_studio.remove_logo(STUDIO_DIR, project)
+                papro_studio.remove_logo(STUDIO_DIR, project)
             elif name == "folder":
-                folder = fcac_studio.project_dir(STUDIO_DIR, project["icao"], project["voice"])
+                folder = papro_studio.project_dir(STUDIO_DIR, project["icao"], project["voice"])
                 open_path(folder)
             else:
                 return {"error": "unknown action"}
-        except (fcac_studio.StudioError, AppError, OSError) as exc:
+        except (papro_studio.StudioError, AppError, OSError) as exc:
             return {"error": str(exc)}
         return {"ok": True}
 
@@ -2646,7 +2688,7 @@ class UIMixin:
         event = threading.Event()
         self.prompt = {"id": secrets.token_hex(4), "title": title, "text": text, "options": options,
                        "event": event, "answer": None}
-        self.set_status(f"{title}: choose a recording in the FCAC window", notify=True)
+        self.set_status(f"{title}: choose a recording in the PAPro window", notify=True)
         self.open_window()
         event.wait(timeout=600)
         prompt, self.prompt = self.prompt, None
@@ -2658,6 +2700,7 @@ class TrayApp(UIMixin):
         import pystray
 
         self.show_window = show_window
+        self.aircraft = None   # {"title", "supported"} of the aircraft loaded in MSFS, or None
         self.pystray = pystray
         self.stop = threading.Event()
         self.wake = threading.Event()
@@ -2676,7 +2719,7 @@ class TrayApp(UIMixin):
     def build_menu(self):
         item, menu = self.pystray.MenuItem, self.pystray.Menu
         return menu(
-            item("Open FCAC window", self.open_window, default=True),
+            item("Open PAPro window", self.open_window, default=True),
             item(lambda _: self.status_text(), None, enabled=False),
             menu.SEPARATOR,
             item("Update from SimBrief now", lambda: self.run_task("Updating", self.do_update)),
@@ -2723,7 +2766,7 @@ class TrayApp(UIMixin):
         self.wake.set()
 
     def restore_items(self):
-        """Airlines FCAC has saved original announcements for (or that have a 'main' folder of their own)."""
+        """Airlines PAPro has saved original announcements for (or that have a 'main' folder of their own)."""
         item = self.pystray.MenuItem
         try:
             cfg = load_config()
@@ -2762,7 +2805,7 @@ class TrayApp(UIMixin):
             self.set_status(str(exc), notify=True)
 
     def msfs_watch(self) -> None:
-        """Started by MSFS (Settings): close FCAC after the sim has been running and then closes."""
+        """Started by MSFS (Settings): close PAPro after the sim has been running and then closes."""
         seen, missing = False, 0
         while not self.stop.wait(10):
             try:
@@ -2774,11 +2817,17 @@ class TrayApp(UIMixin):
                 elif seen:
                     missing += 1
                     if missing >= 2 and not (self.tasks or self.lock.locked()):
-                        log.info("MSFS closed - quitting FCAC")
+                        log.info("MSFS closed - quitting PAPro")
                         self.quit()
                         return
             except Exception:
                 log.exception("MSFS watcher error")
+
+    def aircraft_event(self, info: dict | None) -> None:
+        """From the SimConnect watcher: the aircraft now loaded in the sim (None when the sim is closed)."""
+        self.aircraft = info
+        if info:
+            log.info("Aircraft: %s (%s)", info["title"], "PAs supported" if info["supported"] else "not supported yet")
 
     def sim_event(self, event: str, clock: str | None) -> None:
         """From the SimConnect watcher: "takeoff" (a new flight) or "landed" with the local time at the airport."""
@@ -2804,28 +2853,28 @@ class TrayApp(UIMixin):
         self.wake.set()
 
     def install_app_update(self) -> None:
-        """Download the new installer, check its checksum, run it silently (it closes FCAC, updates it and starts it again)."""
+        """Download the new installer, check its checksum, run it silently (it closes PAPro, updates it and starts it again)."""
         if self.updating:
             return
         wanted = dict(APP_LATEST)
         if not (wanted.get("installer") and wanted.get("sha256")) or _version_tuple(wanted["version"]) <= _version_tuple(VERSION):
             return
         self.updating = True
-        folder = Path(tempfile.mkdtemp(prefix="fcac-update-"))
-        setup = folder / f"FCAC-Setup-{wanted['version']}.exe"
+        folder = Path(tempfile.mkdtemp(prefix="papro-update-"))
+        setup = folder / f"PAPro-Setup-{wanted['version']}.exe"
         try:
-            self.set_status(f"Downloading FCAC {wanted['version']} ...")
+            self.set_status(f"Downloading PAPro {wanted['version']} ...")
             last = [0.0]
 
             def progress(done: int, total: int) -> None:
                 if time.time() - last[0] > 1:
                     last[0] = time.time()
-                    self.set_status(f"Downloading FCAC {wanted['version']} ... {done * 100 // total}%")
+                    self.set_status(f"Downloading PAPro {wanted['version']} ... {done * 100 // total}%")
 
             download_pack({"url": wanted["installer"], "sha256": wanted["sha256"]}, setup, progress)
             if setup.stat().st_size < 1_000_000:
                 raise AppError("The downloaded update looks too small - not installing it.")
-            self.set_status(f"Installing FCAC {wanted['version']} - FCAC will restart in a moment")
+            self.set_status(f"Installing PAPro {wanted['version']} - PAPro will restart in a moment")
             time.sleep(1.5)
             flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
             subprocess.Popen([str(setup), "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS"],
@@ -2833,7 +2882,7 @@ class TrayApp(UIMixin):
             self.quit()
         except (AppError, OSError) as exc:
             log.error("App update failed: %s", exc)
-            self.set_status(f"Could not update FCAC automatically: {exc}", notify=True)
+            self.set_status(f"Could not update PAPro automatically: {exc}", notify=True)
             shutil.rmtree(folder, ignore_errors=True)
             self.updating = False
 
@@ -2972,15 +3021,15 @@ class TrayApp(UIMixin):
         except AppError:
             needs_name = True  # first run: config.json was just created
         if self.show_window or needs_name or not load_state().get("welcomed"):
-            self.open_window()  # started by hand, or first run: explain what FCAC changes, ask for the SimBrief username
+            self.open_window()  # started by hand, or first run: explain what PAPro changes, ask for the SimBrief username
         threading.Thread(target=self.poll_loop, daemon=True).start()
         threading.Thread(target=self.msfs_watch, daemon=True).start()
         threading.Thread(target=_listen_for_show, args=(self,), daemon=True).start()
         try:
-            import fcac_sim
+            import papro_sim
 
-            fcac_sim.SimWatcher(self.sim_event, msfs_running, self.stop,
-                                float(load_config().get("landing_speed_knots", 60))).start()
+            papro_sim.SimWatcher(self.sim_event, msfs_running, self.stop,
+                                float(load_config().get("landing_speed_knots", 60)), on_aircraft=self.aircraft_event).start()
         except Exception:
             log.exception("Could not start the landing watcher")
         self.icon.run()
@@ -2988,12 +3037,12 @@ class TrayApp(UIMixin):
 
 # --------------------------------------------------------------------------- entry point
 _INSTANCE_LOCK = None
-INSTANCE_PORT = 47653   # a loopback port that only the running copy of FCAC holds
+INSTANCE_PORT = 47653   # a loopback port that only the running copy of PAPro holds
 
 
 def _claim_single_instance(show: bool = True) -> bool:
-    """Only one FCAC at a time: a second copy would fight the first over the same files and be impossible to close.
-    Starting FCAC again (by hand) just brings the running copy's window forward."""
+    """Only one PAPro at a time: a second copy would fight the first over the same files and be impossible to close.
+    Starting PAPro again (by hand) just brings the running copy's window forward."""
     global _INSTANCE_LOCK
     import socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -3001,7 +3050,7 @@ def _claim_single_instance(show: bool = True) -> bool:
         sock.bind(("127.0.0.1", INSTANCE_PORT))
         sock.listen(2)
     except OSError:
-        log.warning("FCAC is already running - this copy will exit")
+        log.warning("PAPro is already running - this copy will exit")
         if not show:
             return False
         try:
@@ -3010,11 +3059,11 @@ def _claim_single_instance(show: bool = True) -> bool:
             return False
         except OSError:
             pass
-        text = "FCAC is already running. Look for its icon in the system tray (bottom right, under the ^ arrow)."
+        text = "PAPro is already running. Look for its icon in the system tray (bottom right, under the ^ arrow)."
         if sys.platform.startswith("win"):
             try:
                 import ctypes
-                ctypes.windll.user32.MessageBoxW(0, text, "FCAC", 0x40)
+                ctypes.windll.user32.MessageBoxW(0, text, "PAPro", 0x40)
             except Exception:
                 pass
         else:
@@ -3025,7 +3074,7 @@ def _claim_single_instance(show: bool = True) -> bool:
 
 
 def _listen_for_show(app: "TrayApp") -> None:
-    """A second start of FCAC knocks on our loopback port: open the window for it."""
+    """A second start of PAPro knocks on our loopback port: open the window for it."""
     sock = _INSTANCE_LOCK
     while sock is not None and not app.stop.is_set():
         try:
@@ -3074,7 +3123,7 @@ def main() -> int:
         if not _claim_single_instance(show=not args.background):
             return 0
         shutil.rmtree(TEST_DIR, ignore_errors=True)   # scratch builds from the Test tab last one run
-        try:  # startup entries written by older versions had no --background: rewrite them so MSFS starts FCAC quietly
+        try:  # startup entries written by older versions had no --background: rewrite them so MSFS starts PAPro quietly
             mode = current_autostart()
             if mode != "off":
                 apply_autostart(mode)

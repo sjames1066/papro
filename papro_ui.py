@@ -1,8 +1,8 @@
 """
-FCAC window: a small local web page shown in its own app-style window (Edge or Chrome in --app mode).
+PAPro window: a small local web page shown in its own app-style window (Edge or Chrome in --app mode).
 
-fcac.py runs the server inside the tray process. The page only ever talks to 127.0.0.1, every request must carry a
-random token, and nothing here needs an extra package. The backend object (see fcac.py, UIMixin) supplies:
+papro.py runs the server inside the tray process. The page only ever talks to 127.0.0.1, every request must carry a
+random token, and nothing here needs an extra package. The backend object (see papro.py, UIMixin) supplies:
 
     ui_snapshot() -> dict        everything the page shows
     ui_action(name, data) -> dict   install / uninstall / update / ...
@@ -26,9 +26,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from fcac_fonts import INTER
+from papro_fonts import INTER
 
-log = logging.getLogger("fcac")
+log = logging.getLogger("papro")
 
 
 def work_area() -> tuple[int, int, int, int]:
@@ -58,8 +58,8 @@ def _browser_candidates() -> list[Path]:
     return [Path(root, *part) for part in parts for root in roots if root]
 
 
-def raise_window(title: str = "FCAC", wait: float = 8.0) -> None:
-    """Windows: bring the FCAC window to the front of everything. It is found by its title once it has appeared, and
+def raise_window(title: str = "PAPro", wait: float = 8.0) -> None:
+    """Windows: bring the PAPro window to the front of everything. It is found by its title once it has appeared, and
     Windows' rules against stealing focus are got around by a brief 'always on top'. Runs in the background."""
     if not sys.platform.startswith("win"):
         return
@@ -275,7 +275,7 @@ class UIServer:
 
     # window -------------------------------------------------------------
     def open_window(self) -> None:
-        """Open the FCAC window (or leave the already open one alone)."""
+        """Open the PAPro window (or leave the already open one alone)."""
         with self._lock:
             if self.httpd is None:
                 self.start()
@@ -301,7 +301,7 @@ class UIServer:
             webbrowser.open(url)  # no Edge/Chrome found: the default browser still works
 
     def close_window(self) -> None:
-        """Close the FCAC window (the browser process it runs in, with its helper processes)."""
+        """Close the PAPro window (the browser process it runs in, with its helper processes)."""
         proc = self.window
         if proc is None or proc.poll() is not None:
             return
@@ -328,7 +328,7 @@ PAGE = r"""<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>FCAC</title>
+<title>PAPro</title>
 <link rel="icon" href="/icon.png?t=__TOKEN__">
 <style>
 /*FONTS*/
@@ -376,6 +376,9 @@ header p{margin:0;color:var(--muted);font-size:12.5px}
 .dest-name{color:var(--muted);margin-top:2px}
 .h-ids{font-size:13px;font-weight:600;color:var(--muted);letter-spacing:.02em;margin-bottom:3px}
 .h-name{font-size:26px;font-weight:700;letter-spacing:-.02em;line-height:1.15}
+.h-ac{display:inline-flex;align-items:center;gap:8px;margin-top:10px;padding:4px 12px 4px 10px;border-radius:999px;font-size:12.5px;font-weight:600;max-width:100%}
+.h-ac i{width:8px;height:8px;border-radius:50%;background:currentColor;flex:none}.h-ac span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.h-ac.ok{background:rgba(61,220,151,.14);color:var(--ok)}.h-ac.warn{background:rgba(255,180,84,.15);color:var(--warn)}
 .h-dest{font-size:15px;color:var(--muted);margin-top:4px}.h-dest b{color:var(--text);font-weight:600}
 .h-nopack{font-size:15px;color:var(--muted);line-height:1.4}.h-nopack a{color:var(--text);font-weight:600;text-decoration:underline}
 .msg{margin-top:10px;font-size:13px;color:var(--muted)}
@@ -548,7 +551,7 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
 <div class="wrap">
   <header>
     <img src="/icon.png?t=__TOKEN__" alt="">
-    <div><h1>FCAC</h1><p>Fenix Cabin Announcements Configurator</p></div>
+    <div><h1>PAPro</h1><p>Cabin announcements for MSFS</p></div>
     <div class="spacer"></div>
     <div class="switch" id="auto"><span>Active</span><div class="track"></div></div>
     <button class="cog" id="settings" title="Settings" aria-label="Settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.65 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01A1.7 1.7 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01A1.7 1.7 0 0 0 20.91 10H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg></button>
@@ -558,7 +561,7 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
   <div id="view-main">
   <div class="card updbar" id="updbar" style="display:none"><div><b id="upd-t"></b><span id="upd-s"></span></div><button class="primary" id="upd-go">Download</button></div>
   <section class="card hero" id="hero"></section>
-  <div class="keepopen slim" id="keep-note"><button class="keepx" id="keep-x" title="Close this reminder" aria-label="Close this reminder">&times;</button><b>Keep FCAC running during your flight</b><span>It builds the landing announcement with the real local time once you have landed. Leave it in the tray until you have parked.</span>
+  <div class="keepopen slim" id="keep-note"><button class="keepx" id="keep-x" title="Close this reminder" aria-label="Close this reminder">&times;</button><b>Keep PAPro running during your flight</b><span>It builds the landing announcement with the real local time once you have landed. Leave it in the tray until you have parked.</span>
     <label class="keepno"><input type="checkbox" id="keep-never"> Don't remind me again</label></div>
 
   <div class="section-head"><h2>Installed airline packs</h2><span id="packsub"></span></div>
@@ -591,7 +594,7 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
     <div id="t-list" style="margin-top:18px"></div>
   </div>
   <div id="view-studio" style="display:none"></div>
-  <div class="support">Enjoying FCAC? <button class="kofi" data-open="kofi"><span>&#9829;</span> Buy me a Ko-fi</button></div>
+  <div class="support">Enjoying PAPro? <button class="kofi" data-open="kofi"><span>&#9829;</span> Buy me a Ko-fi</button></div>
   <div class="verbar" id="ver"></div>
 </div>
 
@@ -604,30 +607,30 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
 
 <div class="modal" id="m-name"><div class="dialog">
   <h3>SimBrief username</h3>
-  <p>The name you log in to SimBrief with (not the numeric ID). FCAC reads your latest flight plan from it.</p>
+  <p>The name you log in to SimBrief with (not the numeric ID). PAPro reads your latest flight plan from it.</p>
   <input type="text" id="n-input" placeholder="e.g. captainsmith123" autocomplete="off" spellcheck="false">
   <div class="row" style="margin-top:18px"><button class="ghost" id="n-cancel">Cancel</button><button class="primary" id="n-ok">Save</button></div>
 </div>
 </div>
 
 <div class="modal" id="m-welcome"><div class="dialog" style="width:580px;max-height:92vh;overflow:auto">
-  <h3>Welcome to FCAC</h3>
-  <p>FCAC swaps the cabin announcements in your Fenix A320 for ones that match your flight: the right airline, voice and destination, with the local time read live from the sim.</p>
+  <h3>Welcome to PAPro</h3>
+  <p>PAPro swaps the cabin announcements in your Fenix A320 for ones that match your flight: the right airline, voice and destination, with the local time read live from the sim.</p>
   <div class="facts">
-    <div><b>1 &middot; Tell FCAC who you are on SimBrief</b><i>Enter your SimBrief username below. FCAC reads your latest flight plan (airline and destination) from SimBrief, and that is what powers everything: it decides which recording to use. It only reads your plan. It never changes anything on SimBrief and sends nothing else anywhere.</i></div>
+    <div><b>1 &middot; Tell PAPro who you are on SimBrief</b><i>Enter your SimBrief username below. PAPro reads your latest flight plan (airline and destination) from SimBrief, and that is what powers everything: it decides which recording to use. It only reads your plan. It never changes anything on SimBrief and sends nothing else anywhere.</i></div>
     <div><b>2 &middot; Get some announcements</b><i>Install an airline pack from the Packs list on the main screen, or record your own in the Pack Studio tab.</i></div>
-    <div><b>3 &middot; Plan and fly</b><i>Generate a flight in SimBrief as usual. FCAC updates your announcements by itself when you start MSFS, or any time you press Refresh.</i></div>
+    <div><b>3 &middot; Plan and fly</b><i>Generate a flight in SimBrief as usual. PAPro updates your announcements by itself when you start MSFS, or any time you press Refresh.</i></div>
   </div>
-  <div class="keepopen"><b>Keep FCAC running for the whole flight</b><span>FCAC prepares your announcements as the flight goes on, including building the landing announcement with the real local time once you have landed. If you quit it (or close the window while "quit when I close the window" is on in Settings), those announcements will not be updated. Leave it running in the system tray from before boarding until you have parked.</span></div>
+  <div class="keepopen"><b>Keep PAPro running for the whole flight</b><span>PAPro prepares your announcements as the flight goes on, including building the landing announcement with the real local time once you have landed. If you quit it (or close the window while "quit when I close the window" is on in Settings), those announcements will not be updated. Leave it running in the system tray from before boarding until you have parked.</span></div>
   <label class="small" for="w-name" style="display:block;margin:16px 0 6px;font-weight:600;color:var(--text)">Your SimBrief username (the name you log in with, not the numeric ID)</label>
   <input type="text" id="w-name" placeholder="e.g. captainsmith123" autocomplete="off" spellcheck="false">
-  <div class="small" style="margin:18px 0 6px"><b>What FCAC changes on this PC</b></div>
+  <div class="small" style="margin:18px 0 6px"><b>What PAPro changes on this PC</b></div>
   <div class="facts">
     <div><b>Your Fenix airline packs</b><span id="w-fenix"></span><i>The welcome-aboard, arrival and refuelling announcements in these folders are replaced with the recording for your destination. Nothing else is touched.</i></div>
-    <div><b>Your originals are kept</b><span id="w-orig"></span><i>The first time FCAC changes a pack it saves a copy of the original files. Restore them any time from the tray icon menu &rarr; Restore original announcements.</i></div>
+    <div><b>Your originals are kept</b><span id="w-orig"></span><i>The first time PAPro changes a pack it saves a copy of the original files. Restore them any time from the tray icon menu &rarr; Restore original announcements.</i></div>
     <div><b>Your recordings</b><span id="w-rec"></span><i>Airline packs you install, and your own recordings, are stored here.</i></div>
   </div>
-  <p class="small" style="margin:14px 0 18px">Closing this window is fine: FCAC keeps running in the system tray (near the clock). Open it again by double-clicking the tray icon.</p>
+  <p class="small" style="margin:14px 0 18px">Closing this window is fine: PAPro keeps running in the system tray (near the clock). Open it again by double-clicking the tray icon.</p>
   <div class="row"><button class="primary" id="w-ok">Get started</button></div>
 </div></div>
 
@@ -641,7 +644,7 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
 </div></div>
 <div class="modal" id="m-import"><div class="dialog" style="width:540px">
   <h3>Import an airline pack</h3>
-  <p>Add a pack from a GitHub link or a zip file on this computer. Only install packs from people you trust: a pack is a set of audio files that FCAC copies into your Fenix folder.</p>
+  <p>Add a pack from a GitHub link or a zip file on this computer. Only install packs from people you trust: a pack is a set of audio files that PAPro copies into your Fenix folder.</p>
   <label class="small" for="i-url" style="display:block;margin:10px 0 6px;font-weight:600;color:var(--text)">From GitHub or a link</label>
   <input type="text" id="i-url" placeholder="https://github.com/name/repo/releases/tag/baw-1.0.0 or a link to a .zip" autocomplete="off" spellcheck="false">
   <div class="small" style="margin:12px 0 6px;font-weight:600;color:var(--text)">Or from this computer</div>
@@ -660,12 +663,12 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
     <datalist id="a-sources"></datalist>
     <button class="primary" id="a-add">Add alias</button>
   </div>
-  <div class="small" style="margin:12px 0 18px">Fenix only uses an airline pack when its folder matches the livery's airline code, so FCAC builds a pack folder for the alias from the other airline's files.</div>
+  <div class="small" style="margin:12px 0 18px">Fenix only uses an airline pack when its folder matches the livery's airline code, so PAPro builds a pack folder for the alias from the other airline's files.</div>
   <div class="row"><button class="primary" id="a-done">Done</button></div>
 </div></div>
 
 <div class="modal" id="m-settings"><div class="dialog" style="width:500px">
-  <h3>Settings</h3><p>How FCAC behaves. Changes apply when you press Save.</p>
+  <h3>Settings</h3><p>How PAPro behaves. Changes apply when you press Save.</p>
   <div class="setting"><div class="label">Updates</div>
     <div style="display:flex;align-items:center;gap:12px"><div style="flex:1;min-width:0"><b id="s-ver" style="display:block;font-size:13.5px"></b><span id="s-chk" style="color:var(--muted);font-size:12.5px"></span></div>
       <button id="s-check">Check for updates</button><button class="primary" id="s-upd" style="display:none">Update now</button></div></div>
@@ -673,8 +676,8 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
     <input type="text" id="s-name" placeholder="e.g. captainsmith123" autocomplete="off" spellcheck="false"></div>
   <div class="setting"><div class="label">When I close this window</div>
     <div class="radios" id="s-close">
-      <div class="radio" data-v="no"><b>Close FCAC</b><span>FCAC quits. It only builds the landing announcement while it is running, so keep it open during a flight</span></div>
-      <div class="radio" data-v="yes"><b>Keep it running in the tray</b><span>The window closes but FCAC carries on; double-click the tray icon to open it again</span></div>
+      <div class="radio" data-v="no"><b>Close PAPro</b><span>PAPro quits. It only builds the landing announcement while it is running, so keep it open during a flight</span></div>
+      <div class="radio" data-v="yes"><b>Keep it running in the tray</b><span>The window closes but PAPro carries on; double-click the tray icon to open it again</span></div>
     </div></div>
   <div class="setting"><div class="label">When I minimize this window</div>
     <div class="radios" id="s-min">
@@ -704,16 +707,16 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
       <div class="radio" data-v="30"><b>Louder (+30%)</b><span>Recommended if the cabin PAs sound quiet in the sim</span></div>
       <div class="radio" data-v="50"><b>Much louder (+50%)</b><span>Peaks are softly limited so it never distorts</span></div>
     </div></div>
-  <div class="setting"><div class="label">Start FCAC automatically</div>
+  <div class="setting"><div class="label">Start PAPro automatically</div>
     <div class="radios" id="s-start">
       <div class="radio" data-v="off"><b>No</b><span>I'll start it myself</span></div>
-      <div class="radio" data-v="msfs"><b>With MSFS</b><span>The sim launches FCAC every time it starts (through its EXE.xml)</span></div>
+      <div class="radio" data-v="msfs"><b>With MSFS</b><span>The sim launches PAPro every time it starts (through its EXE.xml)</span></div>
       <div class="radio" data-v="windows"><b>With Windows</b><span>Starts when you sign in to your PC</span></div>
     </div>
-    <label class="check" id="s-quit-row" style="margin:12px 0 0"><input type="checkbox" id="s-quit"> Close FCAC when MSFS closes</label>
+    <label class="check" id="s-quit-row" style="margin:12px 0 0"><input type="checkbox" id="s-quit"> Close PAPro when MSFS closes</label>
   </div>
   <div class="setting"><div class="label">Fenix packs folder and log</div>
-    <div style="display:flex;align-items:center;gap:12px"><button class="ghost" data-open="fenix">Open folder</button><span class="small">Where FCAC puts your announcements for the Fenix.</span></div>
+    <div style="display:flex;align-items:center;gap:12px"><button class="ghost" data-open="fenix">Open folder</button><span class="small">Where PAPro puts your announcements for the Fenix.</span></div>
     <div style="display:flex;align-items:center;gap:12px;margin-top:10px"><button class="ghost" data-open="log">View log</button><span class="small">Useful if something is not working.</span></div></div>
   <div class="row"><button class="ghost" id="s-cancel">Cancel</button><button class="primary" id="s-save">Save</button></div>
 </div></div>
@@ -725,7 +728,7 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
   <div class="meter"><i id="mic-bar"></i><b id="mic-peak"></b></div><div class="small" id="mic-msg">Starting the microphone...</div>
   <div class="label small" style="margin-top:14px">Playback device (for the play and test buttons)</div><select id="out-dev" class="voice" style="width:100%;margin:6px 0 14px"></select>
   <div class="label small">Playback volume <span id="out-gv"></span></div><input type="range" id="out-vol" min="0" max="100" step="5" style="width:100%">
-  <div class="small" style="margin-top:6px">Windows lists FCAC in its volume mixer under the browser that shows this window (Microsoft Edge or Chrome), and only while a sound is playing.</div>
+  <div class="small" style="margin-top:6px">Windows lists PAPro in its volume mixer under the browser that shows this window (Microsoft Edge or Chrome), and only while a sound is playing.</div>
   <div class="row" style="margin-top:16px;justify-content:space-between"><button id="mic-test">Test: record 3 s and play back</button><button class="primary" id="mic-done">Done</button></div>
 </div></div>
 <div class="modal" id="m-up"><div class="dialog" style="width:560px">
@@ -753,7 +756,7 @@ let snap=null, structSig="", promptId=null, selected=null, setupShown=false;
 
 async function api(name,data){
   try{const r=await fetch("/api/"+name,{method:"POST",headers:{"X-Token":TOKEN,"Content-Type":"application/json"},body:JSON.stringify(data||{})});
-      const j=await r.json(); if(j.error) toast(j.error); return j;}catch(e){toast("Lost contact with FCAC");return {}}
+      const j=await r.json(); if(j.error) toast(j.error); return j;}catch(e){toast("Lost contact with PAPro");return {}}
 }
 function confirmDiscard(p){
   $("#ab-text").textContent="This deletes all the recordings and details of "+p.icao+" - "+p.voice+" in Pack Studio. It cannot be undone. Your Airlines library is not touched.";
@@ -775,12 +778,12 @@ function logo(icao,cls){const i=el("img",cls);i.alt=icao;i.src="/logo/"+icao+".p
 
 let heroSig="", keepClosed=false;
 function renderUpd(){const a=snap.app_update,b=$("#updbar");if(!a||!a.url){b.style.display="none";return}
-  b.style.display="";$("#upd-t").textContent="FCAC "+a.version+" is available";$("#upd-s").textContent="";$("#upd-go").textContent=a.auto?"Update now":"Download"}
-$("#upd-go").onclick=()=>{if(snap.app_update&&snap.app_update.auto){$("#upd-go").disabled=true;toast("Downloading the update - FCAC will restart by itself",6000)}api("open",{what:"update"})};
+  b.style.display="";$("#upd-t").textContent="PAPro "+a.version+" is available";$("#upd-s").textContent="";$("#upd-go").textContent=a.auto?"Update now":"Download"}
+$("#upd-go").onclick=()=>{if(snap.app_update&&snap.app_update.auto){$("#upd-go").disabled=true;toast("Downloading the update - PAPro will restart by itself",6000)}api("open",{what:"update"})};
 function renderKeep(){$("#keep-note").style.display=(keepClosed||snap.hide_reminder)?"none":""}
 $("#keep-x").onclick=async()=>{keepClosed=true;renderKeep();if($("#keep-never").checked)await api("hide_reminder",{hide:true})};
 function renderHero(){
-  const sig=JSON.stringify([snap.setup_needed,snap.company,snap.voices,snap.flight,snap.message,snap.applied,snap.updated,snap.busy,snap.logo_v,(snap.packs||[]).filter(p=>p.installed).length]);
+  const sig=JSON.stringify([snap.setup_needed,snap.company,snap.voices,snap.flight,snap.message,snap.applied,snap.updated,snap.busy,snap.logo_v,(snap.packs||[]).filter(p=>p.installed).length,snap.aircraft]);
   if(sig===heroSig) return; heroSig=sig;
   const h=$("#hero"); h.replaceChildren(); h.classList.toggle("ok",!!snap.applied);
   const f=snap.flight;
@@ -799,6 +802,8 @@ function renderHero(){
     const d=el("div","h-dest"); d.append(el("b",null,f.dest)); if(f.name) d.append(document.createTextNode(" / "+f.name)); mid.append(d);
   }else mid.append(el("div","h-name","No flight yet"));
   if(snap.message&&!noPack){const m=el("div","msg"); m.textContent=snap.message; mid.append(m)}
+  if(snap.aircraft){const ac=snap.aircraft,chip=el("div","h-ac "+(ac.supported?"ok":"warn"));chip.title=ac.supported?"PAs can be played in the sim for this aircraft":"PAPro can't play PAs inside this aircraft yet";
+    chip.append(el("i"),el("span",null,ac.title+(ac.supported?" · PAs supported":" · not supported yet")));mid.append(chip)}
   h.append(mid);
   const side=el("div","side");
   const b=el("button","primary"); b.innerHTML='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:7px"><path d="M21 12a9 9 0 0 1-15.4 6.4L3 16"/><path d="M3 12a9 9 0 0 1 15.4-6.4L21 8"/><path d="M21 3v5h-5"/><path d="M3 21v-5h5"/></svg>Refresh'; b.title="Rebuild this flight's announcements now"; b.disabled=snap.busy||!snap.voices; b.onclick=()=>api("update");
@@ -843,7 +848,7 @@ function packCard(p,editable){
   if(!p.task){
     if(!p.installed||p.update){const b=el("button","primary",p.update?"Update":"Install");b.disabled=snap.busy;b.onclick=()=>api("install",{id:p.id||p.update_id||p.icao});act.append(b)}
     if(p.installed&&!p.catalog){const m=el("button","ghost","Manage");m.disabled=snap.busy;m.onclick=()=>openManage(p.icao);act.append(m)}
-    if(p.installed&&!p.catalog){const own=p.version==="Your recordings";const b=el("button","danger","Uninstall");b.disabled=snap.busy;b.onclick=()=>{if(confirm(own?"Remove the "+p.name+" pack?\nThis takes your "+p.icao+" recordings out of FCAC (a copy is kept in the FCAC backups folder).":"Uninstall the "+p.name+" pack?\nYour own recordings stay."))api("uninstall",{icao:p.icao})};act.append(b)}
+    if(p.installed&&!p.catalog){const own=p.version==="Your recordings";const b=el("button","danger","Uninstall");b.disabled=snap.busy;b.onclick=()=>{if(confirm(own?"Remove the "+p.name+" pack?\nThis takes your "+p.icao+" recordings out of PAPro (a copy is kept in the PAPro backups folder).":"Uninstall the "+p.name+" pack?\nYour own recordings stay."))api("uninstall",{icao:p.icao})};act.append(b)}
   }
   if(p.task){
     const live=el("div","live");
@@ -889,7 +894,7 @@ function renderManage(){
     const row=el("div","card"); row.style.cssText="display:flex;align-items:center;gap:10px;padding:10px 14px;margin-top:8px";
     const nm=el("div","name",v.key==="Default"?(v.name==="Default"?"Main recordings":v.name):v.name); nm.style.flex="1"; row.append(nm);
     const ed=el("button","ghost","Edit in Pack Studio"); ed.onclick=async()=>{const r=await studio("import",{icao:p.icao,voice:v.key});if(r.ok){$("#m-manage").classList.remove("show");setView("studio")}}; row.append(ed);
-    if(v.key!=="Default"){const rm=el("button","danger","Remove");rm.onclick=async()=>{if(!confirm("Remove the "+v.name+" voice from "+p.name+"?\nA copy is kept in the FCAC backups folder."))return;const r=await api("remove_voice",{icao:p.icao,voice:v.key});if(r.ok){box.dataset.s="";toast("Removed "+v.name)}};row.append(rm)}
+    if(v.key!=="Default"){const rm=el("button","danger","Remove");rm.onclick=async()=>{if(!confirm("Remove the "+v.name+" voice from "+p.name+"?\nA copy is kept in the PAPro backups folder."))return;const r=await api("remove_voice",{icao:p.icao,voice:v.key});if(r.ok){box.dataset.s="";toast("Removed "+v.name)}};row.append(rm)}
     box.append(row);
   });
 }
@@ -978,11 +983,11 @@ function openSettings(){
   renderSetUpd();$("#m-settings").classList.add("show");
 }
 $("#settings").onclick=openSettings;
-function renderSetUpd(){const a=snap&&snap.app_update;$("#s-ver").textContent="FCAC v"+((snap&&snap.version)||"");
+function renderSetUpd(){const a=snap&&snap.app_update;$("#s-ver").textContent="PAPro v"+((snap&&snap.version)||"");
   const t=snap&&snap.update_checked?new Date(snap.update_checked):null;const when=t?"Last checked "+t.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}):"Not checked yet";
-  $("#s-chk").textContent=a?"FCAC "+a.version+" is available. "+when:(t?"You're up to date. ":"")+when;
+  $("#s-chk").textContent=a?"PAPro "+a.version+" is available. "+when:(t?"You're up to date. ":"")+when;
   const u=$("#s-upd");u.style.display=a?"":"none";u.textContent=a&&a.auto?"Update now":"Download"}
-$("#s-check").onclick=async()=>{const b=$("#s-check");b.disabled=true;b.textContent="Checking...";const r=await api("check_update",{});b.disabled=false;b.textContent="Check for updates";await refreshNow();renderSetUpd();if(r.ok)toast(r.latest?"FCAC "+r.latest+" is available":"You're up to date (FCAC v"+r.version+")")};
+$("#s-check").onclick=async()=>{const b=$("#s-check");b.disabled=true;b.textContent="Checking...";const r=await api("check_update",{});b.disabled=false;b.textContent="Check for updates";await refreshNow();renderSetUpd();if(r.ok)toast(r.latest?"PAPro "+r.latest+" is available":"You're up to date (PAPro v"+r.version+")")};
 $("#s-upd").onclick=()=>$("#upd-go").click();
 $("#s-cancel").onclick=()=>$("#m-settings").classList.remove("show");
 $("#s-save").onclick=async()=>{
@@ -1021,7 +1026,7 @@ async function testInit(){
   const sig=JSON.stringify(list); if(sig===tSig&&tOpts)return; tSig=sig; tOpts=list;
   const keep={air:$("#t-air").value,voice:$("#t-voice").value,dest:$("#t-dest").value};
   const a=$("#t-air"); a.innerHTML=""; for(const x of tOpts){const o=el("option",null,x.icao+" - "+x.name);o.value=x.icao;a.appendChild(o)}
-  if(!tOpts.length){$("#t-voice").innerHTML="";$("#t-dest").innerHTML="";tMsg("No pack in your library has a recorded airport yet. Import a pack (Download Packs tab) or record one in Pack Studio and use \"Use in FCAC now\".");return}
+  if(!tOpts.length){$("#t-voice").innerHTML="";$("#t-dest").innerHTML="";tMsg("No pack in your library has a recorded airport yet. Import a pack (Download Packs tab) or record one in Pack Studio and use \"Use in PAPro now\".");return}
   a.onchange=testFillVoices; $("#t-voice").onchange=testFillDest; $("#t-dest").onchange=()=>testBuild(false);
   $("#t-time").onchange=()=>{const m=$("#t-time").value.trim().match(/^(\d{1,2})[:.]?(\d{2})$/); if(m&&+m[1]<24&&+m[2]<60)$("#t-time").value=m[1].padStart(2,"0")+":"+m[2]; tSpoken(); testBuild(false)};
   $("#t-time").oninput=tSpoken;
@@ -1073,7 +1078,7 @@ async function testBuild(rebuild){
   if(tBusy)return; tBusy=true; testStop(); tMsg("Building your announcements..."); $("#t-all").disabled=true;
   const r=await api("test_build",{icao:$("#t-air").value,voice:$("#t-voice").value,dest:$("#t-dest").value,arrival:$("#t-time").value,rebuild:rebuild});
   tBusy=false; $("#t-all").disabled=false;
-  if(!r.ok){tKey="";tRows=[];tMsg(r.error||"Could not build - FCAC did not answer.");return}
+  if(!r.ok){tKey="";tRows=[];tMsg(r.error||"Could not build - PAPro did not answer.");return}
   tKey=r.key; tRows=[]; const L=$("#t-list"); L.innerHTML=""; const groups={};
   for(const t of r.triggers)(groups[t.group]=groups[t.group]||[]).push(t);
   for(const g of ["Welcome aboard","Landing","Other announcements"]){ if(!groups[g])continue;
@@ -1101,8 +1106,8 @@ function wavBlob(chunks,rate){
   return new Blob([buf],{type:"audio/wav"});
 }
 // ---- microphone settings (kept in this window's browser storage) ----
-function micPrefs(){try{return Object.assign({device:"",gain:0,out:"",vol:100},JSON.parse(localStorage.getItem("fcacMic")||"{}"))}catch(e){return{device:"",gain:0}}}
-function micSave(p){try{localStorage.setItem("fcacMic",JSON.stringify(p))}catch(e){}}
+function micPrefs(){try{return Object.assign({device:"",gain:0,out:"",vol:100},JSON.parse(localStorage.getItem("paproMic")||"{}"))}catch(e){return{device:"",gain:0}}}
+function micSave(p){try{localStorage.setItem("paproMic",JSON.stringify(p))}catch(e){}}
 async function micStream(){
   const p=micPrefs(), a={echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:1};
   if(p.device)a.deviceId={exact:p.device};
@@ -1138,7 +1143,7 @@ async function micStart(){
     peak=Math.max(m,peak*.9);hold=Math.max(m,hold*.995);if(m>=.99)clip=20;else if(clip)clip--;
     const db=m>0?20*Math.log10(m):-90,w=Math.max(0,Math.min(1,(db+60)/60));$("#mic-bar").style.width=(w*100)+"%";
     const hd=hold>0?20*Math.log10(hold):-90;$("#mic-peak").style.left=Math.max(0,Math.min(1,(hd+60)/60))*100+"%";
-    msg.textContent=clip?"Too loud - it is clipping. Turn the boost down or move back.":hd<-30?"Very quiet - move closer or raise the boost.":hd<-18?"A bit quiet - fine, FCAC evens it out, but a little more is better.":hd>-3?"Close to clipping - back off a little.":"Good level.";
+    msg.textContent=clip?"Too loud - it is clipping. Turn the boost down or move back.":hd<-30?"Very quiet - move closer or raise the boost.":hd<-18?"A bit quiet - fine, PAPro evens it out, but a little more is better.":hd>-3?"Close to clipping - back off a little.":"Good level.";
   },60);
 }
 function openMic(){$("#m-mic").classList.add("show");micStart()}
@@ -1165,7 +1170,7 @@ async function startRec(slot,btn){
   if(recState){return}
   let stream;
   try{stream=await micStream()}
-  catch(e){micAlert("No microphone access","FCAC could not open a microphone. Allow microphone access when the window asks, check that one is plugged in and not blocked in Windows privacy settings, or upload a recording instead.");return}
+  catch(e){micAlert("No microphone access","PAPro could not open a microphone. Allow microphone access when the window asks, check that one is plugged in and not blocked in Windows privacy settings, or upload a recording instead.");return}
   const ctx=new (window.AudioContext||window.webkitAudioContext)(), src=ctx.createMediaStreamSource(stream), node=ctx.createScriptProcessor(4096,1,1), chunks=[];
   const gain=Math.pow(10,micPrefs().gain/20);
   node.onaudioprocess=e=>chunks.push(Float32Array.from(e.inputBuffer.getChannelData(0),v=>v*gain));
@@ -1238,7 +1243,7 @@ function slotRow(c,r){
   if(!r.done&&!r.music){const sk=el("button","ghost",r.skipped?"Unskip":"Skip");sk.title=r.skipped?"Put this back on the checklist":"Not recording this one: counts as done on the checklist";sk.onclick=()=>studio("skip",{...pid(c),slot:r.id,skip:!r.skipped});act.append(sk)}
   const isAc=r.folder==="aircraft",isAp=r.folder==="airports"||isAc,apCode=r.folder==="airports"?r.id.slice(("airports/"+c.icao+"_").length):r.label;
   if(r.done||isAp){const p=el("button","pp","▶");p.dataset.id=r.id;p.title="Play";p.onclick=()=>togglePlay(c,r.id);const sp2=el("button","stp","⏹");sp2.dataset.id=r.id;sp2.title="Stop";sp2.style.display="none";sp2.onclick=stopPlay;const x=el("button","danger","✕");x.title=isAp?(isAc?"Remove this aircraft":"Remove this airport")+(r.done?" and its recording":""):"Remove";let armT=null;x.onclick=()=>{if(!x.classList.contains("arm")){x.classList.add("arm");x.textContent="Delete?";x.title="Click again to delete";armT=setTimeout(()=>{x.classList.remove("arm");x.textContent="✕";x.title="Remove"},3500);return}clearTimeout(armT);isAp?studio(isAc?"aircraft":"airport",{...pid(c),code:apCode,remove:true}):studio("delete",{...pid(c),slot:r.id})};if(r.done)act.append(p,sp2);act.append(x)}
-  if(r.variantable){const av=el("button","ghost","+ Variation");av.title="Record another take of this announcement. FCAC picks one at random each flight.";av.onclick=async()=>{openGroups.add(r.group);await studio("variant",{...pid(c),base:r.stem});studioSig="";renderStudio()};act.append(av)}
+  if(r.variantable){const av=el("button","ghost","+ Variation");av.title="Record another take of this announcement. PAPro picks one at random each flight.";av.onclick=async()=>{openGroups.add(r.group);await studio("variant",{...pid(c),base:r.stem});studioSig="";renderStudio()};act.append(av)}
   if(r.variant_of){const xv=el("button","danger","✕");xv.title="Remove this variation";let armV=null;xv.onclick=()=>{if(!xv.classList.contains("arm")){xv.classList.add("arm");xv.textContent="Delete?";armV=setTimeout(()=>{xv.classList.remove("arm");xv.textContent="✕"},3500);return}clearTimeout(armV);studio("variant",{...pid(c),base:r.variant_of,n:r.variant_n,remove:true})};act.append(xv)}
   if(r.custom){const cs=el("button","sq ghost","✕");cs.title="Remove this item's script";cs.style.fontSize="11px";cs.onclick=()=>studio("script",{...pid(c),slot:r.id,text:""});act.insertBefore(cs,up.nextSibling)}
   d.append(act);return d;
@@ -1251,7 +1256,7 @@ function renderStudio(){
   const c=s.current;
   if(!c){
     const card=el("section","card");card.append(el("h2",null,"Pack Studio"));
-    const intro=el("p","small","Make an airline pack: record (or upload) each announcement, and FCAC gives it the cabin-PA sound and sets it to the loudness of the original Fenix announcements, so every pack sounds consistent. Then export a zip to share.");
+    const intro=el("p","small","Make an airline pack: record (or upload) each announcement, and PAPro gives it the cabin-PA sound and sets it to the loudness of the original Fenix announcements, so every pack sounds consistent. Then export a zip to share.");
     intro.style.fontSize="13.5px";intro.style.color="var(--muted)";card.append(intro);
     const g=el("div","sd-grid");const ic=el("label",null,"Airline code (3 letters)"),i1=el("input");i1.type="text";i1.maxLength=3;i1.placeholder="BAW";i1.style.textTransform="uppercase";ic.append(i1);
     const an=el("label",null,"Airline name"),i2=el("input");i2.type="text";i2.placeholder="British Airways";an.append(i2);
@@ -1313,7 +1318,7 @@ function renderStudio(){
     const d=el("details","grp");d.open=openGroups.has(gr.name);d.ontoggle=()=>{d.open?openGroups.add(gr.name):openGroups.delete(gr.name)};
     const sm=el("summary",null,gr.name);sm.append(el("span",null,gr.rows.filter(r=>r.done||r.skipped).length+"/"+gr.rows.length));d.append(sm);
     if(gr.name==="Airports"){
-      d.append(el("div","small","Add your airports (paste a whole list if you like) and record just each name (for example “London Heathrow”). FCAC mixes that one clip into both the BoardingWelcome and the landing PA. Add a terminal variant like EGLL_T5 if you record one."));
+      d.append(el("div","small","Add your airports (paste a whole list if you like) and record just each name (for example “London Heathrow”). PAPro mixes that one clip into both the BoardingWelcome and the landing PA. Add a terminal variant like EGLL_T5 if you record one."));
       const line=el("div","addline"),i=el("textarea");i.rows=2;i.placeholder="EGLL, EGKK, EGCC  (paste a list: commas, semicolons, spaces or new lines)";i.style.textTransform="uppercase";i.style.resize="vertical";const add=el("button",null,"Add airports");
       add.onclick=async()=>{if(!i.value.trim())return;const text=i.value;i.value="";i.blur();const r=await studio("airport",{...pid(c),code:text});if(!r.ok)i.value=text;if(r.ok){openGroups.add("Airports");toast(r.added+(r.added===1?" airport added":" airports added")+(r.skipped&&r.skipped.length?" - skipped: "+r.skipped.slice(0,8).join(", "):""),r.skipped&&r.skipped.length?6000:3200)}studioSig="";renderStudio()};
       i.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();add.click()}});line.append(i,add);d.append(line);
@@ -1337,7 +1342,7 @@ function renderStudio(){
       if(c.music.length){const cr=el("div","chiprow");c.music.forEach(a=>{const b=el("button","ghost",a+" ✕");b.onclick=()=>studio("music",{...pid(c),name:a,remove:true});cr.append(b)});d.append(cr)}
     }
     if(gr.name==="Bolt-ons"){
-      d.append(el("div","small","Short announcements FCAC sometimes adds to the welcome - e.g. “Nut allergy”, “Wi-Fi unavailable”, “Delayed by air traffic control”."));
+      d.append(el("div","small","Short announcements PAPro sometimes adds to the welcome - e.g. “Nut allergy”, “Wi-Fi unavailable”, “Delayed by air traffic control”."));
       const line=el("div","addline"),i=el("input");i.type="text";i.placeholder="Nut allergy";const add=el("button",null,"Add bolt-on");
       add.onclick=async()=>{if(!i.value.trim())return;const r=await studio("extra",{...pid(c),name:i.value});if(r.ok)openGroups.add("Bolt-ons");studioSig="";renderStudio()};
       i.addEventListener("keydown",e=>{if(e.key==="Enter")add.click()});line.append(i,add);d.append(line);
@@ -1354,7 +1359,7 @@ function renderStudio(){
   const dis=el("button","ghost danger","Abandon this pack");dis.title="Deletes this project's recordings and details. Your Airlines library is not touched.";
   dis.onclick=()=>confirmDiscard(c);
   const fol=el("button","ghost","Open project folder");fol.onclick=()=>api("studio_folder",pid(c));
-  const use=el("button",null,c.origin?"Save changes to my library":"Use in FCAC now");use.onclick=async()=>{const r=await studio("install",pid(c));if(r.ok)toast(r.finished?"Saved to your library":"Added to your library as a voice for "+c.icao)};
+  const use=el("button",null,c.origin?"Save changes to my library":"Use in PAPro now");use.onclick=async()=>{const r=await studio("install",pid(c));if(r.ok)toast(r.finished?"Saved to your library":"Added to your library as a voice for "+c.icao)};
   const ex=el("button","primary","Export pack zip");ex.onclick=async()=>{const r=await studio("export",pid(c));if(r.ok)toast("Exported - release tag: "+(r.tag||"")+" (the folder is open)",9000)};
   bar2.append(dis,fol,use,ex);root.append(bar2);syncPlayer();
 }
@@ -1368,7 +1373,7 @@ $("#up-cancel").onclick=()=>$("#m-up").classList.remove("show");
 async function tick(){
   try{
     const r=await fetch("/api/state",{headers:{"X-Token":TOKEN}}); snap=await r.json();
-    $("#auto").classList.toggle("on",!!snap.auto); $("#ver").textContent="FCAC v"+(snap.version||"");
+    $("#auto").classList.toggle("on",!!snap.auto); $("#ver").textContent="PAPro v"+(snap.version||"");
     renderHero(); renderKeep(); renderUpd(); renderJob(); renderStudio(); renderPacks(); if($("#m-manage").classList.contains("show"))renderManage(); renderAliases(); renderWelcome(); renderPrompt();
     if(importWatch){const busy=(snap.packs||[]).some(p=>p.task&&p.task.kind==="install");
       if(busy)importWatch.seen=true;

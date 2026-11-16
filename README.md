@@ -1,6 +1,6 @@
-# FCAC - Fenix Cabin Announcements Configurator
+# PAPro - Cabin announcements for MSFS
 
-FCAC is a system tray app that gives your Fenix cabin announcements the right **destination** for every flight.
+PAPro is a system tray app that gives your Fenix cabin announcements the right **destination** for every flight.
 
 It reads the airline and destination of your latest **SimBrief** plan, picks the matching recording from your
 **Airlines** folder (`BAW_BIKF.ogg` for British Airways to Reykjavik), and puts it in your Fenix airline pack in place
@@ -9,12 +9,12 @@ click**, and removed the same way.
 
 ## The Airlines folder
 
-Your recordings live in an `Airlines` folder next to the app (for example `C:\FCAC\Airlines`), one folder per airline
+Your recordings live in an `Airlines` folder next to the app (for example `C:\PAPro\Airlines`), one folder per airline
 ICAO code, each with `main`, `airports`, `time`, `fuel` and `extra` inside (see Modular announcements below):
 
 ```
-C:\FCAC\
-  fcac.py
+C:\PAPro\
+  papro.py
   config.json
   Airlines\
     BAW\
@@ -30,7 +30,7 @@ C:\FCAC\
 Name each recording `<AIRLINE>_<destination ICAO>.ogg`. The destination is the ICAO code of where the flight is going.
 
 **Several options for one airport?** Add a suffix: `BAW_EGLL.ogg`, `BAW_EGLL_T5.ogg`, `BAW_EGLL_GEN.ogg`, `BAW_UUDD_ALT.ogg`
-(upper or lower case, it doesn't matter). When a flight's destination has more than one, FCAC pops up a small window
+(upper or lower case, it doesn't matter). When a flight's destination has more than one, PAPro pops up a small window
 asking which you prefer (the plain file is listed as "Standard"). Tick **Remember my choice for this airport** to stop
 being asked; **Forget remembered terminal choices** in the tray menu clears that. If `dep` has a `_T5` file but `dest`
 doesn't, `dest` uses its plain file (or the original) for that flight. Closing the window picks the first option.
@@ -47,8 +47,8 @@ Without the modular files, `dep`, `dest` and `fuel` hold whole PAs, each replaci
 - **No recording for an airport?** That announcement goes back to the airline's original generic file, so a previous
   destination never lingers.
 - **`main`** holds the airline's general PAs (and the original generic BoardingWelcome/AfterLanding, used when a destination has no recording). Any other file there (SafetyBriefing, ArmDoors...) is copied into the Fenix pack when it is new or changed.
-- **New airline?** Fly it once and FCAC creates its folders for you, or run `python fcac.py --add-airline DLH`.
-- **Sub-brands sharing a pack.** Use the **Airline aliases** button at the bottom of the FCAC window (or edit
+- **New airline?** Fly it once and PAPro creates its folders for you, or run `python papro.py --add-airline DLH`.
+- **Sub-brands sharing a pack.** Use the **Airline aliases** button at the bottom of the PAPro window (or edit
   `aliases.json` next to the app) to make one airline use another's recordings. The default is
   `{"SHT": "BAW", "CFE": "BAW", "EFW": "BAW"}` (BA Shuttle, CityFlyer and EuroFlyer use the BAW pack): a flight with
   airline SHT uses `Airlines\BAW` and fills the Fenix pack folder `AirlinePacks\SHT`, which Fenix needs because it
@@ -58,21 +58,21 @@ Without the modular files, `dep`, `dest` and `fuel` hold whole PAs, each replaci
 
 ## Modular announcements
 
-Instead of recording a whole PA for every airport, record the airport-specific bit once and share the rest. FCAC
+Instead of recording a whole PA for every airport, record the airport-specific bit once and share the rest. PAPro
 joins the pieces into the full announcement and puts that in the Fenix pack. The folders in `Airlines\<ICAO>`:
 
 | Folder | What goes in it |
 |--------|-----------------|
 | `main` | the airline's unmodified PAs, plus `Modular_Welcome.ogg` and `Modular_Landing.ogg` (the "rest of the PA", named differently from the generic BoardingWelcome / AfterLanding so you can tell them apart). The modular files are never copied into the Fenix pack. |
-| `airports` | `<AIRLINE>_<ICAO>.ogg`, just the airport's name ("London Heathrow"). FCAC mixes this one clip into both the welcome aboard and the landing PA. |
+| `airports` | `<AIRLINE>_<ICAO>.ogg`, just the airport's name ("London Heathrow"). PAPro mixes this one clip into both the welcome aboard and the landing PA. |
 | `time` | the greetings, the "welcome to" lead-in (`WelcomeTo.ogg`: "Ladies and gentlemen, welcome to") and the local-time clips (below) |
 | `fuel` | a tag-on said while refuelling ("We are currently refuelling...") |
 | `extra` | bolt-ons: "nut allergy on board", "Wi-Fi is unavailable"... |
 
 **Welcome aboard** = greeting (`time\Welcome_Morning` / `Welcome_Afternoon` / `Welcome_Evening`) + `airports` clip +
-`Modular_Welcome`. FCAC makes the Morning, Afternoon and Evening files, so Fenix still chooses by time of day.
+`Modular_Welcome`. PAPro makes the Morning, Afternoon and Evening files, so Fenix still chooses by time of day.
 
-**Refuelling.** Fenix plays its `BoardingWelcome[Refueling]` file while the aircraft is being refuelled, so FCAC builds
+**Refuelling.** Fenix plays its `BoardingWelcome[Refueling]` file while the aircraft is being refuelled, so PAPro builds
 that file as the same welcome plus the `fuel` tag-on. No sim detection is needed. Its greeting follows your PC clock.
 
 **Extras.** About one flight in four (Settings: Never / Now and then / Often, or `extra_chance` in `config.json`) gets
@@ -91,7 +91,7 @@ The time is rounded to the nearest 5 minutes. If a time piece is missing, the ti
 Older packs with `dep` (airport name) and `dest` ("welcome to <airport>") folders still work: `dep` is used when there is no `airports` clip, and `dest` when `WelcomeTo.ogg` is missing. Without `Modular_Welcome` / `Modular_Landing`, the `dep` and `dest` recordings are used whole, exactly as before. (The
 old `parts` folder name, `Welcome_Rest.ogg` and `Landing_Rest.ogg` still work.)
 
-**Live local time.** FCAC watches MSFS (SimConnect). When you have landed and slowed to 60 knots ground speed
+**Live local time.** PAPro watches MSFS (SimConnect). When you have landed and slowed to 60 knots ground speed
 (`landing_speed_knots` in `config.json`), it reads the local time at that airport from the sim and rebuilds the landing
 PA with it. Before that, the landing PA uses SimBrief's planned landing time at the destination so something sensible is
 there. A touch-and-go builds nothing. `segment_pause_ms` (default 60) is the pause left between joined pieces.
@@ -115,58 +115,58 @@ When an airline has more than one voice, a **Voice** drop-down appears next to *
 a voice, or **Random voice** for a different one each flight. The whole PA (welcome and landing) always comes from one
 voice. Pack builders: `make_pack.py` includes the `voices` folder automatically when you use `--airline-dir`.
 
-**Original announcements.** The first time FCAC changes an airline's pack it saves a copy of the original generic
+**Original announcements.** The first time PAPro changes an airline's pack it saves a copy of the original generic
 files. **Restore original announcements** in the tray menu (or `--restore BAW`) puts them back at any time. You can
 also put the generic files yourself in `Airlines\BAW\main`.
 
-FCAC only edits a Fenix pack that already exists. If an airline has no pack in the Fenix folder it tells you and
+PAPro only edits a Fenix pack that already exists. If an airline has no pack in the Fenix folder it tells you and
 creates your recordings folders, but never creates an empty pack (Fenix would use it instead of its default one).
 
-Enjoying FCAC? [Buy me a Ko-fi](https://ko-fi.com/sjames1066) - there's a button for it at the bottom of the window too.
+Enjoying PAPro? [Buy me a Ko-fi](https://ko-fi.com/sjames1066) - there's a button for it at the bottom of the window too.
 
 ## Setup
 
 1. Install Python 3.10+ for Windows, then in this folder: `pip install -r requirements.txt`
 2. Edit `config.json`: set `simbrief_username` (the name, not the numeric ID). Set `catalog_url` too if you want
    downloadable packs (see "Publishing packs").
-3. Run `pythonw fcac.py` (no console window). The icon appears in the system tray.
+3. Run `pythonw papro.py` (no console window). The icon appears in the system tray.
 4. Put your recordings in `Airlines\<ICAO>\airports` (or the older `dep|dest|fuel`), or right-click the icon -> **Install airline pack**.
 
-FCAC updates on every new SimBrief plan. Generate your plan and wait for the tray notification **before boarding
+PAPro updates on every new SimBrief plan. Generate your plan and wait for the tray notification **before boarding
 starts**; the sim reads the files when each announcement plays. Added a new recording for the flight you already
 loaded? Click **Update from SimBrief now** so it is picked up.
 
-### The FCAC window
+### The PAPro window
 
-On the very first run the window opens in the middle of your screen and explains which folders FCAC will change (your
+On the very first run the window opens in the middle of your screen and explains which folders PAPro will change (your
 Fenix airline packs, with your originals kept safe) before you do anything. After that it lives in the tray and shows
-a notification each time it updates your announcements. Double-click the tray icon (or right-click -> **Open FCAC window**) for the main window: your latest SimBrief flight,
+a notification each time it updates your announcements. Double-click the tray icon (or right-click -> **Open PAPro window**) for the main window: your latest SimBrief flight,
 every airline pack with its logo, one-click **Install / Update / Uninstall** with a progress bar, the auto-update
 switch and your SimBrief username. It also asks which recording to use when an airport has several. The first time
-you run FCAC it asks for your SimBrief username there.
+you run PAPro it asks for your SimBrief username there.
 
 It is a small page served only to your own PC (127.0.0.1, protected by a random token) and shown in an app-style
 Edge or Chrome window, so there is nothing extra to install. The typeface is [Inter](https://rsms.me/inter/)
 (SIL Open Font License 1.1), built in so it looks the same offline.
 
 **Settings** (button at the bottom of the window):
-- **When I close this window:** keep FCAC running in the tray (default), or quit it completely.
+- **When I close this window:** keep PAPro running in the tray (default), or quit it completely.
 - **When I minimize this window:** minimize normally, or **hide it in the tray** (it leaves the taskbar; double-click
   the tray icon to bring it back).
-- **Start FCAC automatically:** no, **with MSFS**, or with Windows. "With MSFS" adds FCAC to MSFS 2024's `EXE.xml`
+- **Start PAPro automatically:** no, **with MSFS**, or with Windows. "With MSFS" adds PAPro to MSFS 2024's `EXE.xml`
   (next to `UserCfg.opt`, for the Microsoft Store and Steam editions) so the sim launches it; your other entries
-  there are left alone, a backup of the file is saved in `%LOCALAPPDATA%\FCAC\backups`, and choosing "No" removes
-  FCAC's entry again. With that option you can also tick **Close FCAC when MSFS closes**. If the sim doesn't start
-  FCAC, run MSFS as administrator the same way your other add-ons need (the usual EXE.xml requirement).
+  there are left alone, a backup of the file is saved in `%LOCALAPPDATA%\PAPro\backups`, and choosing "No" removes
+  PAPro's entry again. With that option you can also tick **Close PAPro when MSFS closes**. If the sim doesn't start
+  PAPro, run MSFS as administrator the same way your other add-ons need (the usual EXE.xml requirement).
 - Your SimBrief username.
 
-**Logos.** FCAC doesn't ship airline logos. The pack list shows, in this order: a `logo.png` you put in
+**Logos.** PAPro doesn't ship airline logos. The pack list shows, in this order: a `logo.png` you put in
 `Airlines\<ICAO>\` yourself, the logo the pack publisher links in the catalog (see `--logo-url` below), or a coloured
 tile with the airline's ICAO code.
 
 ### Tray menu
 
-- **Open FCAC window** (also the double-click action)
+- **Open PAPro window** (also the double-click action)
 - **Update from SimBrief now**: re-check and re-apply immediately
 - **Active** switch: pause/resume checking (every 60 s by default)
 - **Install airline pack**: packs in the catalog that aren't installed (or have an update). One click downloads, verifies and installs.
@@ -179,7 +179,7 @@ tile with the airline's ICAO code.
 
 - **Your recordings:** `Airlines\<AIRLINE>\...` (next to the app)
 - **Fenix pack:** `<MSFS 2024 Community>\fnx-airline-packs\AirlinePacks\<AIRLINE>` (folder name = `announcements_folder` in config)
-- **The app's own data** (saved original announcements, backups, state, log): `%LOCALAPPDATA%\FCAC`
+- **The app's own data** (saved original announcements, backups, state, log): `%LOCALAPPDATA%\PAPro`
 
 ### How the Community folder is found
 
@@ -205,7 +205,7 @@ Uninstalling removes only the files the pack added.
 
 ```
 python make_pack.py --icao BAW --name "British Airways" --version 1.0.0 ^
-    --airline-dir "C:\FCAC\Airlines\BAW" ^
+    --airline-dir "C:\PAPro\Airlines\BAW" ^
     --out dist ^
     --url https://github.com/YOU/REPO/releases/download/baw-1.0.0/BAW.zip
 ```
@@ -241,55 +241,55 @@ Only recordings you have the right to distribute should go in a public pack.
 
 - Downloads are checked against the catalog's SHA-256 before anything is installed.
 - Only the `main`, `time`, `extra`, `voices`, `airports`, `dep`, `dest` and `fuel` folders are read from a zip, and any entry that tries to escape the install folder rejects the whole pack.
-- A pack already in the Fenix folder is moved to `%LOCALAPPDATA%\FCAC\backups` and put back when you uninstall.
+- A pack already in the Fenix folder is moved to `%LOCALAPPDATA%\PAPro\backups` and put back when you uninstall.
 - Airline and airport codes are checked before they are used in a file name.
 - If a file is locked by the sim, the app retries for about 6 seconds and then reports it in the tray.
 
 ## Command line (testing)
 
 ```
-python fcac.py --community              show the detected Community folder
-python fcac.py --add-airline BAW AAL    create Airlines\BAW\main|time|extra|airports|fuel (and AAL)
-python fcac.py --list-packs
-python fcac.py --install BAW
-python fcac.py --uninstall BAW
-python fcac.py --restore BAW            put the original generic announcements back
-python fcac.py --once                   one update from SimBrief
-python fcac.py --once --airline BAW --dest BIKF     force a flight, skip SimBrief
+python papro.py --community              show the detected Community folder
+python papro.py --add-airline BAW AAL    create Airlines\BAW\main|time|extra|airports|fuel (and AAL)
+python papro.py --list-packs
+python papro.py --install BAW
+python papro.py --uninstall BAW
+python papro.py --restore BAW            put the original generic announcements back
+python papro.py --once                   one update from SimBrief
+python papro.py --once --airline BAW --dest BIKF     force a flight, skip SimBrief
 ```
 
 ## Build the installer
 
-Double-click **Build EXE.bat**. It builds FCAC as a folder (`dist\FCAC\FCAC.exe` with its files beside it, not one
+Double-click **Build EXE.bat**. It builds PAPro as a folder (`dist\papro\papro.exe` with its files beside it, not one
 self-extracting file, which antivirus programs distrust less). If [Inno Setup 6](https://jrsoftware.org/isdl.php) is
-installed it then also makes `dist\FCAC-Setup-<version>.exe` from `installer.iss`.
+installed it then also makes `dist\papro-Setup-<version>.exe` from `installer.iss`.
 
-The installer puts FCAC in `%LOCALAPPDATA%\Programs\FCAC` (no administrator needed), adds Start menu and optional
-desktop shortcuts, can start FCAC quietly with Windows, and uninstalls from Windows' Apps list. Your recordings, packs
-and settings (`%LOCALAPPDATA%\FCAC`) are kept when you uninstall or update.
+The installer puts PAPro in `%LOCALAPPDATA%\Programs\PAPro` (no administrator needed), adds Start menu and optional
+desktop shortcuts, can start PAPro quietly with Windows, and uninstalls from Windows' Apps list. Your recordings, packs
+and settings (`%LOCALAPPDATA%\PAPro`) are kept when you uninstall or update.
 
 Windows may still warn about an unknown publisher until the installer is code-signed. If your antivirus flags a build,
 report it as a false positive to the vendor (Microsoft: https://www.microsoft.com/wdsi/filesubmission).
 
 ### Automatic updates
 
-FCAC checks `catalog.json` every time it starts. When the `app` block names a newer version, a banner appears with
+PAPro checks `catalog.json` every time it starts. When the `app` block names a newer version, a banner appears with
 **Update now**. For the installed program, that downloads the installer from your GitHub release, checks its SHA-256,
-runs it silently and FCAC restarts by itself (your settings and packs are untouched). Running FCAC from Python source
-(`Start FCAC.bat`) only shows a **Download** button that opens the release page.
+runs it silently and PAPro restarts by itself (your settings and packs are untouched). Running PAPro from Python source
+(`Start PAPro.bat`) only shows a **Download** button that opens the release page.
 
 To publish an update:
 
-1. Raise `VERSION` in `fcac.py` and run **Build EXE.bat**. It also writes the new version, download link and SHA-256 into your local `catalog.json`.
-2. Create the GitHub release `v<version>` and attach `FCAC-Setup-<version>.exe`.
+1. Raise `VERSION` in `papro.py` and run **Build EXE.bat**. It also writes the new version, download link and SHA-256 into your local `catalog.json`.
+2. Create the GitHub release `v<version>` and attach `PAPro-Setup-<version>.exe`.
 3. Last, once the release is live, upload that updated `catalog.json` to the repository. It looks like:
 
 ```json
 "app": {
   "version": "1.0.4",
-  "url": "https://github.com/sjames1066/fcac/releases/latest",
+  "url": "https://github.com/sjames1066/papro/releases/latest",
   "notes": "What changed, in one line",
-  "installer": "https://github.com/sjames1066/fcac/releases/download/v1.0.4/FCAC-Setup-1.0.4.exe",
+  "installer": "https://github.com/sjames1066/papro/releases/download/v1.0.4/PAPro-Setup-1.0.4.exe",
   "sha256": "<the 64-character checksum from step 1>"
 }
 ```
@@ -297,29 +297,29 @@ To publish an update:
 Without `installer` and `sha256` the banner just links to the release page. Re-uploading the installer changes its
 checksum, so update `sha256` whenever you do.
 
-`fcac.ico` gives the program and its shortcuts the FCAC icon. The tray icon is drawn by `fcac_icon.py`, which is bundled
-automatically; run `python fcac_icon.py` to re-export `fcac.ico` and `fcac_icon.png` if you change the design.
+`papro.ico` gives the program and its shortcuts the PAPro icon. The tray icon is drawn by `papro_icon.py`, which is bundled
+automatically; run `python papro_icon.py` to re-export `papro.ico` and `papro_icon.png` if you change the design.
 
 ## Pack Studio (make your own pack)
 
 Open the **Pack Studio** tab. Start a pack (airline code, airline name, a name for your voice), fill in your credit and
 support links, then work down the checklist: **Record** with your microphone or **Upload** a file for each clip.
-FCAC gives every clip the cabin-PA sound (optional) and sets it to the loudness of the original Fenix announcements, so
+PAPro gives every clip the cabin-PA sound (optional) and sets it to the loudness of the original Fenix announcements, so
 all packs sound consistent. Your untouched recordings are kept, so you can switch the effect on or off at any time.
 
-- **Use in FCAC now** copies the pack into your library as a voice for that airline so you can try it in the sim.
+- **Use in PAPro now** copies the pack into your library as a voice for that airline so you can try it in the sim.
 - **Export pack zip** writes `<ICAO>_<Voice>.zip` and a `.catalog.json` entry (open the folder that appears) ready to share.
 - Add a **Support link** (Ko-fi, Patreon...) and it is shown beside your voice name in the window.
 
 In the Studio, **Audio settings** lets you pick the microphone and playback device, a playback volume, set a boost, watch the level meter and record a 3-second test.
 
-Fenix announcement types (BoardingComplete, ArmDoors, CrewTakeSeats, CabinDim (separate takeoff and landing clips), SeatbeltSignOn/Off, CabinService, DescentStarted, DeboardingStarted/Complete, Decompression...) are all in the Studio checklist. Put any of them in an airline's `main` folder and FCAC passes them to the Fenix pack unchanged; the ones FCAC builds itself (BoardingWelcome, AfterLanding) are replaced per flight.
+Fenix announcement types (BoardingComplete, ArmDoors, CrewTakeSeats, CabinDim (separate takeoff and landing clips), SeatbeltSignOn/Off, CabinService, DescentStarted, DeboardingStarted/Complete, Decompression...) are all in the Studio checklist. Put any of them in an airline's `main` folder and PAPro passes them to the Fenix pack unchanged; the ones PAPro builds itself (BoardingWelcome, AfterLanding) are replaced per flight.
 
 Time-of-day tags follow Fenix: Night 00:00-06:00, Morning 06:00-12:00, Afternoon 12:00-18:00, Evening 18:00-24:00. A `BoardingWelcome[Night]` clip in `main` is built with `time\Welcome_Night.ogg` (or `Welcome_Evening.ogg` if you did not record one).
 
 Optional `time\AM.ogg` and `time\PM.ogg` are said after the minutes in the landing PA ("...four thirty-five P.M.") when present.
 
-**Boarding music:** in the Studio's *Boarding music* group, name a track and upload it (no recording, no PA sound). It is saved as `main\BoardingMusic~<Track name>.ogg`, which FCAC copies into the Fenix pack; the cabin crew panel lists it under that name. Use only music you have the right to share.
+**Boarding music:** in the Studio's *Boarding music* group, name a track and upload it (no recording, no PA sound). It is saved as `main\BoardingMusic~<Track name>.ogg`, which PAPro copies into the Fenix pack; the cabin crew panel lists it under that name. Use only music you have the right to share.
 
 **Editing an existing pack:** on the Studio start page, *Edit a pack from your library* lists every voice in your Airlines folder. Opening one copies its clips into a project exactly as they are; re-record or upload only what you want to change, add airports, bolt-ons or music, then **Save changes to my library** (writes back over that pack) or **Export pack zip**. Untouched clips are never reprocessed.
 
@@ -327,7 +327,7 @@ Optional `time\AM.ogg` and `time\PM.ogg` are said after the minutes in the landi
 
 In the Studio, **SafetyBriefing**, **AfterTakeoff** and **CabinService** have a *Prerecorded / Manual* drop-down. Prerecorded (Fenix's default for these) keeps the plain file name; Manual saves the clip as `SafetyBriefing[Manual].ogg` so the purser announces it instead. Changing it renames an already-recorded clip.
 
-**Pack logo:** the Voice details card has an optional logo upload (png, jpg or webp). It is stored as `logo.png`, included in the exported zip, and when you press *Use in FCAC now* it is copied to `Airlines\<ICAO>\logo.png`, which FCAC shows in the pack list and the window header. `make_pack.py` also adds a `logo.png` found in `--airline-dir`.
+**Pack logo:** the Voice details card has an optional logo upload (png, jpg or webp). It is stored as `logo.png`, included in the exported zip, and when you press *Use in PAPro now* it is copied to `Airlines\<ICAO>\logo.png`, which PAPro shows in the pack list and the window header. `make_pack.py` also adds a `logo.png` found in `--airline-dir`.
 
 **Fenix's old file names:** `CrewSeatsTakeoff/Landing`, `CallCabinSecureTakeoff/Landing`, `CabinDimTakeoff`, `FastenSeatbelt`, `DescentSeatbelts` and `DisembarkStarted` still work in Fenix but predate the new announcement types. Opening a pack that has them shows an *Upgrade to the new Fenix names* banner in the Studio, with a list of every rename before anything changes: CrewTakeSeats, CabinSecured, CabinDim, SeatbeltSignOn, DescentStarted, DeboardingStarted. The takeoff and landing versions of CrewTakeSeats and CabinSecured keep their meaning through flight-phase tags (`[PreFlight]` before takeoff, `[Descent][Approach]` before landing). Tagged copies show on their announcement's row as "Also has: ...".
 
@@ -337,11 +337,11 @@ Every Studio row has a small script button (hover: *Upload Script*). It takes a 
 
 Click a clip's script line in the Studio to edit it in place: changes are saved as you type, **Enter** finishes (Shift+Enter adds a line), **Esc** undoes.
 
-If a Studio recording is silent, FCAC does not keep it and shows a reminder with a button to open **Audio settings**. A very quiet recording is saved but gets the same reminder. A silent uploaded file is refused with the same hint.
+If a Studio recording is silent, PAPro does not keep it and shows a reminder with a button to open **Audio settings**. A very quiet recording is saved but gets the same reminder. A silent uploaded file is refused with the same hint.
 
 Studio rows are in alphabetical order (general announcements, boarding music, bolt-ons; airports by code) - the clock keeps its clock order. **Decompression** has the Prerecorded / Manual drop-down too (Prerecorded by default).
 
-**One airports folder.** The Studio now records just the airport's name once (`airports\<AIRLINE>_<ICAO>.ogg`) and FCAC mixes
+**One airports folder.** The Studio now records just the airport's name once (`airports\<AIRLINE>_<ICAO>.ogg`) and PAPro mixes
 it into both PAs, with a `time\WelcomeTo` clip ("Ladies and gentlemen, welcome to") leading the landing PA. Opening an
 older pack in the Studio offers to move its `dep` clips into `airports`; its `dest` clips (which already contain
 "welcome to") are left alone and still work until you record `WelcomeTo`.
