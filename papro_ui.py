@@ -736,7 +736,7 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
   <div class="label small">Input boost <span id="mic-gv"></span></div><input type="range" id="mic-gain" min="-12" max="18" step="1" style="width:100%">
   <div class="meter"><i id="mic-bar"></i><b id="mic-peak"></b></div><div class="small" id="mic-msg">Starting the microphone...</div>
   <div class="label small" style="margin-top:14px">Playback device (for the play and test buttons)</div><select id="out-dev" class="voice" style="width:100%;margin:6px 0 14px"></select>
-  <div class="label small">Playback volume <span id="out-gv"></span></div><input type="range" id="out-vol" min="0" max="100" step="5" style="width:100%">
+  <div class="label small">Playback volume <span id="out-gv"></span></div><input type="range" id="out-vol" min="0" max="200" step="5" style="width:100%">
   <div class="small" style="margin-top:6px">Windows lists PAPro in its volume mixer under the browser that shows this window (Microsoft Edge or Chrome), and only while a sound is playing.</div>
   <div class="row" style="margin-top:16px;justify-content:space-between"><button id="mic-test">Test: record 3 s and play back</button><button class="primary" id="mic-done">Done</button></div>
 </div></div>
@@ -1021,7 +1021,7 @@ $("#forget").onclick=async()=>{await api("forget");toast("Remembered choices cle
 document.querySelectorAll("[data-open]").forEach(b=>b.onclick=()=>api("open",{what:b.dataset.open}));
 
 // ---------------------------------------------------------------- Pack Studio
-let view="main", studioSig="", recState=null, openGroups=new Set(["BoardingWelcome"]), playing=null;
+let view="main", studioSig="", recState=null, openGroups=new Set(["Boarding"]), playing=null;
 function setView(v){view=v;for(const n of ["main","studio","dl","test"]){$("#view-"+n).style.display=v===n?"":"none";$("#tab-"+n).classList.toggle("on",v===n)}
   if(v==="studio"){studioSig="";renderStudio()} if(v==="test")testInit()}
 let tOpts=null,tKey="",tAudio=null,tRows=[],tIdx=-1,tPlaylist=false,tBusy=false,tPaused=false;
@@ -1080,7 +1080,7 @@ function tBar(){const a=tAudio,on=!!a&&tIdx>=0;$("#t-bar").style.display=on?"fle
 function testPlay(i){ // play one clip; in playlist mode move on to the next when it ends
   if(tAudio){tAudio.onended=null;tAudio.pause();tAudio=null} if(tUrl){URL.revokeObjectURL(tUrl);tUrl=null}
   if(i<0||i>=tRows.length){const was=tPlaylist;testStop(); if(was)toast("Test finished"); return}
-  tIdx=i; tPaused=false; const t=tRows[i], a=new Audio(); tAudio=a; testMark(); t.row.scrollIntoView({block:"nearest",behavior:"smooth"});
+  tIdx=i; tPaused=false; const t=tRows[i], a=newAudio(); tAudio=a; testMark(); t.row.scrollIntoView({block:"nearest",behavior:"smooth"});
   a.onended=()=>{ if(tAudio!==a)return; if(tPlaylist) testPlay(i+1); else testStop()};
   a.onerror=()=>{ if(tAudio!==a)return; toast("Could not play "+t.label); if(tPlaylist) testPlay(i+1); else testStop()};
   a.ontimeupdate=a.ondurationchange=a.onloadedmetadata=()=>{if(tAudio===a)tBar()};
@@ -1095,7 +1095,7 @@ async function testBuild(rebuild){
   if(!r.ok){tKey="";tRows=[];tMsg(r.error||"Could not build - PAPro did not answer.");return}
   tKey=r.key; tRows=[]; const L=$("#t-list"); L.innerHTML=""; const groups={};
   for(const t of r.triggers)(groups[t.group]=groups[t.group]||[]).push(t);
-  for(const g of ["Welcome aboard","Landing","Other announcements"]){ if(!groups[g])continue;
+  for(const g of Object.keys(groups)){   // already in the order the announcements are heard on a flight
     L.appendChild(el("div","section-head")).appendChild(el("h2",null,g));
     const c=el("div","card"); for(const t of groups[g]){const row=el("div","trow"),b=el("button","ghost","▶");
       const item={file:t.file,label:t.label,row:row,btn:b}; const idx=tRows.length; tRows.push(item);
@@ -1129,7 +1129,14 @@ async function micStream(){
   catch(e){if(p.device){micSave({...p,device:""});return await navigator.mediaDevices.getUserMedia({audio:{...a,deviceId:undefined}})}throw e}
 }
 let micCtx=null, micTimer=null, micStreamNow=null;
-function newAudio(url){const a=new Audio(url),p=micPrefs();a.volume=Math.max(0,Math.min(1,p.vol/100));if(p.out&&a.setSinkId)a.setSinkId(p.out).catch(()=>{});return a}
+// Playback volume (0-200%): up to 100% is the element volume, above that a WebAudio gain adds the boost the sim applies.
+let volCtx=null;const volNodes=new Map();
+function applyVol(){const v=Math.max(0,micPrefs().vol)/100;volNodes.forEach((g,a)=>{if(!a.isConnected&&a.paused&&a.ended)volNodes.delete(a);g.gain.value=v});document.querySelectorAll("audio").forEach(a=>{a.volume=Math.min(1,v)});
+  for(const a of [typeof player!=="undefined"&&player&&player.audio,typeof tAudio!=="undefined"&&tAudio])if(a&&!volNodes.has(a))a.volume=Math.min(1,v)}
+function newAudio(url){const a=url?new Audio(url):new Audio(),p=micPrefs(),v=Math.max(0,p.vol)/100;a.volume=Math.min(1,v);
+  if(v>1){try{volCtx=volCtx||new (window.AudioContext||window.webkitAudioContext)();const g=volCtx.createGain();g.gain.value=v;volCtx.createMediaElementSource(a).connect(g).connect(volCtx.destination);volNodes.set(a,g);
+    if(p.out&&volCtx.setSinkId)volCtx.setSinkId(p.out).catch(()=>{});a.addEventListener("play",()=>{if(volCtx.state==="suspended")volCtx.resume()});return a}catch(e){}}
+  if(p.out&&a.setSinkId)a.setSinkId(p.out).catch(()=>{});return a}
 async function micStop(){clearInterval(micTimer);micTimer=null;if(micStreamNow){micStreamNow.getTracks().forEach(t=>t.stop());micStreamNow=null}if(micCtx){try{await micCtx.close()}catch(e){}micCtx=null}}
 async function micStart(){
   await micStop();const msg=$("#mic-msg"),p=micPrefs();
@@ -1163,7 +1170,7 @@ async function micStart(){
 function openMic(){$("#m-mic").classList.add("show");micStart()}
 $("#mic-dev").onchange=()=>{micSave({...micPrefs(),device:$("#mic-dev").value});micStart()};
 $("#out-dev").onchange=()=>micSave({...micPrefs(),out:$("#out-dev").value});
-$("#out-vol").oninput=()=>{const v=+$("#out-vol").value;micSave({...micPrefs(),vol:v});$("#out-gv").textContent=v+"%"};
+$("#out-vol").oninput=()=>{const v=+$("#out-vol").value;micSave({...micPrefs(),vol:v});$("#out-gv").textContent=v+"%";applyVol()};
 $("#mic-gain").oninput=()=>{const g=+$("#mic-gain").value;micSave({...micPrefs(),gain:g});$("#mic-gv").textContent=(g>0?"+":"")+g+" dB"};
 $("#mic-done").onclick=async()=>{await micStop();$("#m-mic").classList.remove("show")};
 $("#mic-test").onclick=async()=>{
@@ -1345,17 +1352,18 @@ function renderStudio(){
     h.title="Show or hide the voice details";h.onclick=()=>{open=!open;paint();try{localStorage.setItem("paproDetails",open?"1":"0")}catch(e){}};
   }
   root.append(card);
-  { // pack volume: how much louder than the recordings this pack plays (the marker is the app-wide setting)
-    const vc=el("section","card");vc.style.marginTop="16px";const app=c.app_boost==null?30:c.app_boost,own=c.volume!=null,val=own?c.volume:app;
+  { // preview volume: only for listening in PAPro. The marker is the level the sim will play the pack at.
+    const vc=el("section","card");vc.style.marginTop="16px";const sim=100+(c.app_boost==null?30:c.app_boost);
     const head=el("div");head.style.cssText="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap";
-    const t=el("h2",null,"Pack volume"),lab=el("span","small");head.append(t,lab);vc.append(head);
-    vc.append(el("div","small","How loud this pack's announcements play in the sim, as a percentage louder than your recordings. The marker shows the app-wide setting (Settings → PA volume); drag away from it to give this pack its own level, which is saved with the pack."));
-    const wrap=el("div","volwrap"),rg=el("input");rg.type="range";rg.min=0;rg.max=100;rg.step=5;rg.value=val;
-    const mk=el("div","volmark");mk.style.left="calc(9px + (100% - 18px) * "+app/100+")";mk.title="App setting: +"+app+"%";const ml=el("span",null,"app +"+app+"%");mk.append(ml);
+    const t=el("h2",null,"Preview volume"),lab=el("span","small");head.append(t,lab);vc.append(head);
+    vc.append(el("div","small","Only changes how loud you hear clips while testing here in PAPro - it does not change the pack or what plays in the sim. The marker is the level the sim will play your announcements at (your recordings plus the PA volume in Settings), so drag to it to hear them as they will sound."));
+    const wrap=el("div","volwrap"),rg=el("input");rg.type="range";rg.min=0;rg.max=200;rg.step=5;rg.value=micPrefs().vol;
+    const mk=el("div","volmark");mk.style.left="calc(9px + (100% - 18px) * "+sim/200+")";mk.title="Level in the sim: "+sim+"%";mk.append(el("span",null,"in the sim "+sim+"%"));
     wrap.append(rg,mk);vc.append(wrap);
-    const rs=el("button","ghost","Use app setting");rs.style.cssText="margin-top:8px;padding:6px 12px";rs.style.display=own?"":"none";rs.onclick=async()=>{await studio("volume",{...pid(c),value:null});toast("This pack now follows the app setting")};vc.append(rs);
-    const text=v=>{lab.textContent=(v===0?"As recorded":"+"+v+"% louder")+(v===app?" · same as the app setting":own||v!==app?" · this pack's own level":"")};text(val);
-    rg.oninput=()=>text(+rg.value);rg.onchange=async()=>{const v=+rg.value;await studio("volume",{...pid(c),value:v===app&&!own?null:v});toast(v===app&&!own?"Using the app setting":"Pack volume saved: +"+v+"%")};
+    const match=el("button","ghost","Match the sim");match.style.cssText="margin-top:8px;padding:6px 12px";
+    const paint=v=>{lab.textContent=v+"%"+(v===sim?" · same as in the sim":v>sim?" · louder than the sim":v===0?" · muted":"");match.style.display=v===sim?"none":""};paint(+rg.value);
+    const set=v=>{rg.value=v;micSave({...micPrefs(),vol:v});paint(v);applyVol()};
+    rg.oninput=()=>set(+rg.value);match.onclick=()=>set(sim);vc.append(match);
     root.append(vc);
   }
   if(c.upgrades&&c.upgrades.length){const b=el("section","card");b.style.cssText="margin-top:16px;display:flex;gap:14px;align-items:center;justify-content:space-between";
@@ -1369,8 +1377,8 @@ function renderStudio(){
     ub.onclick=async()=>{const r=await studio("unskip_all",pid(c));if(r&&r.ok)toast(r.count+" announcement"+(r.count==1?"":"s")+" put back on the checklist")};pr.append(ub)}
   const bar=el("div","ptrack");const fill=el("i");fill.style.width=Math.round(100*c.done/c.total)+"%";bar.append(fill);pr.append(bar);root.append(pr);
   const groups=[];c.rows.forEach(r=>{let g=groups.find(x=>x.name===r.group);if(!g){g={name:r.group,rows:[]};groups.push(g)}g.rows.push(r)});
-  ["Airports","Aircraft","Aircraft PAs","Boarding music","Bolt-ons"].forEach(n=>{if(!groups.find(x=>x.name===n))groups.push({name:n,rows:[]})});
-  const order=["BoardingWelcome","Landing","Airports","Aircraft","Refuelling","Other announcements","Aircraft PAs","Boarding music","Bolt-ons"];groups.sort((a,b)=>order.indexOf(a.name)-order.indexOf(b.name));
+  ["Airports","Aircraft names","Aircraft-specific PAs","Boarding music","Bolt-ons"].forEach(n=>{if(!groups.find(x=>x.name===n))groups.push({name:n,rows:[]})});
+  const order=["Airports","Aircraft names","Boarding","Boarding music","Bolt-ons","Boarding complete & doors","Safety briefing","Aircraft-specific PAs","Before takeoff","Climb & cruise","Descent & approach","Landing","Deboarding","Emergency"];groups.sort((a,b)=>order.indexOf(a.name)-order.indexOf(b.name));
   groups.forEach(gr=>{
     const d=el("details","grp");d.open=openGroups.has(gr.name);d.ontoggle=()=>{d.open?openGroups.add(gr.name):openGroups.delete(gr.name)};
     const sm=el("summary",null,gr.name);sm.append(el("span",null,gr.rows.filter(r=>r.done||r.skipped).length+"/"+gr.rows.length));d.append(sm);
@@ -1380,21 +1388,21 @@ function renderStudio(){
       add.onclick=async()=>{if(!i.value.trim())return;const text=i.value;i.value="";i.blur();const r=await studio("airport",{...pid(c),code:text});if(!r.ok)i.value=text;if(r.ok){openGroups.add("Airports");toast(r.added+(r.added===1?" airport added":" airports added")+(r.skipped&&r.skipped.length?" - skipped: "+r.skipped.slice(0,8).join(", "):""),r.skipped&&r.skipped.length?6000:3200)}studioSig="";renderStudio()};
       i.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();add.click()}});line.append(i,add);d.append(line);
     }
-    if(gr.name==="Aircraft"){
+    if(gr.name==="Aircraft names"){
       d.append(el("div","small","Optional. Record the aircraft type (for example “Airbus A320” or “Boeing 737”) so an announcement can say which aircraft you are flying. Nothing is added to the pack unless this is on."));
       const sw=el("div","switch"+(c.aircraft_on?" on":""));sw.style.margin="10px 0";sw.append(el("span",null,"Say the aircraft type"),el("div","track"));
-      sw.onclick=async()=>{openGroups.add("Aircraft");await studio("aircraft",{...pid(c),on:!c.aircraft_on});studioSig="";renderStudio()};d.append(sw);
+      sw.onclick=async()=>{openGroups.add("Aircraft names");await studio("aircraft",{...pid(c),on:!c.aircraft_on});studioSig="";renderStudio()};d.append(sw);
       if(c.aircraft_on){
-        const pc=el("div","chiprow");(c.aircraft_presets||[]).filter(n=>!c.aircraft.includes(n)).forEach(n=>{const b=el("button","ghost","+ "+n);b.onclick=async()=>{openGroups.add("Aircraft");await studio("aircraft",{...pid(c),code:n});studioSig="";renderStudio()};pc.append(b)});d.append(pc);
+        const pc=el("div","chiprow");(c.aircraft_presets||[]).filter(n=>!c.aircraft.includes(n)).forEach(n=>{const b=el("button","ghost","+ "+n);b.onclick=async()=>{openGroups.add("Aircraft names");await studio("aircraft",{...pid(c),code:n});studioSig="";renderStudio()};pc.append(b)});d.append(pc);
         const line=el("div","addline"),i=el("input");i.type="text";i.placeholder="Another aircraft, e.g. Boeing 757";const add=el("button",null,"Add");
-        add.onclick=async()=>{if(!i.value.trim())return;const text=i.value;i.value="";i.blur();const r=await studio("aircraft",{...pid(c),code:text});if(!r.ok)i.value=text;openGroups.add("Aircraft");studioSig="";renderStudio()};
+        add.onclick=async()=>{if(!i.value.trim())return;const text=i.value;i.value="";i.blur();const r=await studio("aircraft",{...pid(c),code:text});if(!r.ok)i.value=text;openGroups.add("Aircraft names");studioSig="";renderStudio()};
         i.addEventListener("keydown",e=>{if(e.key==="Enter")add.click()});line.append(i,add);d.append(line);
       }
     }
-    if(gr.name==="Aircraft PAs"){
+    if(gr.name==="Aircraft-specific PAs"){
       d.append(el("div","small","Your own versions of the safety demonstration, pre-safety briefing or boarding welcome for particular aircraft types (A320, B739, B38M...). On a flight with one of those types the matching version plays instead of the normal one; any other aircraft keeps the normal one. Pick the types after adding."));
       const line=el("div","addline"),sel=el("select","voice");Object.entries(c.typed_bases||{}).forEach(([k,v])=>{const o=el("option",null,v);o.value=k;sel.append(o)});
-      const add=el("button",null,"Add aircraft PA");add.onclick=async()=>{const r=await studio("typed_add",{...pid(c),base:sel.value,types:["ALL"]});if(r.ok){openGroups.add("Aircraft PAs");toast("Added - choose its aircraft types with the ✈ button, then record it")}studioSig="";renderStudio()};
+      const add=el("button",null,"Add aircraft PA");add.onclick=async()=>{const r=await studio("typed_add",{...pid(c),base:sel.value,types:["ALL"]});if(r.ok){openGroups.add("Aircraft-specific PAs");toast("Added - choose its aircraft types with the ✈ button, then record it")}studioSig="";renderStudio()};
       line.append(sel,add);d.append(line);
     }
     if(gr.name==="Boarding music"){

@@ -82,41 +82,41 @@ def clean_types(types, strict: bool = True) -> list[str]:
 
 EXTRA_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _-]{0,39}$")
 
-GENERAL = [  # (file name, label, what to say). Names are Fenix's announcement types; every one is optional except the modular pair.
-    ("Modular_Welcome", "BoardingWelcome - the rest", "Everything in the welcome PA after the destination: seatbelts, safety, enjoy your flight..."),
-    ("Modular_Landing", "Landing - the rest", "Everything in the landing PA after the local time: cabin crew seats, seatbelt sign, belongings, thank you..."),
-    ("BoardingWelcome[Morning]", "BoardingWelcome - morning (generic)", "Generic welcome aboard, good morning. Played every 2-6 min during boarding."),
-    ("BoardingWelcome[Afternoon]", "BoardingWelcome - afternoon (generic)", "Generic welcome aboard, good afternoon."),
-    ("BoardingWelcome[Evening]", "BoardingWelcome - evening (generic)", "Generic welcome aboard, good evening."),
-    ("BoardingWelcome[Night]", "BoardingWelcome - night (generic)", "Generic welcome aboard for boardings between midnight and 6 am."),
-    ("BoardingWelcome[Refueling]", "BoardingWelcome - refuelling (generic)", "Generic welcome aboard while the aircraft is being refuelled."),
-    ("BoardingComplete", "BoardingComplete", "The purser announces that boarding has completed."),
-    ("ArmDoors", "ArmDoors", "Cabin crew, arm doors and cross-check."),
-    ("DisarmDoors", "DisarmDoors", "Cabin crew, disarm doors and cross-check."),
-    ("PreSafetyBriefing", "PreSafetyBriefing", "The opening of the safety briefing, before the demonstration."),
-    ("SafetyBriefing", "SafetyBriefing", "The safety demonstration."),
-    ("CrewTakeSeats[PreFlight]", "CrewTakeSeats - takeoff", "Cabin crew, take your seats for takeoff. (Tagged [PreFlight]: used before takeoff.)"),
-    ("CrewTakeSeats[Descent][Approach]", "CrewTakeSeats - landing", "Cabin crew, take your seats for landing. (Tagged [Descent][Approach]: used before landing.)"),
-    ("CabinDim[PreFlight]", "CabinDim - takeoff", "We will dim the cabin lights for takeoff. (Tagged [PreFlight]: used before takeoff.)"),
-    ("CabinDim[Descent][Approach]", "CabinDim - landing", "We will dim the cabin lights for landing. (Tagged [Descent][Approach]: used before landing.)"),
-    ("CabinSecured[PreFlight]", "CabinSecured - takeoff", "Interphone to the cockpit: cabin secure for takeoff. (Tagged [PreFlight].)"),
-    ("CabinSecured[Descent][Approach]", "CabinSecured - landing", "Interphone to the cockpit: cabin secure for landing. (Tagged [Descent][Approach].)"),
-    ("AfterTakeoff", "AfterTakeoff", "PA after takeoff, once past acceleration altitude."),
-    ("SeatbeltSignOn", "SeatbeltSignOn", "The seatbelt signs have been switched on."),
-    ("SeatbeltSignOff", "SeatbeltSignOff", "The seatbelt signs have been switched off."),
-    ("CabinService", "CabinService", "Cabin service is about to begin."),
-    ("DescentStarted", "DescentStarted", "We have started our descent."),
-    ("AfterLanding", "AfterLanding (generic)", "Generic 'welcome to our destination', used where an airport has no recording."),
-    ("DeboardingStarted", "DeboardingStarted", "Passengers may now disembark."),
-    ("DeboardingComplete", "DeboardingComplete", "Deboarding has completed."),
-    ("Decompression", "Decompression", "Oxygen masks have deployed - emergency descent instructions."),
+GENERAL = [  # (file name, label, what to say). The file names are Fenix's announcement types; every one is optional except the modular pair.
+    ("Modular_Welcome", "Welcome - part 2: after the airport name", "Everything in the welcome PA after the destination: seatbelts, safety, enjoy your flight..."),
+    ("Modular_Landing", "Landing - part 2: after the local time", "Everything in the landing PA after the local time: cabin crew seats, seatbelt sign, belongings, thank you..."),
+    ("BoardingWelcome[Morning]", "While boarding - welcome, morning (generic)", "Generic welcome aboard, good morning. Played every 2-6 min during boarding."),
+    ("BoardingWelcome[Afternoon]", "While boarding - welcome, afternoon (generic)", "Generic welcome aboard, good afternoon."),
+    ("BoardingWelcome[Evening]", "While boarding - welcome, evening (generic)", "Generic welcome aboard, good evening."),
+    ("BoardingWelcome[Night]", "While boarding - welcome, night (generic)", "Generic welcome aboard for boardings between midnight and 6 am."),
+    ("BoardingWelcome[Refueling]", "While boarding - welcome, refuelling (generic)", "Generic welcome aboard while the aircraft is being refuelled."),
+    ("BoardingComplete", "Boarding is complete", "The purser announces that boarding has completed."),
+    ("ArmDoors", "Doors to automatic (arm doors)", "Cabin crew, arm doors and cross-check."),
+    ("DisarmDoors", "Doors to manual (disarm doors)", "Cabin crew, disarm doors and cross-check."),
+    ("PreSafetyBriefing", "Safety briefing - introduction", "The opening of the safety briefing, before the demonstration."),
+    ("SafetyBriefing", "Safety briefing - demonstration", "The safety demonstration."),
+    ("CrewTakeSeats[PreFlight]", "Before takeoff - crew, take your seats", "Cabin crew, take your seats for takeoff. (Tagged [PreFlight]: used before takeoff.)"),
+    ("CrewTakeSeats[Descent][Approach]", "Before landing - crew, take your seats", "Cabin crew, take your seats for landing. (Tagged [Descent][Approach]: used before landing.)"),
+    ("CabinDim[PreFlight]", "Before takeoff - cabin lights dimmed", "We will dim the cabin lights for takeoff. (Tagged [PreFlight]: used before takeoff.)"),
+    ("CabinDim[Descent][Approach]", "Before landing - cabin lights dimmed", "We will dim the cabin lights for landing. (Tagged [Descent][Approach]: used before landing.)"),
+    ("CabinSecured[PreFlight]", "Before takeoff - cabin secure report", "Interphone to the cockpit: cabin secure for takeoff. (Tagged [PreFlight].)"),
+    ("CabinSecured[Descent][Approach]", "Before landing - cabin secure report", "Interphone to the cockpit: cabin secure for landing. (Tagged [Descent][Approach].)"),
+    ("AfterTakeoff", "After takeoff - welcome and flight details", "PA after takeoff, once past acceleration altitude."),
+    ("SeatbeltSignOn", "Seatbelt sign switched on", "The seatbelt signs have been switched on."),
+    ("SeatbeltSignOff", "Seatbelt sign switched off", "The seatbelt signs have been switched off."),
+    ("CabinService", "Cabin service begins", "Cabin service is about to begin."),
+    ("DescentStarted", "Descent has started", "We have started our descent."),
+    ("AfterLanding", "After landing - generic (no airport name)", "Generic 'welcome to our destination', used where an airport has no recording."),
+    ("DeboardingStarted", "Deboarding has started", "Passengers may now disembark."),
+    ("DeboardingComplete", "Deboarding is complete", "Deboarding has completed."),
+    ("Decompression", "Emergency - oxygen masks (decompression)", "Oxygen masks have deployed - emergency descent instructions."),
 ]
-GREETINGS = [("Welcome_Morning", "Good morning", "Ladies and gentlemen, welcome on board this [airline] flight to..."),
-             ("Welcome_Afternoon", "Good afternoon", "Ladies and gentlemen, welcome on board this [airline] flight to..."),
-             ("Welcome_Evening", "Good evening", "Ladies and gentlemen, welcome on board this [airline] flight to..."),
-             ("Welcome_Night", "Good evening (night, optional)", "Ladies and gentlemen, welcome on board this [airline] flight to... (for boardings between midnight and 6 am; without it the evening greeting is used)"),
-             ("WelcomeTo", "Landing lead-in", "Ladies and gentlemen, welcome to... (the airport name is added next)"),
-             ("LocalTime", "Local time lead-in", "...where the local time is")]
+GREETINGS = [("Welcome_Morning", "Welcome - part 1: good morning", "Ladies and gentlemen, welcome on board this [airline] flight to..."),
+             ("Welcome_Afternoon", "Welcome - part 1: good afternoon", "Ladies and gentlemen, welcome on board this [airline] flight to..."),
+             ("Welcome_Evening", "Welcome - part 1: good evening", "Ladies and gentlemen, welcome on board this [airline] flight to..."),
+             ("Welcome_Night", "Welcome - part 1: good evening, night (optional)", "Ladies and gentlemen, welcome on board this [airline] flight to... (for boardings between midnight and 6 am; without it the evening greeting is used)"),
+             ("WelcomeTo", "Landing - part 1: 'welcome to...' (before the airport name)", "Ladies and gentlemen, welcome to... (the airport name is added next)"),
+             ("LocalTime", "Landing - part 1: 'where the local time is...'", "...where the local time is")]
 HOURS = ["twelve", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven"]
 MINUTES = {0: "o'clock", 5: "oh five", 10: "ten", 15: "fifteen", 20: "twenty", 25: "twenty-five", 30: "thirty",
            35: "thirty-five", 40: "forty", 45: "forty-five", 50: "fifty", 55: "fifty-five"}
@@ -318,11 +318,11 @@ def slot_list(project: dict) -> list[dict]:
             add("Landing", "time", stem, label, script, required=True, part=L1)
     for i, word in enumerate(HOURS):
         n = i or 12
-        add("Landing", "time", f"Hour_{n:02d}", f"Hour {n}", word.capitalize(), required=True, part=L1)
+        add("Landing", "time", f"Hour_{n:02d}", f"Local time - hour {n}", word.capitalize(), required=True, part=L1)
     for minute, word in MINUTES.items():
-        add("Landing", "time", f"Min_{minute:02d}", f"Minute :{minute:02d}", word.capitalize(), required=True, part=L1)
-    add("Landing", "time", "AM", "AM (optional)", "A.M. - said after the minutes, e.g. 'four thirty-five A.M.'", part=L1)
-    add("Landing", "time", "PM", "PM (optional)", "P.M. - said after the minutes, e.g. 'four thirty-five P.M.'", part=L1)
+        add("Landing", "time", f"Min_{minute:02d}", f"Local time - minutes :{minute:02d}", word.capitalize(), required=True, part=L1)
+    add("Landing", "time", "AM", "Local time - AM (optional)", "A.M. - said after the minutes, e.g. 'four thirty-five A.M.'", part=L1)
+    add("Landing", "time", "PM", "Local time - PM (optional)", "P.M. - said after the minutes, e.g. 'four thirty-five P.M.'", part=L1)
     add("Landing", "main", "Modular_Landing", GENERAL[1][1], GENERAL[1][2], required=True, part=L2)
     for stem, label, script in GENERAL[2:]:
         add("Other announcements", "main", stem, label, script)
@@ -334,8 +334,8 @@ def slot_list(project: dict) -> list[dict]:
             "Say airport name", required=False)
     if project.get("aircraft_on"):   # optional: the aircraft type, so a PA can say "this Airbus A320"
         for name in project.get("aircraft", []):
-            add("Aircraft", "aircraft", f"{icao}_{slug(name)}", name, f'"{name}"', required=False)
-    add("Refuelling", "fuel", "Fuel_Tag", "Refuelling tag-on",
+            add("Aircraft names", "aircraft", f"{icao}_{slug(name)}", name, f'"{name}"', required=False)
+    add("Refuelling", "fuel", "Fuel_Tag", "While refuelling - tag-on",
         "Added to the welcome while the aircraft is being refuelled, e.g. 'We are currently refuelling, so please keep your seatbelt unfastened...'")
     for name in project.get("music", []):
         add("Boarding music", "main", f"BoardingMusic~{name}", f"Track: {name}",
@@ -344,12 +344,70 @@ def slot_list(project: dict) -> list[dict]:
     for entry in project.get("typed", []):   # custom takes for particular aircraft types
         stem = typed_stem(entry["base"], entry["types"], entry.get("n", 1))
         shown = "all aircraft" if entry["types"] == ["ALL"] else ", ".join(entry["types"])
-        add("Aircraft PAs", "main", stem, f"{TYPED_BASES[entry['base']]} ({shown})",
+        add("Aircraft-specific PAs", "main", stem, f"{TYPED_BASES[entry['base']]} ({shown})",
             "this announcement as it should sound on the aircraft types you choose. It replaces the normal one on those types.")
         out[-1].update({"typed": True, "base": entry["base"], "types": entry["types"], "n": entry.get("n", 1)})
     for name in project.get("extras", []):
         add("Bolt-ons", "extra", name, f"Bolt-on: {name}", "A short announcement that is sometimes added to the welcome.")
-    return out
+    return arrange(out)
+
+
+# The checklist in the order the announcements are heard on a flight. (group, the file-name bases that belong to it.)
+PHASES = [
+    ("Airports", ()), ("Aircraft names", ()),
+    ("Boarding", ("Welcome_", "Modular_Welcome", "BoardingWelcome", "Fuel_Tag")),
+    ("Boarding music", ()), ("Bolt-ons", ()),
+    ("Boarding complete & doors", ("BoardingComplete", "ArmDoors")),
+    ("Safety briefing", ("PreSafetyBriefing", "SafetyBriefing")),
+    ("Aircraft-specific PAs", ()),
+    ("Before takeoff", ("CrewTakeSeats[PreFlight]", "CabinDim[PreFlight]", "CabinSecured[PreFlight]")),
+    ("Climb & cruise", ("AfterTakeoff", "SeatbeltSignOff", "CabinService", "SeatbeltSignOn")),
+    ("Descent & approach", ("DescentStarted", "CrewTakeSeats[Descent]", "CabinDim[Descent]", "CabinSecured[Descent]")),
+    ("Landing", ("WelcomeTo", "LocalTime", "Hour_", "Min_", "AM", "PM", "Modular_Landing", "AfterLanding")),
+    ("Deboarding", ("DisarmDoors", "DeboardingStarted", "DeboardingComplete")),
+    ("Emergency", ("Decompression",)),
+]
+PHASE_NAMES = [name for name, _ in PHASES]
+BOARDING_LOOP = "While passengers board - generic welcomes (no destination)"
+REFUEL_PART = "While refuelling - the tag-on"
+LANDING_FALLBACK = "Fallback - if an airport has no recording"
+
+
+def phase_of(slot: dict) -> tuple[str, int]:
+    """(phase name, position inside it) for a slot, from its file-name base."""
+    if slot["group"] in PHASE_NAMES and slot["group"] not in ("BoardingWelcome", "Landing", "Other announcements"):
+        return slot["group"], 0
+    stem = slot["stem"]
+    base = re.sub(r"~v\d+$", "", stem)
+    for index, (name, bases) in enumerate(PHASES):
+        for pos, b in enumerate(bases):
+            if base == b or base.startswith(b + "[") or (b.endswith("_") and base.startswith(b)) or (b.endswith("]") and base.startswith(b[:-1])):
+                if name == "Landing" and slot["folder"] == "time" and base.startswith(("Welcome_",)):
+                    continue
+                return name, pos
+    legacy = {"CrewTakeSeats": 0, "CabinDim": 1, "CabinSecured": 2}   # untagged: the takeoff versions
+    if base_of(stem) in legacy:
+        return "Before takeoff", legacy[base_of(stem)]
+    return slot["group"], 99
+
+
+def arrange(slots: list[dict]) -> list[dict]:
+    """Put the checklist in flight order and give every slot its phase as its group."""
+    for sl in slots:
+        name, pos = phase_of(sl)
+        if name == "Boarding":
+            if sl["stem"].startswith("BoardingWelcome["):
+                sl["part"] = BOARDING_LOOP
+            elif sl["stem"] == "Fuel_Tag":
+                sl["part"] = REFUEL_PART
+        elif name == "Landing" and sl["stem"] == "AfterLanding":
+            sl["part"] = LANDING_FALLBACK
+        sl["group"], sl["_pos"] = name, pos
+    order = {name: i for i, name in enumerate(PHASE_NAMES)}
+    slots.sort(key=lambda sl: (order.get(sl["group"], 98), sl["_pos"]))   # stable: equal positions (hours, minutes...) keep their order
+    for sl in slots:
+        sl.pop("_pos", None)
+    return slots
 
 
 def hour_order(slots: list[dict]) -> list[dict]:
@@ -436,7 +494,7 @@ def status(root: Path, project: dict) -> list[dict]:
                 "custom": slot["id"] in project.get("scripts", {})}
         rows.append({**slot, "music": bool(slot.get("music")), "skipped": bool(not have and slot["id"] in project.get("skipped", [])), "done": have, "seconds": info.get("seconds") if have else None,
                      "lufs": info.get("lufs_out") if have else None, "imported": bool(have and info.get("imported")), "variants": variants})
-    alphabetical = {"Other announcements", "Boarding music", "Bolt-ons"}  # the clock stays in clock order
+    alphabetical = {"Boarding music", "Bolt-ons"}  # the clock stays in clock order; everything else is in flight order
     first = {}
     for i, r in enumerate(rows):
         first.setdefault(r["group"], i)
@@ -812,22 +870,7 @@ def voice_json(project: dict) -> dict:
     data = {"icao": project.get("icao", ""), "airline": project.get("airline", ""), "name": project["voice"], "artist": project.get("artist", ""), "credit_url": project.get("credit_url", ""),
             "donate_url": project.get("donate_url", ""), "accent": project.get("accent", ""),
             "description": project.get("description", "")}
-    out = {k: v for k, v in data.items() if v}
-    if project.get("volume") is not None:   # this pack's own output level (percent louder than the recordings)
-        out["volume"] = int(project["volume"])
-    return out
-
-
-def set_volume(root: Path, project: dict, value) -> None:
-    """The pack's output volume: percent louder than the recordings (0-100), or None to follow the app's setting."""
-    if value is None or value == "":
-        project.pop("volume", None)
-    else:
-        try:
-            project["volume"] = max(0, min(100, int(value)))
-        except (TypeError, ValueError):
-            raise StudioError("The volume must be a number from 0 to 100.")
-    save(root, project)
+    return {k: v for k, v in data.items() if v}
 
 
 def set_skip(root: Path, project: dict, slot_id: str, skip: bool) -> None:
@@ -939,8 +982,6 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
     project = create(root, icao, airline or icao, voice)
     for key, limit in (("artist", 80), ("accent", 40), ("description", 200)):
         project[key] = str(info.get(key, "")).strip()[:limit]
-    if isinstance(info.get("volume"), (int, float)) and not isinstance(info.get("volume"), bool):
-        project["volume"] = max(0, min(100, int(info["volume"])))
     for key in ("credit_url", "donate_url"):
         value = str(info.get(key, "")).strip()[:300]
         project[key] = value if re.match(r"https?://", value, re.I) else ""

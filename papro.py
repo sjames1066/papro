@@ -1066,20 +1066,6 @@ def target_names(pristine: Path | None, mapping: dict, also: Path | None = None)
     return names or [f"{mapping['default_name']}.ogg"]
 
 
-def voice_boost(cfg: dict, voice_dir: Path | None) -> int:
-    """How much louder this voice's PAs are made: the pack's own volume (voice.json "volume", set in Pack Studio) when it
-    has one, otherwise the app's PA volume setting."""
-    if voice_dir:
-        try:
-            data = json.loads((voice_dir / "voice.json").read_text(encoding="utf-8-sig"))
-            value = data.get("volume") if isinstance(data, dict) else None
-            if isinstance(value, (int, float)) and not isinstance(value, bool):
-                return max(0, min(100, int(value)))
-        except (OSError, ValueError):
-            pass
-    return boost_percent(cfg)
-
-
 def boost_percent(cfg: dict) -> int:
     try:
         return max(0, min(100, int(cfg.get("pa_boost", 30))))
@@ -1445,7 +1431,7 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
     voice_dir, voice_name, voice_count = choose_voice(source, lib_dir, voice)  # clips and parts come from the voice
     log.info("Applying %s to %s: recordings %s, voice %s, planned landing time %s%s", airline, dest_icao, source,
              voice_name or "-", arrival or "none", f", only {sorted(only)}" if only else "")
-    boost = voice_boost(cfg, voice_dir)
+    boost = boost_percent(cfg)
     fenix_dir = target_dir or airline_packs_dir(cfg) / airline   # target_dir: a scratch folder (the Test tab)
     if source == airline or not has_ogg(lib_dir / MAIN_FOLDER):
         pristine = generic_source(cfg, airline, fenix_dir)
@@ -2172,7 +2158,7 @@ class UIMixin:
                 return {"error": f"'{aircraft}' is not an ICAO aircraft type (use codes like A320, B738 or B38M)."}
         except AppError as exc:
             return {"error": str(exc)}
-        key = hashlib.sha1(f"{icao}|{voice}|{dest}|{arrival}|{aircraft}|{voice_boost(cfg, list_voices(airline_folder(cfg, icao)).get(voice))}|{cfg.get('join_style')}".encode()).hexdigest()[:12]
+        key = hashlib.sha1(f"{icao}|{voice}|{dest}|{arrival}|{aircraft}|{boost_percent(cfg)}|{cfg.get('join_style')}".encode()).hexdigest()[:12]
         sandbox = TEST_DIR / key
         pack = sandbox / "pack"
         message = ""
@@ -2203,16 +2189,23 @@ class UIMixin:
             base = stem.split("[")[0]
             tags = re.findall(r"\[(.*?)\]", stem)
             label = self.TEST_LABELS.get(stem) or self.TEST_LABELS.get(base) or re.sub(r"(?<=[a-z])(?=[A-Z])", " ", base)
-            if stem not in self.TEST_LABELS and tags:
+            if stem not in self.TEST_LABELS and not tags and self.TEST_LABELS.get(base + "[PreFlight]"):
+                label = self.TEST_LABELS[base + "[PreFlight]"]   # an untagged CabinDim / CabinSecured / CrewTakeSeats is the takeoff one
+            elif stem not in self.TEST_LABELS and tags:
                 label += " (" + ", ".join(tags) + ")"
-            group = "Welcome aboard" if base == "BoardingWelcome" else "Landing" if base == "AfterLanding" else "Other announcements"
+            group, pos = papro_studio.phase_of({"group": "", "stem": stem, "folder": "main"})   # flight order, like Pack Studio
+            if group == "":
+                group = "Other"
             if base == "BoardingWelcome" and tags:
                 label = "Welcome aboard - " + ", ".join(tags).lower()
             elif base == "BoardingWelcome":
                 label = "Welcome aboard"
             elif base == "AfterLanding":
                 label = "Landing"
-            triggers.append({"file": f.name, "label": label, "group": group})
+            order = papro_studio.PHASE_NAMES.index(group) if group in papro_studio.PHASE_NAMES else 98
+            tag_rank = next((i for i, w in enumerate(("morning", "afternoon", "evening", "night", "refueling")) if tags and tags[0].lower() == w), 9)
+            triggers.append({"file": f.name, "label": label, "group": group, "_o": (order, pos, tag_rank, f.name.lower())})
+        triggers.sort(key=lambda t: t.pop("_o"))
         return {"ok": True, "key": key, "message": message, "triggers": triggers}
 
     def test_audio(self, key: str, file: str) -> bytes | None:
@@ -2460,7 +2453,7 @@ class UIMixin:
                 "donate_url": project.get("donate_url", ""), "accent": project.get("accent", ""),
                 "description": project.get("description", ""), "version": project.get("version", "1.0.0"),
                 "effect": bool(project.get("effect", True)), "airports": project["airports"], "aircraft": project.get("aircraft", []), "aircraft_on": bool(project.get("aircraft_on")),
-                "volume": project.get("volume"), "app_boost": boost_percent(cfg), "aircraft_presets": papro_studio.AIRCRAFT_PRESETS, "typed_bases": papro_studio.TYPED_BASES, "aircraft_types": papro_studio.AIRCRAFT_TYPES, "extras": project["extras"], "music": project.get("music", []),
+                "app_boost": boost_percent(cfg), "aircraft_presets": papro_studio.AIRCRAFT_PRESETS, "typed_bases": papro_studio.TYPED_BASES, "aircraft_types": papro_studio.AIRCRAFT_TYPES, "extras": project["extras"], "music": project.get("music", []),
                 "logo": papro_studio.logo_path(STUDIO_DIR, project).is_file(), "has_script": bool(project.get("scripts")), "origin": bool(project.get("origin")), "upgrades": papro_studio.upgrade_preview(STUDIO_DIR, project), "target_pending": False, "rows": rows, "missing": len(papro_studio.missing(STUDIO_DIR, project)),
                 "target": target, "target_count": count, "target_source": label,
                 "done": sum(1 for r in rows if r["done"] or r["skipped"]), "total": len(rows)}
@@ -2608,8 +2601,6 @@ class UIMixin:
                     papro_studio.remove_variant(STUDIO_DIR, project, base, int(data.get("n", 0)))
                 else:
                     papro_studio.add_variant(STUDIO_DIR, project, base)
-            elif name == "volume":
-                papro_studio.set_volume(STUDIO_DIR, project, data.get("value"))
             elif name == "typed_add":
                 entry = papro_studio.add_typed(STUDIO_DIR, project, str(data.get("base", "")), data.get("types"))
                 return {"ok": True, "slot": "main/" + papro_studio.typed_stem(entry["base"], entry["types"], entry.get("n", 1))}
