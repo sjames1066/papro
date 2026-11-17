@@ -112,28 +112,11 @@ class UIServer:
     def __init__(self, backend, profile_dir: Path) -> None:
         self.backend = backend
         self.profile_dir = profile_dir
-        self.token = self._stable_token(profile_dir.parent / "ui-token.txt")
+        self.token = "papro"   # not a secret: a custom header the page sends, so other websites cannot make the browser call the API
         self.httpd: ThreadingHTTPServer | None = None
         self.window: subprocess.Popen | None = None
         self.last_poll = 0.0
         self._lock = threading.Lock()
-
-    @staticmethod
-    def _stable_token(path: Path) -> str:
-        """The secret in the page address is made once and kept, so the address is the same every time PAPro starts
-        (other apps can wrap it, a browser can bookmark it)."""
-        try:
-            value = path.read_text(encoding="utf-8").strip()
-            if re.fullmatch(r"[0-9a-f]{32}", value):
-                return value
-        except OSError:
-            pass
-        value = secrets.token_hex(16)
-        try:
-            path.write_text(value, encoding="utf-8")
-        except OSError:
-            pass
-        return value
 
     # server -------------------------------------------------------------
     def start(self) -> None:
@@ -172,8 +155,16 @@ class UIServer:
             def _json(self, code: int, data) -> None:
                 self._send(code, json.dumps(data).encode("utf-8"))
 
-            def _allowed(self) -> bool:
-                if self._host_ok() and secrets.compare_digest(self._token(), server.token):
+            def _allowed(self, write: bool = False) -> bool:
+                """Reading pages and data: any request to this PC's own address. Changing anything (POST): must come from
+                PAPro's own page - a custom header (which a web page on another site cannot send without our consent)
+                and, if the browser says where it came from, the same address."""
+                ok = self._host_ok()
+                if ok and write:
+                    origin = self.headers.get("Origin")
+                    port = server.httpd.server_address[1]
+                    ok = self.headers.get("X-Token") == server.token and origin in (None, f"http://127.0.0.1:{port}", f"http://localhost:{port}")
+                if ok:
                     return True
                 self._json(403, {"error": "forbidden"})
                 return False
@@ -222,7 +213,7 @@ class UIServer:
                     self._json(500, {"error": "internal error"})
 
             def do_POST(self) -> None:  # noqa: N802
-                if not self._allowed():
+                if not self._allowed(write=True):
                     return
                 parsed = urlparse(self.path)
                 path = parsed.path
@@ -289,7 +280,7 @@ class UIServer:
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
 
     def url(self) -> str:
-        return f"http://127.0.0.1:{self.httpd.server_address[1]}/?t={self.token}"
+        return f"http://localhost:{self.httpd.server_address[1]}/"
 
     # window -------------------------------------------------------------
     def open_window(self) -> None:
@@ -763,7 +754,7 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
     <label class="check" id="s-quit-row" style="margin:12px 0 0"><input type="checkbox" id="s-quit"> Close PAPro when MSFS closes</label>
   </div>
   <div class="setting"><div class="label">PAPro's web address</div>
-    <div class="small" style="margin-bottom:10px">PAPro runs as a local web page. This address stays the same every time, so you can bookmark it or put it in another app. It only works on this PC while PAPro is running - keep it private.</div>
+    <div class="small" style="margin-bottom:10px">PAPro runs as a local web page. This address is always the same, so you can bookmark it or put it in another app. It only works on this PC while PAPro is running.</div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><input id="s-addr" readonly style="flex:1;min-width:220px;font:600 12px 'Inter',sans-serif" onclick="this.select()"><button class="ghost" id="s-addr-copy">Copy</button><button class="ghost" data-open="browser">Open</button></div>
   </div>
   <div class="setting"><div class="label">Fenix packs folder and log</div>
