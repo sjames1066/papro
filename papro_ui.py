@@ -551,6 +551,7 @@ input[type=text]:focus{border-color:var(--magenta)}
 #t-spoken{position:absolute;left:2px;top:100%;margin-top:4px;white-space:nowrap;color:var(--magenta);font-size:11.5px}
 #t-build.go{background:linear-gradient(#35c47a,#22a763);color:#fff;border:1px solid #1d8f55;font-weight:700;font-size:15px;padding:0 30px;height:44px;border-radius:12px;cursor:pointer;box-shadow:0 4px 14px rgba(53,196,122,.28)}
 #t-build.go:hover{filter:brightness(1.08)}#t-build.go:disabled{opacity:.5;cursor:default}
+.tvol{margin-left:auto;display:flex;align-items:center;gap:8px;color:var(--faint);font-size:12px}.tvol input{width:130px;accent-color:var(--magenta);cursor:pointer}.tvol span{min-width:34px;text-align:right;font-variant-numeric:tabular-nums}
 #t-all{font-size:18px;font-weight:700;padding:16px 44px;border-radius:16px;min-width:230px}
 #t-all.running{background:var(--surface2);border-color:var(--line2);box-shadow:none}
 #t-all:disabled{opacity:.5}
@@ -747,6 +748,7 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
     </div>
     <div style="display:flex;align-items:center;gap:16px;margin-top:16px">
       <button class="primary" id="t-all">&#9654;  Test All</button><button class="ghost" id="t-skip" style="display:none;padding:14px 22px">⏭  Skip</button><button class="ghost" id="t-stop" style="display:none;padding:14px 22px">■  Stop</button><span id="t-now"></span>
+      <label class="tvol" title="How loud the test playback is (this page only; your cabin PA settings are not changed)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/></svg><input type="range" id="t-vol" min="0" max="100" value="100" step="1"><span id="t-volv">100%</span></label>
     </div>
     <div id="t-bar" style="display:none;align-items:center;gap:12px;margin-top:14px">
       <span id="t-cur" class="tt">0:00</span><input type="range" id="t-seek" min="0" max="1000" value="0" step="1" style="flex:1"><span id="t-dur" class="tt">0:00</span>
@@ -1267,6 +1269,9 @@ async function testInit(){
   $("#t-all").onclick=()=>{ if(tPlaylist&&tAudio){ if(tPaused){tPaused=false;tAudio.play().catch(()=>{})}else{tPaused=true;tAudio.pause()} testMark(); return} testAll()};
   $("#t-skip").onclick=()=>{ if(tIdx<0||!tRows.length)return; tPlaylist=true; tPaused=false; testPlay(tIdx+1)};
   $("#t-stop").onclick=testStop;
+  { let v=100; try{const s=localStorage.getItem("papro_test_vol"); if(s!==null&&!isNaN(+s))v=Math.max(0,Math.min(100,+s))}catch(e){}
+    const sl=$("#t-vol"); sl.value=v; $("#t-volv").textContent=v+"%";
+    sl.oninput=()=>{const x=+sl.value; $("#t-volv").textContent=x+"%"; try{localStorage.setItem("papro_test_vol",String(x))}catch(e){} if(tAudio)tAudio.volume=Math.min(1,(tAudio._base??1)*x/100)} }
   const sk=$("#t-seek"); sk.oninput=()=>{tDrag=true;const a=tAudio;if(a&&isFinite(a.duration))$("#t-cur").textContent=tFmt(sk.value/1000*a.duration)};
   sk.onchange=()=>{const a=tAudio;if(a&&isFinite(a.duration))a.currentTime=sk.value/1000*a.duration;tDrag=false;tBar()};
   if([...a.options].some(o=>o.value===keep.air))a.value=keep.air;
@@ -1304,7 +1309,7 @@ function tBar(){const a=tAudio,on=!!a&&tIdx>=0;$("#t-bar").style.display=on?"fle
 function testPlay(i){ // play one clip; in playlist mode move on to the next when it ends
   if(tAudio){tAudio.onended=null;tAudio.pause();tAudio=null} if(tUrl){URL.revokeObjectURL(tUrl);tUrl=null}
   if(i<0||i>=tRows.length){const was=tPlaylist;testStop(); if(was)toast("Test finished"); return}
-  tIdx=i; tPaused=false; const t=tRows[i], a=newAudio(); tAudio=a; testMark(); t.row.scrollIntoView({block:"nearest",behavior:"smooth"});
+  tIdx=i; tPaused=false; const t=tRows[i], a=newAudio(); a._base=a.volume; a.volume=Math.min(1,a.volume*(+$("#t-vol").value)/100); tAudio=a; testMark(); t.row.scrollIntoView({block:"nearest",behavior:"smooth"});
   a.onended=()=>{ if(tAudio!==a)return; if(tPlaylist) testPlay(i+1); else testStop()};
   a.onerror=()=>{ if(tAudio!==a)return; toast("Could not play "+t.label); if(tPlaylist) testPlay(i+1); else testStop()};
   a.ontimeupdate=a.ondurationchange=a.onloadedmetadata=()=>{if(tAudio===a)tBar()};
