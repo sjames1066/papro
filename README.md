@@ -9,12 +9,14 @@ click**, and removed the same way.
 
 ## The Airlines folder
 
-Your recordings live in an `Airlines` folder next to the app (for example `C:\PAPro\Airlines`), one folder per airline
+Your recordings, settings (`config.json`) and aliases live in PAPro's data folder, `%LOCALAPPDATA%\PAPro`
+(for example `C:\Users\you\AppData\Local\PAPro`), not next to the program - so reinstalling or updating PAPro never
+touches them. The first time a newer version runs it moves any `config.json`, `aliases.json` and `Airlines` folder it finds
+next to the program (or in the old FCAC folder) there. The `Airlines` folder has one folder per airline
 ICAO code, each with `main`, `airports`, `time`, `fuel` and `extra` inside (see Modular announcements below):
 
 ```
-C:\PAPro\
-  papro.py
+%LOCALAPPDATA%\PAPro\
   config.json
   Airlines\
     BAW\
@@ -127,7 +129,7 @@ Enjoying PAPro? [Buy me a Ko-fi](https://ko-fi.com/sjames1066) - there's a butto
 ## Setup
 
 1. Install Python 3.10+ for Windows, then in this folder: `pip install -r requirements.txt`
-2. Edit `config.json`: set `simbrief_username` (the name, not the numeric ID). Set `catalog_url` too if you want
+2. Edit `config.json` (in `%LOCALAPPDATA%\PAPro`; the app creates it on first run): set `simbrief_username` (the name, not the numeric ID). Set `catalog_url` too if you want
    downloadable packs (see "Publishing packs").
 3. Run `pythonw papro.py` (no console window). The icon appears in the system tray.
 4. Put your recordings in `Airlines\<ICAO>\airports` (or the older `dep|dest|fuel`), or right-click the icon -> **Install airline pack**.

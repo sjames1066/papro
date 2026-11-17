@@ -52,36 +52,6 @@ VERSION = "1.1.0"
 BASE_DIR = (
     Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 )
-CONFIG_PATH = Path(os.environ.get("PAPRO_CONFIG") or os.environ.get("FCAC_CONFIG") or BASE_DIR / "config.json")
-
-
-def _migrate_from_fcac() -> None:
-    """The installed app used to live in ...\\Programs\\FCAC. Bring its settings, aliases and Airlines library
-    into the new PAPro folder the first time PAPro runs (nothing is overwritten)."""
-    if not getattr(sys, "frozen", False) or CONFIG_PATH.exists():
-        return
-    old = BASE_DIR.parent / "FCAC"
-    if old == BASE_DIR or not old.is_dir():
-        return
-    try:
-        cfg_old = old / "config.json"
-        if cfg_old.is_file():
-            text = cfg_old.read_text(encoding="utf-8").replace("sjames1066/fcac/", "sjames1066/papro/")
-            CONFIG_PATH.write_text(text, encoding="utf-8")
-        for name in ("aliases.json",):
-            if (old / name).is_file() and not (BASE_DIR / name).exists():
-                shutil.copyfile(old / name, BASE_DIR / name)
-        if (old / "Airlines").is_dir() and not (BASE_DIR / "Airlines").exists():
-            shutil.move(str(old / "Airlines"), str(BASE_DIR / "Airlines"))
-    except OSError:
-        pass
-
-
-_migrate_from_fcac()
-ALIASES_PATH = CONFIG_PATH.with_name("aliases.json")
-DEFAULT_ALIASES = {"SHT": "BAW", "CFE": "BAW", "EFW": "BAW"}  # BA Shuttle, BA CityFlyer, BA EuroFlyer -> the BAW pack
-
-
 def _data_dir() -> Path:
     env = os.environ.get("PAPRO_DATA") or os.environ.get("FCAC_DATA")
     if env:
@@ -103,6 +73,42 @@ def _data_dir() -> Path:
 
 
 DATA_DIR = _data_dir()
+
+CONFIG_PATH = Path(os.environ.get("PAPRO_CONFIG") or os.environ.get("FCAC_CONFIG") or DATA_DIR / "config.json")
+
+
+def _migrate_settings() -> None:
+    """Settings, the aliases and the Airlines library live in PAPro's data folder (AppData\\Local\\PAPro), so they stay
+    when the program is reinstalled or updated. Bring them over the first time from where older versions kept them:
+    next to the program, or in the old FCAC program folder. Nothing is overwritten."""
+    if os.environ.get("PAPRO_CONFIG") or os.environ.get("FCAC_CONFIG") or os.environ.get("PAPRO_DATA") or os.environ.get("FCAC_DATA"):
+        return   # tests / a deliberately chosen place
+    sources = [BASE_DIR]
+    if getattr(sys, "frozen", False):
+        sources.append(BASE_DIR.parent / "FCAC")
+    for old in sources:
+        if old == DATA_DIR or not old.is_dir():
+            continue
+        try:
+            cfg_old = old / "config.json"
+            if cfg_old.is_file() and not CONFIG_PATH.exists():
+                text = cfg_old.read_text(encoding="utf-8").replace("sjames1066/fcac/", "sjames1066/papro/")
+                CONFIG_PATH.write_text(text, encoding="utf-8")
+            alias_old = old / "aliases.json"
+            if alias_old.is_file() and not (DATA_DIR / "aliases.json").exists():
+                shutil.copyfile(alias_old, DATA_DIR / "aliases.json")
+            if (old / "Airlines").is_dir() and not (DATA_DIR / "Airlines").exists():
+                shutil.move(str(old / "Airlines"), str(DATA_DIR / "Airlines"))
+        except OSError:
+            pass
+
+
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+_migrate_settings()
+ALIASES_PATH = CONFIG_PATH.with_name("aliases.json")
+DEFAULT_ALIASES = {"SHT": "BAW", "CFE": "BAW", "EFW": "BAW"}  # BA Shuttle, BA CityFlyer, BA EuroFlyer -> the BAW pack
+
+
 GENERIC_DIR = DATA_DIR / "generic"    # untouched copy of an airline's generic announcements (saved before PAPro changes them)
 BACKUPS_DIR = DATA_DIR / "backups"    # packs that were already in the Fenix folder before we installed ours
 STATE_PATH = DATA_DIR / "state.json"
@@ -785,7 +791,7 @@ def extract_pack(zip_path: Path, out_dir: Path) -> None:
 # --------------------------------------------------------------------------- the Airlines library
 def airlines_root(cfg: dict) -> Path:
     configured = str(cfg.get("airlines_dir", "")).strip()
-    return Path(configured) if configured else BASE_DIR / "Airlines"
+    return Path(configured) if configured else DATA_DIR / "Airlines"
 
 
 def airline_folder(cfg: dict, icao: str) -> Path:
