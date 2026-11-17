@@ -1260,15 +1260,6 @@ def check_levels(root: Path, project: dict, target: float, fix: bool = False, pr
     return {"checked": measured, "off": off, "fixed": fixed, "errors": errors, "target": target}
 
 
-def bump_version(version: str) -> str:
-    """1.0.0 -> 1.0.1 (the last number goes up); anything that is not numbers gets .1 added."""
-    parts = version.strip().split(".")
-    if parts and all(p.isdigit() for p in parts):
-        parts[-1] = str(int(parts[-1]) + 1)
-        return ".".join(parts)
-    return (version.strip() or "1.0.0") + ".1"
-
-
 def install_to_library(root: Path, project: dict, airline_dir: Path) -> Path:
     """Copy the project into Airlines\\<ICAO>\\voices\\<Voice> (or back over the pack it was opened from) so PAPro can
     use it straight away."""
@@ -1288,15 +1279,6 @@ def install_to_library(root: Path, project: dict, airline_dir: Path) -> Path:
         (airline_dir / "main").mkdir(parents=True, exist_ok=True)
         for path in music:
             shutil.copyfile(path, airline_dir / "main" / path.name)
-    if (dest / "voice.json").is_file():   # saving changes over a pack that is already in the library bumps its version (1.0.0 -> 1.0.1) unless you set a new one yourself
-        try:
-            have = str(json.loads((dest / "voice.json").read_text(encoding="utf-8-sig")).get("version", "")).strip()
-        except (OSError, ValueError, AttributeError):
-            have = ""
-        mine = str(project.get("version", "1.0.0")).strip() or "1.0.0"
-        if not have or have == mine:
-            project["version"] = bump_version(mine)
-            save(root, project)
     (dest / "voice.json").write_text(json.dumps(voice_json(project), indent=2), encoding="utf-8")
     try:   # the pack's own local-time choice travels with it
         path = airline_dir / "settings.json"
