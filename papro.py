@@ -162,7 +162,7 @@ DEFAULT_CONFIG = {
     "segment_pause_ms": 60,           # pause between the pieces of a joined PA (see the parts folder)
     "pa_knob_on": True,               # the on-screen PA knob (aircraft whose PAs PAPro plays itself): pushed up = PAs audible
     "pa_knob_volume": 70,             # ... and how loud (0-100)
-    "lan_access": False,              # also answer on this PC's private network / VPN addresses (EFBx on another device)
+    "lan_access": True,               # also answer on this PC's private network / VPN addresses (EFBx on another device)
     "gsx_integration": True,          # read GSX's boarding / deboarding state for the flight phase
     "pa_playback": True,              # play the PAs in PAPro itself for aircraft that can't use the Fenix folder
     "pa_output_device": "",           # sound output for those PAs ("" = the Windows default)
@@ -2153,10 +2153,7 @@ class UIMixin:
         self.ui = papro_ui.UIServer(self, DATA_DIR / "ui-profile")
 
     def lan_enabled(self) -> bool:
-        try:
-            return bool(load_config().get("lan_access", False))
-        except AppError:
-            return False
+        return True   # always on: other devices on the private network / VPN (EFBx, an iPad) can open PAPro
 
     def open_window(self) -> None:
         self.ui.open_window()
@@ -2258,7 +2255,7 @@ class UIMixin:
                 "minimize_to_tray": bool(cfg.get("minimize_to_tray", False)),
                 "extra_chance": int(cfg.get("extra_chance", 25)),
                 "pa_boost": boost_percent(cfg),
-                "lan": {"on": bool(cfg.get("lan_access", False)), "addresses": [f"http://{ip}:{self.ui.httpd.server_address[1]}/" for ip in self.ui.private_ips()] if getattr(self.ui, "httpd", None) and self.ui.lan_on else []},
+                "lan": {"on": True, "addresses": [f"http://{ip}:{self.ui.httpd.server_address[1]}/" for ip in self.ui.private_ips()] if getattr(self.ui, "httpd", None) and self.ui.lan_on else []},
                 "gsx": bool(cfg.get("gsx_integration", True)),
                 "audio": {"device": str(cfg.get("pa_output_device") or ""), "playback": bool(cfg.get("pa_playback", True))},
                 "pa_knob": {"on": bool(cfg.get("pa_knob_on", True)), "volume": max(0, min(100, int(cfg.get("pa_knob_volume", 70))))},
@@ -2666,9 +2663,6 @@ class UIMixin:
                 set_config_value("close_to_tray", bool(data.get("close_to_tray")))
                 set_config_value("minimize_to_tray", bool(data.get("minimize_to_tray")))
                 set_config_value("quit_with_msfs", bool(data.get("quit_with_msfs", True)))
-                if "lan_access" in data and bool(data["lan_access"]) != bool(load_config().get("lan_access", False)):
-                    set_config_value("lan_access", bool(data["lan_access"]))
-                    self.ui.set_lan(bool(data["lan_access"]))
                 if "gsx" in data:
                     set_config_value("gsx_integration", bool(data["gsx"]))
                 if "audio_device" in data:

@@ -904,8 +904,7 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
   <div class="setting pc-only"><div class="label">PAPro's web address</div>
     <div class="small" style="margin-bottom:10px">PAPro also runs as a local web page. This address is always the same, so another app (such as EFBx.io) can open it as an internal app. It only works on this PC while PAPro is running.</div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><input type="text" id="s-addr" readonly style="flex:1;min-width:220px;font:600 12px 'Inter',sans-serif" onclick="this.select()"><button class="ghost" id="s-addr-copy">Copy</button><button class="ghost" data-open="browser">Open in browser</button></div>
-    <label class="check" style="margin:14px 0 0"><input type="checkbox" id="s-lan"> Let other devices on my network or VPN open PAPro</label>
-    <div class="small" id="s-lan-note" style="margin-top:6px">Turn this on for EFBx on another device or over a VPN. Anyone who can reach this PC on that network could then change your PAPro settings, so only use it on a network you trust. Windows may ask whether to allow PAPro through its firewall - allow it for private networks.</div>
+    <div class="small" style="margin:14px 0 4px"><b>Open PAPro from another device</b> (EFBx on an iPad, a tablet or another PC) with one of these addresses. It works on your home network or over a VPN, while PAPro is running. Anyone on that network can reach it, so only use trusted networks. Windows may ask once to allow PAPro through its firewall - allow it for private networks.</div>
     <div id="s-lan-addrs" style="margin-top:8px"></div>
   </div>
   <div class="setting pc-only"><div class="label">Fenix packs folder and log</div>
@@ -1206,16 +1205,14 @@ function openSettings(){
   pickRadio("s-start",cfg.autostart); pickRadio("s-close",cfg.close); pickRadio("s-min",cfg.min); pickRadio("s-extra",cfg.extra);pickRadio("s-boost",cfg.boost);pickRadio("s-flow",cfg.flow);
   $("#s-quit-row").style.display=cfg.autostart==="msfs"?"flex":"none";
   $("#s-addr").value=snap.address||"";
-  const lan=s.lan||{};$("#s-lan").checked=!!lan.on;renderLanAddrs(lan);
+  const lan=s.lan||{};renderLanAddrs(lan);
   const au=s.audio||{};audioChosen=au.device||"";$("#s-aplay").checked=au.playback!==false;$("#s-gsx").checked=s.gsx!==false;loadAudioDevices();
   renderSetUpd();$("#m-settings").classList.add("show");
 }
 $("#settings").onclick=openSettings;
 function renderLanAddrs(lan){const box=$("#s-lan-addrs");box.replaceChildren();
-  if(!$("#s-lan").checked)return;
-  if(!(lan.addresses||[]).length){box.append(el("div","small","Save, then reopen Settings to see the addresses other devices can use."));return}
+  if(!(lan.addresses||[]).length){box.append(el("div","small","No network address found for this PC."));return}
   (lan.addresses||[]).forEach(a=>{const row=el("div");row.style.cssText="display:flex;gap:8px;align-items:center;margin-top:4px";const i=document.createElement("input");i.type="text";i.readOnly=true;i.value=a;i.style.cssText="flex:1;min-width:200px;font:600 12px 'Inter',sans-serif";i.onclick=()=>i.select();row.append(i);box.append(row)})}
-$("#s-lan").onchange=()=>{renderLanAddrs((snap.settings&&snap.settings.lan)||{})};
 $("#s-addr-copy").onclick=async()=>{try{await navigator.clipboard.writeText($("#s-addr").value);toast("Address copied")}catch(e){$("#s-addr").select();toast("Press Ctrl+C to copy")}};
 let audioChosen="";
 async function loadAudioDevices(){
@@ -1241,7 +1238,7 @@ $("#s-cancel").onclick=()=>$("#m-settings").classList.remove("show");
 $("#s-save").onclick=async()=>{
   const name=$("#s-name").value.trim();
   if(name&&name!==(snap.username||"")){const r=await api("username",{name}); if(r.error)return}
-  const r=await api("settings",{close_to_tray:cfg.close==="yes",autostart:cfg.autostart,minimize_to_tray:cfg.min==="yes",extra_chance:parseInt(cfg.extra,10),pa_boost:parseInt(cfg.boost,10),join_style:cfg.flow,quit_with_msfs:$("#s-quit").checked,audio_device:audioChosen,audio_playback:$("#s-aplay").checked,gsx:$("#s-gsx").checked,lan_access:$("#s-lan").checked});
+  const r=await api("settings",{close_to_tray:cfg.close==="yes",autostart:cfg.autostart,minimize_to_tray:cfg.min==="yes",extra_chance:parseInt(cfg.extra,10),pa_boost:parseInt(cfg.boost,10),join_style:cfg.flow,quit_with_msfs:$("#s-quit").checked,audio_device:audioChosen,audio_playback:$("#s-aplay").checked,gsx:$("#s-gsx").checked,});
   if(!r.error){$("#m-settings").classList.remove("show");toast("Settings saved")}
 };
 let minSent=false;
