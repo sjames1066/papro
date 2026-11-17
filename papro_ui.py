@@ -811,7 +811,6 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
 <div class="modal" id="m-manage"><div class="dialog" style="width:540px">
   <h3 id="mg-title">Manage pack</h3>
   <p id="mg-sub" class="small"></p>
-  <label class="check" style="margin:10px 0 4px"><input type="checkbox" id="mg-time"> Say the local time in this pack's landing announcement ("&hellip;where the local time is four thirty-five")</label>
   <div id="mg-voices"></div>
   <div style="display:flex;gap:10px;align-items:center;margin-top:14px"><input type="text" id="mg-new" placeholder="New voice name, e.g. Emma" maxlength="40" autocomplete="off" style="flex:1"><button id="mg-add">Add a voice</button></div>
   <div class="small" id="mg-msg" style="margin-top:10px;color:var(--err);min-height:16px"></div>
@@ -1110,7 +1109,6 @@ function openManage(icao){manageIcao=icao;$("#mg-new").value="";$("#mg-msg").tex
 function renderManage(){
   const p=(snap.packs||[]).find(x=>x.icao===manageIcao&&x.installed); if(!p){$("#m-manage").classList.remove("show");return}
   $("#mg-title").textContent="Manage "+p.name; $("#mg-sub").textContent=p.icao+" - open a voice in Pack Studio to re-record or fix it, or take a voice out of the airline.";
-  $("#mg-time").checked=p.local_time!==false;
   const box=$("#mg-voices"); const items=p.voice_items||[]; const sig=JSON.stringify(items); if(box.dataset.s===sig) return; box.dataset.s=sig; box.replaceChildren();
   if(!items.length) box.append(el("div","empty","This airline has no voices yet. Add one below."));
   items.forEach(v=>{
@@ -1121,7 +1119,6 @@ function renderManage(){
     box.append(row);
   });
 }
-$("#mg-time").onchange=async()=>{const r=await api("pack_local_time",{icao:manageIcao,on:$("#mg-time").checked});if(r.error){toast(r.error)}else toast($("#mg-time").checked?"The landing PA will say the local time":"The landing PA will leave the local time out")};
 $("#mg-done").onclick=()=>$("#m-manage").classList.remove("show");
 $("#mg-add").onclick=async()=>{const name=$("#mg-new").value.trim(),p=(snap.packs||[]).find(x=>x.icao===manageIcao&&x.installed);if(!name){$("#mg-msg").textContent="Type a name for the voice.";return}
   const r=await studio("create",{icao:manageIcao,airline:p?p.name:manageIcao,voice:name});if(r.ok){$("#m-manage").classList.remove("show");setView("studio")}else $("#mg-msg").textContent=r.error||""};
