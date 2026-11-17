@@ -785,7 +785,7 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
   <div class="row"><button id="up-cancel">Not now</button><button class="primary" id="up-ok">Rename them</button></div>
 </div></div>
 <div class="modal" id="m-abandon"><div class="dialog">
-  <h3>Abandon this pack?</h3><p id="ab-text"></p>
+  <h3 id="ab-title">Abandon this pack?</h3><p id="ab-text"></p>
   <div class="row"><button id="ab-cancel">Keep it</button><button class="primary" id="ab-ok" style="background:var(--err);border-color:transparent">Delete the pack</button></div>
 </div></div>
 <div class="modal" id="m-quiet"><div class="dialog">
@@ -806,10 +806,12 @@ async function api(name,data){
       const j=await r.json(); if(j.error) toast(j.error); return j;}catch(e){toast("Lost contact with PAPro");return {}}
 }
 function confirmDiscard(p){
-  $("#ab-text").textContent="This deletes all the recordings and details of "+p.icao+" - "+p.voice+" in Pack Studio. It cannot be undone. Your Airlines library is not touched.";
+  $("#ab-title").textContent=p.in_library?"Remove from packs in progress?":"Abandon this pack?";
+  $("#ab-ok").textContent=p.in_library?"Remove":"Delete the pack";$("#ab-cancel").textContent=p.in_library?"Cancel":"Keep it";
+  $("#ab-text").textContent=p.in_library?"This only removes "+p.icao+" - "+p.voice+" from your packs in progress. The pack in your Airlines library is kept exactly as it is.":"This deletes all the recordings and details of "+p.icao+" - "+p.voice+" in Pack Studio. It cannot be undone. Your Airlines library is not touched.";
   $("#m-abandon").classList.add("show");
   $("#ab-cancel").onclick=()=>$("#m-abandon").classList.remove("show");
-  $("#ab-ok").onclick=async()=>{$("#m-abandon").classList.remove("show");const r=await studio("discard",{icao:p.icao,voice:p.voice});if(r.ok)toast("Pack discarded")};
+  $("#ab-ok").onclick=async()=>{$("#m-abandon").classList.remove("show");const r=await studio("discard",{icao:p.icao,voice:p.voice});if(r.ok)toast(p.in_library?"Removed from packs in progress - your library pack is untouched":"Pack discarded")};
 }
 function toast(t,ms){const x=$("#toast");x.textContent=t;x.classList.add("show");clearTimeout(toast.t);toast.t=setTimeout(()=>x.classList.remove("show"),ms||3200)}
 function editableLogo(icao,cls){ // the logo with a pencil that appears on hover: pick a new image for this airline
@@ -1383,7 +1385,7 @@ function renderStudio(){
       s.library.forEach(p=>{const b=el("button","ghost",p.icao+" - "+p.name);b.style.margin="0 8px 8px 0";b.onclick=async()=>{const r=await studio("import",p);if(r.ok)toast("Opened for editing - your clips are unchanged until you replace them")};root.append(b)})}
     if(s.projects.length){const h=el("div","section-head");h.append(el("h2",null,"Your packs in progress"));root.append(h);
       s.projects.forEach(p=>{const w=el("span","chip2");w.style.margin="0 8px 8px 0";const b=el("button","ghost",p.icao+" · "+p.voice+(p.airline?" · "+p.airline:""));b.style.cssText="width:auto;height:auto;border-radius:10px;padding:6px 10px;color:var(--text)";b.onclick=()=>studio("open",p);
-        const x=el("button",null,"✕");x.title="Abandon this pack";x.onclick=()=>confirmDiscard(p);
+        const x=el("button",null,"✕");x.title=p.in_library?"Remove from packs in progress (the pack in your library stays)":"Abandon this pack";x.onclick=()=>confirmDiscard(p);
         w.append(b,x);root.append(w)})}
     return;
   }
@@ -1528,7 +1530,7 @@ function renderStudio(){
     root.append(d);
   });
   const bar2=el("div","sdbar");
-  const dis=el("button","ghost danger","Abandon this pack");dis.title="Deletes this project's recordings and details. Your Airlines library is not touched.";
+  const dis=el("button","ghost danger",c.in_library?"Remove from packs in progress":"Abandon this pack");dis.title=c.in_library?"Removes this working copy only. The pack in your Airlines library stays.":"Deletes this project's recordings and details. Your Airlines library is not touched.";
   dis.onclick=()=>confirmDiscard(c);
   const fol=el("button","ghost","Open project folder");fol.onclick=()=>api("studio_folder",pid(c));
   const use=el("button",null,c.origin?"Save changes to my library":"Use in PAPro now");use.onclick=async()=>{const r=await studio("install",pid(c));if(r.ok)toast(r.finished?"Saved to your library":"Added to your library as a voice for "+c.icao)};

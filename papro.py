@@ -2634,9 +2634,22 @@ class UIMixin:
             found = {DEFAULT_VOICE: folder}
         return found
 
+    def project_in_library(self, cfg: dict, icao: str, voice: str) -> bool:
+        """Is this project already a working pack in the Airlines library (opened from it, or installed from Pack Studio)?
+        Then the project is only a working copy and can be removed without losing the pack."""
+        try:
+            project = papro_studio.load(STUDIO_DIR, icao, voice)
+            origin = Path(project["origin"]) if project.get("origin") else None
+            if origin and origin.is_dir():
+                return True
+            return (airline_folder(cfg, icao) / "voices" / papro_studio.slug(voice) / "voice.json").is_file()
+        except (papro_studio.StudioError, AppError, OSError):
+            return False
+
     def studio_snapshot(self, cfg: dict) -> dict:
         current = getattr(self, "studio_current", None)
-        out = {"projects": papro_studio.list_projects(STUDIO_DIR), "current": None, "folder": str(STUDIO_DIR),
+        projects = [{**p, "in_library": self.project_in_library(cfg, p["icao"], p["voice"])} for p in papro_studio.list_projects(STUDIO_DIR)]
+        out = {"projects": projects, "current": None, "folder": str(STUDIO_DIR),
                "job": getattr(self, "_studio_job", None)}
         if not current:  # packs already in the library that can be opened for editing
             out["library"] = []
@@ -2662,7 +2675,7 @@ class UIMixin:
                 "description": project.get("description", ""), "version": project.get("version", "1.0.0"),
                 "effect": bool(project.get("effect", True)), "airports": project["airports"], "aircraft": project.get("aircraft", []), "aircraft_on": bool(project.get("aircraft_on")),
                 "app_boost": boost_percent(cfg), "languages": self.language_snapshot(project), "language": project.get("language", ""), "aircraft_presets": papro_studio.AIRCRAFT_PRESETS, "typed_bases": papro_studio.TYPED_BASES, "aircraft_types": papro_studio.AIRCRAFT_TYPES, "extras": project["extras"], "music": project.get("music", []),
-                "logo": papro_studio.logo_path(STUDIO_DIR, project).is_file(), "has_script": bool(project.get("scripts")), "origin": bool(project.get("origin")), "upgrades": papro_studio.upgrade_preview(STUDIO_DIR, project), "target_pending": False, "rows": rows, "missing": len(papro_studio.missing(STUDIO_DIR, project)),
+                "logo": papro_studio.logo_path(STUDIO_DIR, project).is_file(), "has_script": bool(project.get("scripts")), "origin": bool(project.get("origin")), "in_library": self.project_in_library(cfg, project["icao"], project["voice"]), "upgrades": papro_studio.upgrade_preview(STUDIO_DIR, project), "target_pending": False, "rows": rows, "missing": len(papro_studio.missing(STUDIO_DIR, project)),
                 "target": target, "target_count": count, "target_source": label,
                 "done": sum(1 for r in rows if r["done"] or r["skipped"]), "total": len(rows)}
         return out
