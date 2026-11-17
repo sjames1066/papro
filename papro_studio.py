@@ -358,7 +358,9 @@ def slot_list(project: dict) -> list[dict]:
     for entry in project.get("typed", []):   # custom takes for particular aircraft types
         stem = typed_stem(entry["base"], entry["types"], entry.get("n", 1))
         shown = "all aircraft" if entry["types"] == ["ALL"] else ", ".join(entry["types"])
-        add("Aircraft-specific PAs", "main", stem, f"{TYPED_BASES[entry['base']]} ({shown})",
+        in_safety = entry["base"] in SAFETY_TYPED   # these sit right under the normal safety briefing PA they replace
+        label = next((lab for stem0, lab, _ in GENERAL if stem0 == entry["base"]), TYPED_BASES[entry["base"]]) if in_safety else TYPED_BASES[entry["base"]]
+        add("Safety briefing" if in_safety else "Aircraft-specific PAs", "main", stem, f"{label} ({shown})",
             "this announcement as it should sound on the aircraft types you choose. It replaces the normal one on those types.")
         out[-1].update({"typed": True, "base": entry["base"], "types": entry["types"], "n": entry.get("n", 1)})
     for name in project.get("extras", []):
@@ -387,8 +389,15 @@ REFUEL_PART = "While refuelling - the tag-on"
 LANDING_FALLBACK = "Fallback - if an airport has no recording"
 
 
+SAFETY_TYPED = ("PreSafetyBriefing", "SafetyBriefing")   # aircraft versions of these are listed in the Safety briefing group
+
+
 def phase_of(slot: dict) -> tuple[str, int]:
     """(phase name, position inside it) for a slot, from its file-name base."""
+    if slot.get("typed") and slot.get("base") in SAFETY_TYPED:   # introduction, its aircraft versions, demonstration, its aircraft versions
+        return "Safety briefing", 0.5 if slot["base"] == "PreSafetyBriefing" else 1.5
+    if slot["group"] == "Safety briefing" and slot["stem"] in SAFETY_TYPED:
+        return "Safety briefing", SAFETY_TYPED.index(slot["stem"])
     if slot["group"] in PHASE_NAMES and slot["group"] not in ("BoardingWelcome", "Landing", "Other announcements"):
         return slot["group"], 0
     stem = slot["stem"]
