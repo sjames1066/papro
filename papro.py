@@ -1014,6 +1014,24 @@ def library_voices(cfg: dict, icao: str) -> list[str]:
     return [v["name"] for v in library_voice_items(cfg, icao) if v["key"] != DEFAULT_VOICE]
 
 
+def library_version(cfg: dict, icao: str) -> str:
+    """The newest pack version recorded in the voice.json files of an airline in your library ("" when none says)."""
+    folder = airline_folder(cfg, icao)
+    found = []
+    try:
+        for path in [folder / "voice.json", *sorted((folder / VOICES_FOLDER).glob("*/voice.json"))]:
+            try:
+                data = json.loads(path.read_text(encoding="utf-8-sig"))
+            except (OSError, ValueError):
+                continue
+            version = str(data.get("version", "")).strip() if isinstance(data, dict) else ""
+            if version:
+                found.append(version)
+    except OSError:
+        pass
+    return max(found, key=_version_tuple) if found else ""
+
+
 def remove_voice(cfg: dict, icao: str, key: str) -> str:
     """Take one voice out of an airline: its folder is moved to the PAPro backups folder, not deleted."""
     icao = check_airline_code(icao)
@@ -2198,9 +2216,9 @@ class UIMixin:
             entries = [e for e in self.catalog if e["icao"] == code]
             update = any(have_entry(e) not in (None, e["version"]) for e in entries)
             packs.append({"icao": code, "key": code, "name": airline_display_name(cfg, code, have, known_names.get(code, "")),
-                          "version": (have or {}).get("version", "Your recordings") if have else "Your recordings",
+                          "version": ((have or {}).get("version") if (have or {}).get("version") not in (None, "", "imported") else "") or library_version(cfg, code) or "Your recordings",
                           "voices": library_voices(cfg, code), "voice_items": library_voice_items(cfg, code), "local_time": local_time_on(cfg, code), "size_mb": 0,
-                          "installed": True, "update": update, "task": self.tasks.get(code),
+                          "installed": True, "own": not have, "update": update, "task": self.tasks.get(code),
                           "update_id": next((e["id"] for e in entries if have_entry(e) not in (None, e["version"])), "")})
         shown = {p["icao"] for p in packs}
         for entry in self.catalog:   # everything that can be downloaded (what you already have is marked)

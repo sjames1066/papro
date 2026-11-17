@@ -1070,7 +1070,7 @@ function packCard(p,editable){
   if(!p.task){
     if(!p.installed||p.update){const b=el("button","primary",p.update?"Update":"Install");b.disabled=snap.busy;b.onclick=()=>api("install",{id:p.id||p.update_id||p.icao});act.append(b)}
     if(p.installed&&!p.catalog){const m=el("button","ghost","Manage");m.disabled=snap.busy;m.onclick=()=>openManage(p.icao);act.append(m)}
-    if(p.installed&&!p.catalog){const own=p.version==="Your recordings";const b=el("button","danger","Uninstall");b.disabled=snap.busy;b.onclick=()=>{if(confirm(own?"Remove the "+p.name+" pack?\nThis takes your "+p.icao+" recordings out of PAPro (a copy is kept in the PAPro backups folder).":"Uninstall the "+p.name+" pack?\nYour own recordings stay."))api("uninstall",{icao:p.icao})};act.append(b)}
+    if(p.installed&&!p.catalog){const own=p.own||p.version==="Your recordings";const b=el("button","danger","Uninstall");b.disabled=snap.busy;b.onclick=()=>{if(confirm(own?"Remove the "+p.name+" pack?\nThis takes your "+p.icao+" recordings out of PAPro (a copy is kept in the PAPro backups folder).":"Uninstall the "+p.name+" pack?\nYour own recordings stay."))api("uninstall",{icao:p.icao})};act.append(b)}
   }
   if(p.task){
     const live=el("div","live");
