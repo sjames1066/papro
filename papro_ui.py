@@ -1666,7 +1666,7 @@ function renderStudio(){
   const bar=el("div","ptrack");const fill=el("i");fill.style.width=Math.round(100*c.done/c.total)+"%";bar.append(fill);pr.append(bar);root.append(pr);
   const groups=[];c.rows.forEach(r=>{let g=groups.find(x=>x.name===r.group);if(!g){g={name:r.group,rows:[]};groups.push(g)}g.rows.push(r)});
   ["Airports","Aircraft names","Boarding music","Bolt-ons"].forEach(n=>{if(!groups.find(x=>x.name===n))groups.push({name:n,rows:[]})});
-  const order=["Airports","Aircraft names","Boarding","Boarding music","Bolt-ons","Boarding complete & doors","Safety briefing","Before takeoff","Climb & cruise","Descent & approach","Landing","Deboarding","Emergency"];groups.sort((a,b)=>order.indexOf(a.name)-order.indexOf(b.name));
+  const order=["Airports","Aircraft names","Boarding","Boarding music","Bolt-ons","Boarding complete & doors","Safety briefing","Before takeoff","Climb & cruise","Descent & approach","After Landing","Deboarding","Emergency"];groups.sort((a,b)=>order.indexOf(a.name)-order.indexOf(b.name));
   groups.forEach(gr=>{
     const d=el("details","grp");d.open=openGroups.has(gr.name);d.ontoggle=()=>{d.open?openGroups.add(gr.name):openGroups.delete(gr.name)};
     const sm=el("summary",null,gr.name);sm.append(el("span",null,gr.rows.filter(r=>r.done||r.skipped).length+"/"+gr.rows.length));d.append(sm);

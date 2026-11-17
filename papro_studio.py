@@ -340,16 +340,16 @@ def slot_list(project: dict) -> list[dict]:
     add_variations("Modular_Welcome", "BoardingWelcome", GENERAL[0][1], GENERAL[0][2], W2)
     for stem, label, script in GREETINGS:
         if not stem.startswith("Welcome_"):
-            add("Landing", "time", stem, label, script, required=True, part=L1)
+            add("After Landing", "time", stem, label, script, required=True, part=L1)
     for i, word in enumerate(HOURS):
         n = i or 12
-        add("Landing", "time", f"Hour_{n:02d}", f"Local time - hour {n}", word.capitalize(), required=True, part=L1)
+        add("After Landing", "time", f"Hour_{n:02d}", f"Local time - hour {n}", word.capitalize(), required=True, part=L1)
     for minute, word in MINUTES.items():
-        add("Landing", "time", f"Min_{minute:02d}", f"Local time - minutes :{minute:02d}", word.capitalize(), required=True, part=L1)
-    add("Landing", "time", "AM", "Local time - AM (optional)", "A.M. - said after the minutes, e.g. 'four thirty-five A.M.'", part=L1)
-    add("Landing", "time", "PM", "Local time - PM (optional)", "P.M. - said after the minutes, e.g. 'four thirty-five P.M.'", part=L1)
-    add("Landing", "main", "Modular_Landing", GENERAL[1][1], GENERAL[1][2], required=True, part=L2)
-    add_variations("Modular_Landing", "Landing", GENERAL[1][1], GENERAL[1][2], L2)
+        add("After Landing", "time", f"Min_{minute:02d}", f"Local time - minutes :{minute:02d}", word.capitalize(), required=True, part=L1)
+    add("After Landing", "time", "AM", "Local time - AM (optional)", "A.M. - said after the minutes, e.g. 'four thirty-five A.M.'", part=L1)
+    add("After Landing", "time", "PM", "Local time - PM (optional)", "P.M. - said after the minutes, e.g. 'four thirty-five P.M.'", part=L1)
+    add("After Landing", "main", "Modular_Landing", GENERAL[1][1], GENERAL[1][2], required=True, part=L2)
+    add_variations("Modular_Landing", "After Landing", GENERAL[1][1], GENERAL[1][2], L2)
     for stem, label, script in GENERAL[2:]:
         add("Other announcements", "main", stem, label, script)
         if stem in VARIANT_BASES:
@@ -391,7 +391,7 @@ PHASES = [
     ("Before takeoff", ("CrewTakeSeats[PreFlight]", "CabinDim[PreFlight]", "CabinSecured[PreFlight]")),
     ("Climb & cruise", ("AfterTakeoff", "SeatbeltSignOff", "CabinService", "SeatbeltSignOn")),
     ("Descent & approach", ("DescentStarted", "CrewTakeSeats[Descent]", "CabinDim[Descent]", "CabinSecured[Descent]")),
-    ("Landing", ("WelcomeTo", "LocalTime", "Hour_", "Min_", "AM", "PM", "Modular_Landing", "AfterLanding")),
+    ("After Landing", ("WelcomeTo", "LocalTime", "Hour_", "Min_", "AM", "PM", "Modular_Landing", "AfterLanding")),
     ("Deboarding", ("DisarmDoors", "DeboardingStarted", "DeboardingComplete")),
     ("Emergency", ("Decompression",)),
 ]
@@ -410,7 +410,7 @@ def phase_of(slot: dict) -> tuple[str, int]:
         return "Safety briefing", 0.5 if slot["base"] == "PreSafetyBriefing" else 1.5
     if slot["group"] == "Safety briefing" and slot["stem"] in SAFETY_TYPED:
         return "Safety briefing", SAFETY_TYPED.index(slot["stem"])
-    if slot["group"] in PHASE_NAMES and slot["group"] not in ("BoardingWelcome", "Landing", "Other announcements"):
+    if slot["group"] in PHASE_NAMES and slot["group"] not in ("BoardingWelcome", "After Landing", "Other announcements"):
         return slot["group"], 0
     stem = slot["stem"]
     base = re.sub(r"~v\d+$", "", stem)
@@ -419,7 +419,7 @@ def phase_of(slot: dict) -> tuple[str, int]:
     for index, (name, bases) in enumerate(PHASES):
         for pos, b in enumerate(bases):
             if base == b or base.startswith(b + "[") or (b.endswith("_") and base.startswith(b)) or (b.endswith("]") and base.startswith(b[:-1])):
-                if name == "Landing" and slot["folder"] == "time" and base.startswith(("Welcome_",)):
+                if name == "After Landing" and slot["folder"] == "time" and base.startswith(("Welcome_",)):
                     continue
                 return name, pos
     legacy = {"CrewTakeSeats": 0, "CabinDim": 1, "CabinSecured": 2}   # untagged: the takeoff versions
@@ -437,7 +437,7 @@ def arrange(slots: list[dict]) -> list[dict]:
                 sl["part"] = BOARDING_LOOP
             elif re.sub(r"~v\d+$", "", sl["stem"]) == "Fuel_Tag":
                 sl["part"] = REFUEL_PART
-        elif name == "Landing" and sl["stem"] == "AfterLanding":
+        elif name == "After Landing" and sl["stem"] == "AfterLanding":
             sl["part"] = LANDING_FALLBACK
         sl["group"], sl["_pos"] = name, pos
     order = {name: i for i, name in enumerate(PHASE_NAMES)}
