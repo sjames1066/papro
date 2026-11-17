@@ -418,6 +418,8 @@ header p{margin:0;color:var(--muted);font-size:12.5px}
 .hero .company .ids{font-weight:500;color:var(--muted);letter-spacing:.02em}
 .hero .company .nm + .ids{margin-left:12px;padding-left:12px;border-left:1px solid var(--line2)}
 .hero .side .credit a{color:var(--muted);text-decoration:none}
+.hero .side .credit a.who{color:inherit;text-decoration:underline;text-decoration-color:rgba(160,166,178,.5);text-underline-offset:3px;transition:color .15s,text-decoration-color .15s}
+.hero .side .credit a.who:hover{color:#d4b66a;text-decoration-color:rgba(212,182,106,.8)}
 .hero .side .desc{font-style:italic;max-width:300px}
 .voicerow{display:flex;align-items:center;gap:10px}
 select.voice{font:600 13px 'Inter',sans-serif;color:var(--text);background:var(--surface2);border:1px solid var(--line2);border-radius:11px;padding:9px 12px;cursor:pointer;color-scheme:dark}
@@ -902,10 +904,14 @@ function renderHero(){
     if(v.selected==="random"&&cur) side.append(el("span","small","This flight: "+cur.name));
     if(cur&&(cur.artist||cur.accent)){
       const line=el("span","small credit");
-      const who=[cur.artist?"voiced by "+cur.artist:"",cur.accent].filter(Boolean).join(" · ");
-      line.append(document.createTextNode(who.charAt(0).toUpperCase()+who.slice(1)));
-      if(cur.credit_url){const a=el("a",null," ↗"); a.href=cur.credit_url; a.target="_blank"; a.rel="noopener"; line.append(a)}
-      if(cur.donate_url){const a=el("a",null," · ♥ Support"); a.href=cur.donate_url; a.target="_blank"; a.rel="noopener"; line.append(a)}
+      const link=cur.donate_url||cur.credit_url;   // the name goes to the artist's support page (Ko-fi...), else their own site
+      if(cur.artist){
+        line.append(document.createTextNode("Voiced by "));
+        if(link){const a=el("a","who",cur.artist); a.href=link; a.target="_blank"; a.rel="noopener"; a.title=cur.donate_url?"Support "+cur.artist:cur.artist; line.append(a)}
+        else line.append(document.createTextNode(cur.artist));
+      }
+      if(cur.accent) line.append(document.createTextNode((cur.artist?" · ":"")+cur.accent));
+      if(cur.donate_url&&cur.credit_url&&cur.credit_url!==cur.donate_url){const a=el("a",null," ↗"); a.href=cur.credit_url; a.target="_blank"; a.rel="noopener"; line.append(a)}
       side.append(line);
     }
   } else side.append(b);
