@@ -829,6 +829,37 @@ def has_ogg(folder: Path) -> bool:
     return folder.is_dir() and any(p.suffix.lower() == ".ogg" for p in folder.iterdir() if p.is_file())
 
 
+def adopt_aliases(cfg: dict, icao: str, staging: Path) -> list[str]:
+    """A pack can say which other airline codes use it ("also_icaos" in its voice.json): add those as aliases of this
+    airline. A code that has a pack of its own, or an alias you already set, is left alone."""
+    codes: list[str] = []
+    for path in [staging / "voice.json", *sorted(staging.glob(f"{VOICES_FOLDER}/*/voice.json"))]:
+        try:
+            found = json.loads(path.read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(found, dict) and isinstance(found.get("also_icaos"), list):
+            codes += [str(c).strip().upper() for c in found["also_icaos"]]
+    added = []
+    try:
+        aliases = load_aliases(cfg)
+        if aliases.get(icao):
+            return []
+        for code in dict.fromkeys(codes):
+            if not re.fullmatch(r"[A-Z0-9]{3}", code) or code == icao or code in aliases or airline_folder(cfg, code).is_dir():
+                continue
+            aliases[code] = icao
+            added.append(code)
+        if added:
+            save_aliases(aliases)
+            state = load_state()
+            state.pop("last", None)
+            save_state(state)
+    except (AppError, OSError):
+        log.exception("Could not add the pack's alias airlines")
+    return added
+
+
 def install_pack(cfg: dict, entry: dict, progress=None) -> str:
     """progress(text, fraction) is called as it goes; fraction is 0..1 (or None when unknown)."""
     """Install a catalog pack: its files go into Airlines\\<ICAO> (never over your own recordings) and its generic
@@ -857,6 +888,9 @@ def install_pack(cfg: dict, entry: dict, progress=None) -> str:
         staging = Path(tmp) / "extract"
         extract_pack(zip_path, staging)
         report("Installing files", 0.88)
+        also_added = adopt_aliases(cfg, icao, staging)
+        if also_added:
+            log.info("%s pack: %s now use its recordings", icao, ", ".join(also_added))
 
         try:
             # 1. Library: add the pack's files. Files you put there yourself are never overwritten.
@@ -2734,6 +2768,7 @@ class UIMixin:
                 "icao": project["icao"], "airline": project["airline"], "voice": project["voice"],
                 "artist": project.get("artist", ""), "credit_url": project.get("credit_url", ""),
                 "donate_url": project.get("donate_url", ""), "accent": project.get("accent", ""),
+                "also_icaos": ", ".join(project.get("also_icaos", [])),
                 "description": project.get("description", ""), "version": project.get("version", "1.0.0"),
                 "effect": bool(project.get("effect", True)), "airports": project["airports"], "aircraft": project.get("aircraft", []), "aircraft_on": bool(project.get("aircraft_on")),
                 "app_boost": boost_percent(cfg), "languages": self.language_snapshot(project), "language": project.get("language", ""), "aircraft_presets": papro_studio.AIRCRAFT_PRESETS, "typed_bases": papro_studio.TYPED_BASES, "aircraft_types": papro_studio.AIRCRAFT_TYPES, "extras": project["extras"], "music": project.get("music", []),
@@ -2846,6 +2881,11 @@ class UIMixin:
                         if value and not _is_http(value):
                             return {"error": "Links must start with http:// or https://"}
                         project[key] = value
+                if "also_icaos" in data:
+                    try:
+                        project["also_icaos"] = papro_studio.clean_also(str(data["also_icaos"]), project["icao"])
+                    except papro_studio.StudioError as exc:
+                        return {"error": str(exc)}
                 if "language" in data:
                     project["language"] = papro_studio.clean_language(data["language"])
                     if not project["language"]:

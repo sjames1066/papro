@@ -895,7 +895,24 @@ def voice_json(project: dict) -> dict:
             "description": project.get("description", "")}
     if project.get("language"):
         data["language"] = project["language"]
+    if project.get("also_icaos"):
+        data["also_icaos"] = list(project["also_icaos"])
     return {k: v for k, v in data.items() if v}
+
+
+def clean_also(value, own: str = "") -> list[str]:
+    """"sht, CFE EFW" (or a list) -> ["CFE", "EFW", "SHT"]: other airline codes that use this pack, 3 letters/digits each."""
+    parts = re.split(r"[\s,;]+", value) if isinstance(value, str) else list(value or [])
+    out = []
+    for p in parts:
+        p = str(p).strip().upper()
+        if not p:
+            continue
+        if not re.fullmatch(r"[A-Z0-9]{3}", p):
+            raise StudioError(f"'{p}' is not a 3-character airline code (like SHT).")
+        if p != own.upper() and p not in out:
+            out.append(p)
+    return sorted(out)
 
 
 def set_skip(root: Path, project: dict, slot_id: str, skip: bool) -> None:
@@ -953,7 +970,8 @@ def export(root: Path, project: dict, out_dir: Path, languages: dict | None = No
             archive.writestr(f"{inside}/skipped.json", json.dumps(sorted(project["skipped"]), indent=2))
         if languages and languages.get("enabled"):   # the airline's language order travels with its packs
             archive.writestr("languages.json", json.dumps(languages, indent=2))
-        archive.writestr("voice.json", json.dumps({"icao": project["icao"], "airline": project.get("airline", "")}, indent=2))
+        archive.writestr("voice.json", json.dumps({"icao": project["icao"], "airline": project.get("airline", ""),
+                                                   **({"also_icaos": list(project["also_icaos"])} if project.get("also_icaos") else {})}, indent=2))
         if logo_path(root, project).is_file():
             archive.write(logo_path(root, project), "logo.png")
     has_logo = logo_path(root, project).is_file()
@@ -964,6 +982,8 @@ def export(root: Path, project: dict, out_dir: Path, languages: dict | None = No
              "sha256": hashlib.sha256(zip_path.read_bytes()).hexdigest(),
              "size": zip_path.stat().st_size,
              "voices": [{k: v for k, v in voice_json(project).items() if k in ("name", "artist", "accent", "description")}]}
+    if project.get("also_icaos"):
+        entry["also_icaos"] = list(project["also_icaos"])
     if has_logo:
         entry["logo"] = f"https://github.com/{PACKS_REPO}/releases/download/{tag}/{tag}.png"
     entry_path = zip_path.with_suffix(".catalog.json")
@@ -1017,6 +1037,14 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
     project = create(root, icao, airline or icao, voice)
     for key, limit in (("artist", 80), ("accent", 40), ("description", 200)):
         project[key] = str(info.get(key, "")).strip()[:limit]
+    try:
+        also = info.get("also_icaos")
+        if not also:   # the airline-level voice.json sits beside the voices folder
+            outer = json.loads((src.parent.parent / "voice.json").read_text(encoding="utf-8-sig")) if src.parent.name.lower() == "voices" else {}
+            also = outer.get("also_icaos") if isinstance(outer, dict) else None
+        project["also_icaos"] = clean_also(also or [], icao)
+    except (StudioError, OSError, ValueError):
+        project["also_icaos"] = []
     if str(info.get("language", "")).strip().lower() in LANGUAGES:
         project["language"] = str(info["language"]).strip().lower()
     for key in ("credit_url", "donate_url"):
