@@ -1770,6 +1770,24 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
     return message
 
 
+def callsign_airline(cfg: dict, code: str, callsign: str) -> str | None:
+    """The airline in the callsign (SHT2A -> SHT) when it differs from the SimBrief airline (BAW) and has a pack of its
+    own or an alias - the Fenix livery reads the folder of the callsign's airline, so that folder needs filling too."""
+    m = re.match(r"([A-Z]{3})\d", (callsign or "").strip().upper())
+    if not m or m.group(1) == code:
+        return None
+    other = m.group(1)
+    try:
+        if not airline_has_pack(cfg, other):
+            return None
+        aliased = load_aliases(cfg).get(other)
+        if aliased != code and not (airline_packs_dir(cfg) / other).is_dir():
+            return None
+    except Exception:
+        return None
+    return other
+
+
 def rebuild_landing(cfg: dict, arrival: str | None) -> str:
     """You have landed and slowed down: rebuild the landing PA with the local time the sim reported (HH:MM)."""
     state = load_state()
@@ -1787,6 +1805,13 @@ def rebuild_landing(cfg: dict, arrival: str | None) -> str:
     message = apply_destination(cfg, airline, dest, choose=choose_default, variant=stored, arrival=arrival, only={"dest"},
                                 voice=state.get("voice_used", {}).get(f"{airline}_{dest}") or None,
                                 target_dir=playback_target())
+    other = None if _PLAYBACK["on"] else callsign_airline(cfg, airline, flight.get("callsign", ""))
+    if other:
+        try:
+            apply_destination(cfg, other, dest, choose=choose_default, variant=stored, arrival=arrival, only={"dest"},
+                              voice=state.get("voice_used", {}).get(f"{other}_{dest}") or state.get("voice_used", {}).get(f"{airline}_{dest}") or None)
+        except AppError:
+            log.exception("Could not rebuild the %s landing PA", other)
     state = load_state()
     state["live"] = f"{airline}_{dest}"  # the next SimBrief check must not undo this
     save_state(state)
@@ -1853,6 +1878,12 @@ def update(cfg: dict, force: bool = False, airline: str | None = None, dest: str
         return False, f"{code} to {flight['icao']}: no {code} airline pack installed"
     message = apply_destination(cfg, code, flight["icao"], variant=variant, arrival=flight.get("arrival"),
                                 target_dir=playback_target())
+    other = None if _PLAYBACK["on"] else callsign_airline(cfg, code, flight.get("callsign", ""))
+    if other:
+        try:
+            message += f"; also {apply_destination(cfg, other, flight['icao'], variant=variant, arrival=flight.get('arrival'))}"
+        except AppError as exc:
+            log.warning("Could not fill the %s pack: %s", other, exc)
     state = load_state()
     state["last"] = key
     state["applied"] = APPLIED_MARK in message
