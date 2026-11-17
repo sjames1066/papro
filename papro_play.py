@@ -21,8 +21,57 @@ log = logging.getLogger("papro")
 CHUNK = 1024
 
 
+def list_output_devices() -> list[dict]:
+    """Sound outputs on this PC: [{"name", "index", "default"}]. Windows lists every device once per audio system (MME,
+    DirectSound, WASAPI...); only one system is shown - WASAPI when there is one - so each device appears once.
+    Returns [] when no audio library / driver is available."""
+    try:
+        import sounddevice as sd
+
+        apis = sd.query_hostapis()
+        devices = sd.query_devices()
+    except Exception as exc:
+        log.info("No audio outputs listed: %s", exc)
+        return []
+    wanted = next((i for i, a in enumerate(apis) if "wasapi" in a["name"].lower()), None)
+    if wanted is None:
+        try:
+            wanted = sd.default.hostapi if sd.default.hostapi >= 0 else 0
+        except Exception:
+            wanted = 0
+    try:
+        default_index = apis[wanted].get("default_output_device", -1)
+    except Exception:
+        default_index = -1
+    out, seen = [], set()
+    for i, d in enumerate(devices):
+        if d.get("hostapi") != wanted or int(d.get("max_output_channels", 0)) <= 0 or d["name"] in seen:
+            continue
+        seen.add(d["name"])
+        out.append({"name": d["name"], "index": i, "default": i == default_index})
+    return out
+
+
+def find_device(name: str) -> int | None:
+    """Index of the output called `name`, or None (use the Windows default) if empty or no longer there."""
+    if not name:
+        return None
+    return next((d["index"] for d in list_output_devices() if d["name"] == name), None)
+
+
+def test_tone(rate: int = 44100) -> tuple[np.ndarray, int]:
+    """A short two-note chime (like the cabin 'ding-dong') for checking the output device."""
+    def note(freq: float, seconds: float) -> np.ndarray:
+        t = np.arange(int(rate * seconds)) / rate
+        return (np.sin(2 * np.pi * freq * t) + 0.3 * np.sin(4 * np.pi * freq * t)) * np.exp(-3.2 * t) * 0.5
+
+    data = np.concatenate([note(784, 0.55), note(622, 0.8)]).astype("float32")
+    return data.reshape(-1, 1), rate
+
+
 class SoundDeviceBackend:
-    """Real output through sounddevice (PortAudio). open() -> a stream with write(frames)."""
+    """Real output through sounddevice (PortAudio). open() -> a stream with write(frames). `device` is an output's
+    name (as in list_output_devices) or ""/None for the Windows default."""
 
     def __init__(self, device=None):
         self.device = device
@@ -30,7 +79,14 @@ class SoundDeviceBackend:
     def open(self, rate: int, channels: int):
         import sounddevice as sd
 
-        stream = sd.OutputStream(samplerate=rate, channels=channels, dtype="float32", device=self.device or None)
+        index = find_device(self.device) if isinstance(self.device, str) else self.device
+        try:
+            stream = sd.OutputStream(samplerate=rate, channels=channels, dtype="float32", device=index)
+        except Exception:
+            if index is None:
+                raise
+            log.warning("Could not open the chosen output - using the default instead")
+            stream = sd.OutputStream(samplerate=rate, channels=channels, dtype="float32")
         stream.start()
         return stream
 
@@ -54,6 +110,10 @@ class Player:
     def play(self, path: Path) -> None:
         self.q.put(Path(path))
 
+    def play_data(self, name: str, data: np.ndarray, rate: int) -> None:
+        """Queue sound that is already in memory (the test chime)."""
+        self.q.put((name, data, rate))
+
     def clear(self) -> None:
         """Drop what is waiting and cut the clip in progress."""
         try:
@@ -76,7 +136,7 @@ class Player:
             if path is None:
                 return
             self.stop_flag.clear()
-            self.playing = path.name
+            self.playing = path[0] if isinstance(path, tuple) else path.name
             try:
                 self._play_one(path)
             except Exception:
@@ -84,8 +144,8 @@ class Player:
             finally:
                 self.playing = None
 
-    def _play_one(self, path: Path) -> None:
-        data, rate = self.loader(path)
+    def _play_one(self, path) -> None:
+        data, rate = (path[1], path[2]) if isinstance(path, tuple) else self.loader(path)
         stream = self.backend.open(rate, data.shape[1])
         try:
             for start in range(0, len(data), CHUNK):

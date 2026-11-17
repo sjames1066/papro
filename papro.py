@@ -2112,6 +2112,7 @@ class UIMixin:
                 "local_time": bool(cfg.get("announce_local_time", True)),
                 "extra_chance": int(cfg.get("extra_chance", 25)),
                 "pa_boost": boost_percent(cfg),
+                "audio": {"device": str(cfg.get("pa_output_device") or ""), "playback": bool(cfg.get("pa_playback", True))},
                 "pa_knob": {"on": bool(cfg.get("pa_knob_on", True)), "volume": max(0, min(100, int(cfg.get("pa_knob_volume", 70))))},
                 "join_style": "pauses" if cfg.get("join_style") == "pauses" else "flow",
                 "autostart": current_autostart(),
@@ -2472,6 +2473,23 @@ class UIMixin:
                 except (TypeError, ValueError):
                     return {"error": "The volume must be a number from 0 to 100."}
             self.sync_knob()
+        elif name == "audio_devices":   # the sound outputs on this PC (listed when Settings opens, not with every refresh)
+            from papro_play import list_output_devices
+
+            return {"ok": True, "devices": [{"name": d["name"], "default": d["default"]} for d in list_output_devices()]}
+        elif name == "audio_test":   # a chime through the chosen output, at the knob's volume
+            from papro_play import Player, SoundDeviceBackend, find_device, test_tone
+
+            device = str(data.get("device") or "")
+            if device and find_device(device) is None:
+                return {"error": "That output is not available right now - pick another or refresh the list."}
+            self.sync_knob()
+            level = max(0.25, min(1.0, KNOB["volume"] / 100.0))
+            if getattr(self, "test_player", None) is not None:
+                self.test_player.close()
+            self.test_player = Player(lambda: level, SoundDeviceBackend(device))
+            chime, rate = test_tone()
+            self.test_player.play_data("test chime", chime, rate)
         elif name == "settings":
             mode = data.get("autostart")
             if mode not in ("off", "windows", "msfs"):
@@ -2482,6 +2500,11 @@ class UIMixin:
                 set_config_value("close_to_tray", bool(data.get("close_to_tray")))
                 set_config_value("minimize_to_tray", bool(data.get("minimize_to_tray")))
                 set_config_value("quit_with_msfs", bool(data.get("quit_with_msfs", True)))
+                if "audio_device" in data:
+                    set_config_value("pa_output_device", str(data.get("audio_device") or "")[:200])
+                if "audio_playback" in data and bool(data["audio_playback"]) != bool(load_config().get("pa_playback", True)):
+                    set_config_value("pa_playback", bool(data["audio_playback"]))
+                    self.aircraft_event(self.aircraft)   # switch playback on / off for the aircraft already loaded
                 chance = int(data.get("extra_chance", 25))
                 if chance in (0, 25, 50) and chance != int(load_config().get("extra_chance", 25)):
                     set_config_value("extra_chance", chance)
@@ -3133,11 +3156,16 @@ class TrayApp(UIMixin):
         self.player_for().play(path)
 
     def player_for(self):
-        if getattr(self, "player", None) is None:
-            from papro_play import Player, SoundDeviceBackend
+        from papro_play import Player, SoundDeviceBackend
 
+        device = str(load_config().get("pa_output_device") or "")
+        if getattr(self, "player", None) is not None and getattr(self, "player_device", None) != device:
+            self.player.close()   # a different output was chosen in Settings
+            self.player = None
+        if getattr(self, "player", None) is None:
             self.sync_knob()
-            self.player = Player(knob_gain, SoundDeviceBackend(load_config().get("pa_output_device") or None))
+            self.player = Player(knob_gain, SoundDeviceBackend(device))
+            self.player_device = device
         return self.player
 
     def telemetry(self, reading: dict) -> None:

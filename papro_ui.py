@@ -743,6 +743,17 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
       <div class="radio" data-v="30"><b>Louder (+30%)</b><span>Recommended if the cabin PAs sound quiet in the sim</span></div>
       <div class="radio" data-v="50"><b>Much louder (+50%)</b><span>Peaks are softly limited so it never distorts</span></div>
     </div></div>
+  <div class="setting"><div class="label">Audio output</div>
+    <div class="small" style="margin-bottom:10px">For aircraft that PAPro plays announcements for itself (not the Fenix, which plays them in the sim). Choose where the sound comes out.</div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <select class="voice" id="s-adev" style="flex:1;min-width:200px;max-width:100%"></select>
+      <button class="ghost" id="s-atest">Test sound</button>
+      <button class="ghost" id="s-arefresh" title="Look for outputs again (e.g. after plugging in a headset)">Refresh</button>
+    </div>
+    <div class="small" id="s-anote" style="margin-top:8px"></div>
+    <label class="check" style="margin:12px 0 0"><input type="checkbox" id="s-aplay"> Play the announcements through PAPro when the aircraft isn't a Fenix</label>
+    <div class="small" style="margin-top:6px">Volume and mute are on the PA knob on the Dashboard.</div>
+  </div>
   <div class="setting"><div class="label">Start PAPro automatically</div>
     <div class="radios" id="s-start">
       <div class="radio" data-v="off"><b>No</b><span>I'll start it myself</span></div>
@@ -1034,9 +1045,24 @@ function openSettings(){
   $("#s-name").value=snap.username||""; $("#s-quit").checked=s.quit_with_msfs!==false;
   pickRadio("s-start",cfg.autostart); pickRadio("s-close",cfg.close); pickRadio("s-min",cfg.min); pickRadio("s-time",cfg.time); pickRadio("s-extra",cfg.extra);pickRadio("s-boost",cfg.boost);pickRadio("s-flow",cfg.flow);
   $("#s-quit-row").style.display=cfg.autostart==="msfs"?"flex":"none";
+  const au=s.audio||{};audioChosen=au.device||"";$("#s-aplay").checked=au.playback!==false;loadAudioDevices();
   renderSetUpd();$("#m-settings").classList.add("show");
 }
 $("#settings").onclick=openSettings;
+let audioChosen="";
+async function loadAudioDevices(){
+  const sel=$("#s-adev"),note=$("#s-anote");sel.replaceChildren();
+  const r=await api("audio_devices",{});const list=(r&&r.devices)||[];
+  const add=(v,t)=>{const o=document.createElement("option");o.value=v;o.textContent=t;sel.append(o)};
+  add("","Windows default output");
+  list.forEach(d=>add(d.name,d.name+(d.default?" (default)":"")));
+  if(audioChosen&&!list.some(d=>d.name===audioChosen)){add(audioChosen,audioChosen+" (not connected)")}
+  sel.value=audioChosen;
+  note.textContent=list.length?"":"No sound outputs were found. PAPro will use the Windows default when one is available.";
+}
+$("#s-adev").onchange=()=>{audioChosen=$("#s-adev").value};
+$("#s-arefresh").onclick=loadAudioDevices;
+$("#s-atest").onclick=async()=>{const r=await api("audio_test",{device:$("#s-adev").value});if(r&&r.ok)toast("Playing a test chime")};
 function renderSetUpd(){const a=snap&&snap.app_update;$("#s-ver").textContent="PAPro v"+((snap&&snap.version)||"");
   const t=snap&&snap.update_checked?new Date(snap.update_checked):null;const when=t?"Last checked "+t.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}):"Not checked yet";
   $("#s-chk").textContent=a?"PAPro "+a.version+" is available. "+when:(t?"You're up to date. ":"")+when;
@@ -1047,7 +1073,7 @@ $("#s-cancel").onclick=()=>$("#m-settings").classList.remove("show");
 $("#s-save").onclick=async()=>{
   const name=$("#s-name").value.trim();
   if(name&&name!==(snap.username||"")){const r=await api("username",{name}); if(r.error)return}
-  const r=await api("settings",{close_to_tray:cfg.close==="yes",autostart:cfg.autostart,minimize_to_tray:cfg.min==="yes",local_time:cfg.time==="yes",extra_chance:parseInt(cfg.extra,10),pa_boost:parseInt(cfg.boost,10),join_style:cfg.flow,quit_with_msfs:$("#s-quit").checked});
+  const r=await api("settings",{close_to_tray:cfg.close==="yes",autostart:cfg.autostart,minimize_to_tray:cfg.min==="yes",local_time:cfg.time==="yes",extra_chance:parseInt(cfg.extra,10),pa_boost:parseInt(cfg.boost,10),join_style:cfg.flow,quit_with_msfs:$("#s-quit").checked,audio_device:audioChosen,audio_playback:$("#s-aplay").checked});
   if(!r.error){$("#m-settings").classList.remove("show");toast("Settings saved")}
 };
 let minSent=false;
