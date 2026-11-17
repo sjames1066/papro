@@ -18,6 +18,7 @@ import logging
 import os
 import re
 import secrets
+import socket
 import subprocess
 import sys
 import threading
@@ -130,7 +131,7 @@ class UIServer:
 
             def _host_ok(self) -> bool:
                 port = server.httpd.server_address[1]
-                return self.headers.get("Host", "") in (f"127.0.0.1:{port}", f"localhost:{port}")
+                return self.headers.get("Host", "") in (f"127.0.0.1:{port}", f"localhost:{port}", f"[::1]:{port}")
 
             def _token(self) -> str:
                 return self.headers.get("X-Token") or parse_qs(urlparse(self.path).query).get("t", [""])[0]
@@ -163,7 +164,7 @@ class UIServer:
                 if ok and write:
                     origin = self.headers.get("Origin")
                     port = server.httpd.server_address[1]
-                    ok = self.headers.get("X-Token") == server.token and origin in (None, f"http://127.0.0.1:{port}", f"http://localhost:{port}")
+                    ok = self.headers.get("X-Token") == server.token and origin in (None, f"http://127.0.0.1:{port}", f"http://localhost:{port}", f"http://[::1]:{port}")
                 if ok:
                     return True
                 self._json(403, {"error": "forbidden"})
@@ -278,6 +279,20 @@ class UIServer:
             self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         self.httpd.daemon_threads = True
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+        # "localhost" can mean ::1 (IPv6) instead of 127.0.0.1 for some programs (Electron / Node apps such as EFBx): answer there too
+        class Server6(ThreadingHTTPServer):
+            address_family = socket.AF_INET6
+
+            def server_bind(self) -> None:
+                self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+                super().server_bind()
+
+        try:
+            self.httpd6 = Server6(("::1", self.httpd.server_address[1]), Handler)
+            self.httpd6.daemon_threads = True
+            threading.Thread(target=self.httpd6.serve_forever, daemon=True).start()
+        except (OSError, AttributeError):
+            self.httpd6 = None   # no IPv6 loopback on this PC: IPv4 only, as before
 
     def url(self) -> str:
         return f"http://localhost:{self.httpd.server_address[1]}/"
