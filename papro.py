@@ -162,6 +162,7 @@ DEFAULT_CONFIG = {
     "segment_pause_ms": 60,           # pause between the pieces of a joined PA (see the parts folder)
     "pa_knob_on": True,               # the on-screen PA knob (aircraft whose PAs PAPro plays itself): pushed up = PAs audible
     "pa_knob_volume": 70,             # ... and how loud (0-100)
+    "lan_access": False,              # also answer on this PC's private network / VPN addresses (EFBx on another device)
     "pa_playback": True,              # play the PAs in PAPro itself for aircraft that can't use the Fenix folder
     "pa_output_device": "",           # sound output for those PAs ("" = the Windows default)
     "quit_with_msfs": True,           # when started with MSFS: close PAPro when the sim closes
@@ -2024,6 +2025,12 @@ class UIMixin:
         self.updating = False
         self.ui = papro_ui.UIServer(self, DATA_DIR / "ui-profile")
 
+    def lan_enabled(self) -> bool:
+        try:
+            return bool(load_config().get("lan_access", False))
+        except AppError:
+            return False
+
     def open_window(self) -> None:
         self.ui.open_window()
 
@@ -2125,6 +2132,7 @@ class UIMixin:
                 "local_time": bool(cfg.get("announce_local_time", True)),
                 "extra_chance": int(cfg.get("extra_chance", 25)),
                 "pa_boost": boost_percent(cfg),
+                "lan": {"on": bool(cfg.get("lan_access", False)), "addresses": [f"http://{ip}:{self.ui.httpd.server_address[1]}/" for ip in self.ui.private_ips()] if getattr(self.ui, "httpd", None) and self.ui.lan_on else []},
                 "audio": {"device": str(cfg.get("pa_output_device") or ""), "playback": bool(cfg.get("pa_playback", True))},
                 "pa_knob": {"on": bool(cfg.get("pa_knob_on", True)), "volume": max(0, min(100, int(cfg.get("pa_knob_volume", 70))))},
                 "join_style": "pauses" if cfg.get("join_style") == "pauses" else "flow",
@@ -2488,9 +2496,10 @@ class UIMixin:
                     return {"error": "The volume must be a number from 0 to 100."}
             self.sync_knob()
         elif name == "audio_devices":   # the sound outputs on this PC (listed when Settings opens, not with every refresh)
-            from papro_play import list_output_devices
+            import papro_play
 
-            return {"ok": True, "devices": [{"name": d["name"], "default": d["default"]} for d in list_output_devices()]}
+            devices = [{"name": d["name"], "default": d["default"]} for d in papro_play.list_output_devices()]
+            return {"ok": True, "devices": devices, "problem": papro_play.LAST_ERROR}
         elif name == "audio_test":   # a chime through the chosen output, at the knob's volume
             from papro_play import Player, SoundDeviceBackend, find_device, test_tone
 
@@ -2514,6 +2523,9 @@ class UIMixin:
                 set_config_value("close_to_tray", bool(data.get("close_to_tray")))
                 set_config_value("minimize_to_tray", bool(data.get("minimize_to_tray")))
                 set_config_value("quit_with_msfs", bool(data.get("quit_with_msfs", True)))
+                if "lan_access" in data and bool(data["lan_access"]) != bool(load_config().get("lan_access", False)):
+                    set_config_value("lan_access", bool(data["lan_access"]))
+                    self.ui.set_lan(bool(data["lan_access"]))
                 if "audio_device" in data:
                     set_config_value("pa_output_device", str(data.get("audio_device") or "")[:200])
                 if "audio_playback" in data and bool(data["audio_playback"]) != bool(load_config().get("pa_playback", True)):

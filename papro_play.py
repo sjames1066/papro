@@ -21,17 +21,27 @@ log = logging.getLogger("papro")
 CHUNK = 1024
 
 
+LAST_ERROR = ""   # why the last list_output_devices() came back empty ("missing" = library not installed)
+
+
 def list_output_devices() -> list[dict]:
     """Sound outputs on this PC: [{"name", "index", "default"}]. Windows lists every device once per audio system (MME,
     DirectSound, WASAPI...); only one system is shown - WASAPI when there is one - so each device appears once.
     Returns [] when no audio library / driver is available."""
+    global LAST_ERROR
+    LAST_ERROR = ""
     try:
         import sounddevice as sd
 
         apis = sd.query_hostapis()
         devices = sd.query_devices()
+    except ImportError:
+        LAST_ERROR = "missing"
+        log.warning("The sounddevice library is not installed in this copy of PAPro - no audio outputs to list")
+        return []
     except Exception as exc:
-        log.info("No audio outputs listed: %s", exc)
+        LAST_ERROR = str(exc)[:200]
+        log.warning("No audio outputs listed: %s", exc)
         return []
     wanted = next((i for i, a in enumerate(apis) if "wasapi" in a["name"].lower()), None)
     if wanted is None:

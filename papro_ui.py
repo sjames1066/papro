@@ -13,6 +13,7 @@ random token, and nothing here needs an extra package. The backend object (see p
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import logging
 import os
@@ -109,12 +110,16 @@ def raise_window(title: str = "PAPro", wait: float = 8.0) -> None:
     threading.Thread(target=work, daemon=True).start()
 
 
+CGNAT = ipaddress.ip_network("100.64.0.0/10")   # carrier-grade NAT range: Tailscale and some VPNs use it
+
+
 class UIServer:
     def __init__(self, backend, profile_dir: Path) -> None:
         self.backend = backend
         self.profile_dir = profile_dir
         self.token = "papro"   # not a secret: a custom header the page sends, so other websites cannot make the browser call the API
         self.httpd: ThreadingHTTPServer | None = None
+        self.lan_on = False             # Settings: let other devices on the network / a VPN open PAPro
         self.window: subprocess.Popen | None = None
         self.last_poll = 0.0
         self._lock = threading.Lock()
@@ -129,9 +134,29 @@ class UIServer:
             def log_message(self, *args) -> None:  # keep the log file quiet
                 pass
 
+            def _host(self) -> str:
+                return self.headers.get("Host", "")
+
             def _host_ok(self) -> bool:
-                port = server.httpd.server_address[1]
-                return self.headers.get("Host", "") in (f"127.0.0.1:{port}", f"localhost:{port}", f"[::1]:{port}")
+                """The address in the browser must be an address of this PC (localhost or a number like 10.0.0.82 - never a
+                made-up name that merely points here), and a request from another device is only answered when it comes from
+                a private / VPN network."""
+                host, _, port = self._host().rpartition(":")
+                if port != str(server.httpd.server_address[1]):
+                    return False
+                host = host.strip("[]")
+                if host != "localhost":
+                    try:
+                        ipaddress.ip_address(host)
+                    except ValueError:
+                        return False
+                    if host not in ("127.0.0.1", "::1") and not server.lan_on:
+                        return False
+                try:
+                    peer = ipaddress.ip_address(self.client_address[0].split("%")[0])
+                except ValueError:
+                    return False
+                return peer.is_loopback or (server.lan_on and (peer.is_private or peer in CGNAT))
 
             def _token(self) -> str:
                 return self.headers.get("X-Token") or parse_qs(urlparse(self.path).query).get("t", [""])[0]
@@ -164,7 +189,7 @@ class UIServer:
                 if ok and write:
                     origin = self.headers.get("Origin")
                     port = server.httpd.server_address[1]
-                    ok = self.headers.get("X-Token") == server.token and origin in (None, f"http://127.0.0.1:{port}", f"http://localhost:{port}", f"http://[::1]:{port}")
+                    ok = self.headers.get("X-Token") == server.token and (origin is None or origin == "http://" + self._host())
                 if ok:
                     return True
                 self._json(403, {"error": "forbidden"})
@@ -293,6 +318,71 @@ class UIServer:
             threading.Thread(target=self.httpd6.serve_forever, daemon=True).start()
         except (OSError, AttributeError):
             self.httpd6 = None   # no IPv6 loopback on this PC: IPv4 only, as before
+        try:
+            self.set_lan(bool(self.backend.lan_enabled()))
+        except Exception:
+            log.exception("Could not set up network access")
+
+    _ips_cache: tuple = (0.0, [])
+
+    def private_ips(self) -> list[str]:
+        """This PC's own network addresses that a phone / tablet / VPN peer could use (192.168.x.x, 10.x.x.x, 172.16-31.x.x,
+        100.64-127.x.x ...), including VPN adapters. Re-read at most every 20 seconds."""
+        stamp, cached = self._ips_cache
+        if time.monotonic() - stamp < 20:
+            return cached
+        found: set[str] = set()
+        try:
+            for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+                found.add(info[4][0])
+        except OSError:
+            pass
+        try:   # the address used to reach the internet / VPN (nothing is sent)
+            probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            probe.connect(("10.255.255.255", 1))
+            found.add(probe.getsockname()[0])
+            probe.close()
+        except OSError:
+            pass
+        if sys.platform == "win32":   # every adapter, VPN ones included
+            try:
+                text = subprocess.run(["ipconfig"], capture_output=True, text=True, timeout=6,
+                                      creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
+                found.update(re.findall(r"IPv4[^:\n]*:\s*([0-9]{1,3}(?:\.[0-9]{1,3}){3})", text))
+            except (OSError, subprocess.SubprocessError):
+                pass
+        ips = []
+        for ip in sorted(found):
+            try:
+                addr = ipaddress.ip_address(ip)
+            except ValueError:
+                continue
+            if (addr.is_private or addr in CGNAT) and not addr.is_loopback and not addr.is_link_local:
+                ips.append(ip)
+        self._ips_cache = (time.monotonic(), ips)
+        return ips
+
+    def set_lan(self, enabled: bool) -> None:
+        """Let other devices open PAPro (EFBx on another PC, or over a VPN). Off: PAPro listens on this PC only. On: it listens on
+        every network adapter - including a VPN that connects later - but only answers private / VPN addresses."""
+        if self.httpd is None or enabled == self.lan_on:
+            return
+        port = self.httpd.server_address[1]
+        handler = self.httpd.RequestHandlerClass
+        old = self.httpd
+        old.shutdown()           # the port is free again only once the old listener is closed
+        old.server_close()
+        try:
+            new = ThreadingHTTPServer(("0.0.0.0" if enabled else "127.0.0.1", port), handler)
+        except OSError:
+            log.warning("Could not switch PAPro's %s listener - keeping the old one", "network" if enabled else "local")
+            new = ThreadingHTTPServer(("127.0.0.1" if enabled else "0.0.0.0", port), handler)
+            enabled = not enabled
+        self.lan_on = enabled
+        new.daemon_threads = True
+        self.httpd = new
+        threading.Thread(target=new.serve_forever, daemon=True).start()
+        log.info("Network access %s%s", "on: " if enabled else "off", ", ".join(f"{ip}:{port}" for ip in self.private_ips()) if enabled else "")
 
     def url(self) -> str:
         return f"http://localhost:{self.httpd.server_address[1]}/"
@@ -792,7 +882,10 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
   </div>
   <div class="setting"><div class="label">PAPro's web address</div>
     <div class="small" style="margin-bottom:10px">PAPro also runs as a local web page. This address is always the same, so another app (such as EFBx.io) can open it as an internal app. It only works on this PC while PAPro is running.</div>
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><input id="s-addr" readonly style="flex:1;min-width:220px;font:600 12px 'Inter',sans-serif" onclick="this.select()"><button class="ghost" id="s-addr-copy">Copy</button><button class="ghost" data-open="browser">Open in browser</button></div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><input type="text" id="s-addr" readonly style="flex:1;min-width:220px;font:600 12px 'Inter',sans-serif" onclick="this.select()"><button class="ghost" id="s-addr-copy">Copy</button><button class="ghost" data-open="browser">Open in browser</button></div>
+    <label class="check" style="margin:14px 0 0"><input type="checkbox" id="s-lan"> Let other devices on my network or VPN open PAPro</label>
+    <div class="small" id="s-lan-note" style="margin-top:6px">Turn this on for EFBx on another device or over a VPN. Anyone who can reach this PC on that network could then change your PAPro settings, so only use it on a network you trust. Windows may ask whether to allow PAPro through its firewall - allow it for private networks.</div>
+    <div id="s-lan-addrs" style="margin-top:8px"></div>
   </div>
   <div class="setting"><div class="label">Fenix packs folder and log</div>
     <div style="display:flex;align-items:center;gap:12px"><button class="ghost" data-open="fenix">Open folder</button><span class="small">Where PAPro puts your announcements for the Fenix.</span></div>
@@ -1087,10 +1180,16 @@ function openSettings(){
   pickRadio("s-start",cfg.autostart); pickRadio("s-close",cfg.close); pickRadio("s-min",cfg.min); pickRadio("s-time",cfg.time); pickRadio("s-extra",cfg.extra);pickRadio("s-boost",cfg.boost);pickRadio("s-flow",cfg.flow);
   $("#s-quit-row").style.display=cfg.autostart==="msfs"?"flex":"none";
   $("#s-addr").value=snap.address||"";
+  const lan=s.lan||{};$("#s-lan").checked=!!lan.on;renderLanAddrs(lan);
   const au=s.audio||{};audioChosen=au.device||"";$("#s-aplay").checked=au.playback!==false;loadAudioDevices();
   renderSetUpd();$("#m-settings").classList.add("show");
 }
 $("#settings").onclick=openSettings;
+function renderLanAddrs(lan){const box=$("#s-lan-addrs");box.replaceChildren();
+  if(!$("#s-lan").checked)return;
+  if(!(lan.addresses||[]).length){box.append(el("div","small","Save, then reopen Settings to see the addresses other devices can use."));return}
+  (lan.addresses||[]).forEach(a=>{const row=el("div");row.style.cssText="display:flex;gap:8px;align-items:center;margin-top:4px";const i=document.createElement("input");i.type="text";i.readOnly=true;i.value=a;i.style.cssText="flex:1;min-width:200px;font:600 12px 'Inter',sans-serif";i.onclick=()=>i.select();row.append(i);box.append(row)})}
+$("#s-lan").onchange=()=>{renderLanAddrs((snap.settings&&snap.settings.lan)||{})};
 $("#s-addr-copy").onclick=async()=>{try{await navigator.clipboard.writeText($("#s-addr").value);toast("Address copied")}catch(e){$("#s-addr").select();toast("Press Ctrl+C to copy")}};
 let audioChosen="";
 async function loadAudioDevices(){
@@ -1101,7 +1200,7 @@ async function loadAudioDevices(){
   list.forEach(d=>add(d.name,d.name+(d.default?" (default)":"")));
   if(audioChosen&&!list.some(d=>d.name===audioChosen)){add(audioChosen,audioChosen+" (not connected)")}
   sel.value=audioChosen;
-  note.textContent=list.length?"":"No sound outputs were found. PAPro will use the Windows default when one is available.";
+  note.textContent=list.length?"":r&&r.problem==="missing"?"This copy of PAPro doesn't include the audio library yet. Install the latest build (or run Setup PAPro.bat if you run it from the source folder), then press Refresh.":r&&r.problem?"Couldn't read the sound outputs: "+r.problem:"No sound outputs were found. PAPro will use the Windows default when one is available.";
 }
 $("#s-adev").onchange=()=>{audioChosen=$("#s-adev").value};
 $("#s-arefresh").onclick=loadAudioDevices;
@@ -1116,7 +1215,7 @@ $("#s-cancel").onclick=()=>$("#m-settings").classList.remove("show");
 $("#s-save").onclick=async()=>{
   const name=$("#s-name").value.trim();
   if(name&&name!==(snap.username||"")){const r=await api("username",{name}); if(r.error)return}
-  const r=await api("settings",{close_to_tray:cfg.close==="yes",autostart:cfg.autostart,minimize_to_tray:cfg.min==="yes",local_time:cfg.time==="yes",extra_chance:parseInt(cfg.extra,10),pa_boost:parseInt(cfg.boost,10),join_style:cfg.flow,quit_with_msfs:$("#s-quit").checked,audio_device:audioChosen,audio_playback:$("#s-aplay").checked});
+  const r=await api("settings",{close_to_tray:cfg.close==="yes",autostart:cfg.autostart,minimize_to_tray:cfg.min==="yes",local_time:cfg.time==="yes",extra_chance:parseInt(cfg.extra,10),pa_boost:parseInt(cfg.boost,10),join_style:cfg.flow,quit_with_msfs:$("#s-quit").checked,audio_device:audioChosen,audio_playback:$("#s-aplay").checked,lan_access:$("#s-lan").checked});
   if(!r.error){$("#m-settings").classList.remove("show");toast("Settings saved")}
 };
 let minSent=false;
