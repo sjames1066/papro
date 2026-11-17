@@ -119,7 +119,7 @@ GENERAL = [  # (file name, label, what to say). The file names are Fenix's annou
     ("SeatbeltSignOn", "Seatbelt Sign On (Turbulence)", "The seatbelt signs have been switched on."),
     ("SeatbeltSignOff", "Seatbelt sign switched off", "The seatbelt signs have been switched off."),
     ("CabinService", "Cabin service begins", "Cabin service is about to begin."),
-    ("DescentStarted", "Descent has started", "We have started our descent."),
+    ("DescentStarted", "Descent Started", "We have started our descent."),
     ("AfterLanding", "After landing - generic (no airport name)", "Generic 'welcome to our destination', used where an airport has no recording."),
     ("DeboardingStarted", "Deboarding has started", "Passengers may now disembark."),
     ("DeboardingComplete", "Deboarding is complete", "Deboarding has completed."),
