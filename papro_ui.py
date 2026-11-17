@@ -16,6 +16,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import secrets
 import subprocess
 import sys
@@ -111,11 +112,28 @@ class UIServer:
     def __init__(self, backend, profile_dir: Path) -> None:
         self.backend = backend
         self.profile_dir = profile_dir
-        self.token = secrets.token_hex(16)
+        self.token = self._stable_token(profile_dir.parent / "ui-token.txt")
         self.httpd: ThreadingHTTPServer | None = None
         self.window: subprocess.Popen | None = None
         self.last_poll = 0.0
         self._lock = threading.Lock()
+
+    @staticmethod
+    def _stable_token(path: Path) -> str:
+        """The secret in the page address is made once and kept, so the address is the same every time PAPro starts
+        (other apps can wrap it, a browser can bookmark it)."""
+        try:
+            value = path.read_text(encoding="utf-8").strip()
+            if re.fullmatch(r"[0-9a-f]{32}", value):
+                return value
+        except OSError:
+            pass
+        value = secrets.token_hex(16)
+        try:
+            path.write_text(value, encoding="utf-8")
+        except OSError:
+            pass
+        return value
 
     # server -------------------------------------------------------------
     def start(self) -> None:
@@ -275,30 +293,12 @@ class UIServer:
 
     # window -------------------------------------------------------------
     def open_window(self) -> None:
-        """Open the PAPro window (or leave the already open one alone)."""
+        """Show PAPro in the default web browser. PAPro no longer opens a window of its own: the page is served at a fixed
+        address (Settings shows it) so it can also be opened by hand or wrapped in another app."""
         with self._lock:
             if self.httpd is None:
                 self.start()
-            if self.window is not None and self.window.poll() is None:
-                raise_window()  # already open (maybe behind other windows): bring it forward
-                return
-            url = self.url()
-            for exe in _browser_candidates():
-                if exe.is_file():
-                    try:
-                        self.profile_dir.mkdir(parents=True, exist_ok=True)
-                        x, y, w, h = centered_geometry()
-                        self.window = subprocess.Popen(
-                            [str(exe), f"--app={url}", f"--user-data-dir={self.profile_dir}", f"--window-size={w},{h}",
-                             f"--window-position={x},{y}",
-                             "--no-first-run", "--no-default-browser-check", "--hide-crash-restore-bubble"],
-                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                        )
-                        raise_window()
-                        return
-                    except OSError:
-                        log.exception("Could not start %s", exe)
-            webbrowser.open(url)  # no Edge/Chrome found: the default browser still works
+            webbrowser.open(self.url())
 
     def close_window(self) -> None:
         """Close the PAPro window (the browser process it runs in, with its helper processes)."""
@@ -762,8 +762,10 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
     </div>
     <label class="check" id="s-quit-row" style="margin:12px 0 0"><input type="checkbox" id="s-quit"> Close PAPro when MSFS closes</label>
   </div>
-  <div class="setting"><div class="label">Open in my web browser</div>
-    <div style="display:flex;align-items:center;gap:12px"><button class="ghost" data-open="browser">Open in browser</button><span class="small">Shows PAPro in a normal browser tab on this PC (it only works while PAPro is running).</span></div></div>
+  <div class="setting"><div class="label">PAPro's web address</div>
+    <div class="small" style="margin-bottom:10px">PAPro runs as a local web page. This address stays the same every time, so you can bookmark it or put it in another app. It only works on this PC while PAPro is running - keep it private.</div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><input id="s-addr" readonly style="flex:1;min-width:220px;font:600 12px 'Inter',sans-serif" onclick="this.select()"><button class="ghost" id="s-addr-copy">Copy</button><button class="ghost" data-open="browser">Open</button></div>
+  </div>
   <div class="setting"><div class="label">Fenix packs folder and log</div>
     <div style="display:flex;align-items:center;gap:12px"><button class="ghost" data-open="fenix">Open folder</button><span class="small">Where PAPro puts your announcements for the Fenix.</span></div>
     <div style="display:flex;align-items:center;gap:12px;margin-top:10px"><button class="ghost" data-open="log">View log</button><span class="small">Useful if something is not working.</span></div></div>
@@ -1049,10 +1051,12 @@ function openSettings(){
   $("#s-name").value=snap.username||""; $("#s-quit").checked=s.quit_with_msfs!==false;
   pickRadio("s-start",cfg.autostart); pickRadio("s-close",cfg.close); pickRadio("s-min",cfg.min); pickRadio("s-time",cfg.time); pickRadio("s-extra",cfg.extra);pickRadio("s-boost",cfg.boost);pickRadio("s-flow",cfg.flow);
   $("#s-quit-row").style.display=cfg.autostart==="msfs"?"flex":"none";
+  $("#s-addr").value=snap.address||"";
   const au=s.audio||{};audioChosen=au.device||"";$("#s-aplay").checked=au.playback!==false;loadAudioDevices();
   renderSetUpd();$("#m-settings").classList.add("show");
 }
 $("#settings").onclick=openSettings;
+$("#s-addr-copy").onclick=async()=>{try{await navigator.clipboard.writeText($("#s-addr").value);toast("Address copied")}catch(e){$("#s-addr").select();toast("Press Ctrl+C to copy")}};
 let audioChosen="";
 async function loadAudioDevices(){
   const sel=$("#s-adev"),note=$("#s-anote");sel.replaceChildren();

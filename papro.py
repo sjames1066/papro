@@ -2100,6 +2100,7 @@ class UIMixin:
             company = names.get(flight["airline"]) or names.get(aliases.get(flight["airline"], ""), "")
         return {
             "version": VERSION,
+            "address": self.ui.url() if getattr(self.ui, "httpd", None) else "",
             "company": company,
             "voices": voices,
             "hide_reminder": bool(cfg.get("hide_reminder")),
