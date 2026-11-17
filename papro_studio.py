@@ -136,7 +136,11 @@ MINUTES = {0: "o'clock", 5: "oh five", 10: "ten", 15: "fifteen", 20: "twenty", 2
            35: "thirty-five", 40: "forty", 45: "forty-five", 50: "fifty", 55: "fifty-five"}
 
 
-VARIANT_BASES = ("Modular_Welcome", "AfterTakeoff")   # PAs that can have extra takes; PAPro picks one at random each flight
+# PAs that can have extra takes; PAPro picks one at random each flight. Every announcement in the main folder, except the
+# ones PAPro builds itself from parts (the BoardingWelcome set and the generic AfterLanding): vary Modular_Welcome /
+# Modular_Landing for those.
+VARIANT_BASES = ("Modular_Welcome", "Modular_Landing") + tuple(
+    stem for stem, _, _ in GENERAL[2:] if not stem.startswith("BoardingWelcome") and stem != "AfterLanding")
 MODE_SLOTS = ("CabinService", "AfterTakeoff", "SafetyBriefing", "Decompression")  # Prerecorded by default; "Manual" adds [Manual] to the file name
 MODES = ("Prerecorded", "Manual")
 
@@ -338,6 +342,7 @@ def slot_list(project: dict) -> list[dict]:
     add("Landing", "time", "AM", "Local time - AM (optional)", "A.M. - said after the minutes, e.g. 'four thirty-five A.M.'", part=L1)
     add("Landing", "time", "PM", "Local time - PM (optional)", "P.M. - said after the minutes, e.g. 'four thirty-five P.M.'", part=L1)
     add("Landing", "main", "Modular_Landing", GENERAL[1][1], GENERAL[1][2], required=True, part=L2)
+    add_variations("Modular_Landing", "Landing", GENERAL[1][1], GENERAL[1][2], L2)
     for stem, label, script in GENERAL[2:]:
         add("Other announcements", "main", stem, label, script)
         if stem in VARIANT_BASES:
@@ -1062,7 +1067,7 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
             project["aircraft_on"] = True
         elif folder == "extra" and EXTRA_NAME.match(stem) and stem not in project["extras"]:
             project["extras"].append(stem)
-        elif folder == "main" and re.match(rf"^({'|'.join(VARIANT_BASES)})~v\d+$", stem):
+        elif folder == "main" and re.match(rf"^({'|'.join(re.escape(b) for b in VARIANT_BASES)})~v\d+$", stem):
             base, n = stem.split("~v")
             if int(n) not in project.setdefault("variants", {}).setdefault(base, []):
                 project["variants"][base].append(int(n))
@@ -1115,6 +1120,43 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
     save(root, project)
     _import_logo(root, project, src)
     return project
+
+
+LEVEL_TOLERANCE = 1.0   # LU: a clip within this of the target counts as level
+
+
+def check_levels(root: Path, project: dict, target: float, fix: bool = False, progress=None) -> dict:
+    """Measure the loudness of every speech clip in the pack (music is left alone). Clips more than LEVEL_TOLERANCE from
+    the target are listed; with fix=True they are set to the target by gain alone - the PA sound is not applied again, so
+    clips that already have it (imported ones) keep their EQ. Imported clips get their measured loudness remembered, so
+    the checklist can show it."""
+    pack = project_dir(root, project["icao"], project["voice"]) / "pack"
+    by_file = {(s["folder"], s["file"]): s for s in slot_list(project)}
+    files = [p for p in sorted(pack.rglob("*.ogg")) if not p.name.startswith("BoardingMusic~")] if pack.is_dir() else []
+    off, fixed, errors, measured = [], 0, 0, 0
+    for i, path in enumerate(files):
+        if progress:
+            progress(i / max(1, len(files)))
+        try:
+            lufs = papro_audio.file_loudness(path)
+            if lufs is None or lufs < -60:
+                continue
+            measured += 1
+            if abs(lufs - target) > LEVEL_TOLERANCE:
+                if fix:
+                    lufs = papro_audio.level_clip(path, target) or lufs
+                    fixed += 1
+                else:
+                    off.append({"file": f"{path.parent.name}/{path.name}", "lufs": round(lufs, 1)})
+        except Exception:
+            errors += 1
+            continue
+        slot = by_file.get((path.parent.name, path.name))
+        info = project.get("slots", {}).get(slot["id"]) if slot else None
+        if info is not None and (info.get("imported") or fix):
+            info["lufs_out"] = round(lufs, 1)
+    save(root, project)
+    return {"checked": measured, "off": off, "fixed": fixed, "errors": errors, "target": target}
 
 
 def install_to_library(root: Path, project: dict, airline_dir: Path) -> Path:

@@ -2905,6 +2905,12 @@ class UIMixin:
                 papro_studio.save(STUDIO_DIR, project)
                 if changed:
                     papro_studio.reprocess_all(STUDIO_DIR, project, self.studio_target(cfg, project["icao"])[0])
+            elif name == "levels":   # check (or, with fix, set) the volume of the pack's clips
+                try:
+                    result = papro_studio.check_levels(STUDIO_DIR, project, self.studio_target(cfg, project["icao"])[0], bool(data.get("fix")))
+                except Exception as exc:
+                    return {"error": f"Could not check the clips: {exc}"}
+                return {"ok": True, **result}
             elif name == "upgrade":
                 count = papro_studio.upgrade_names(STUDIO_DIR, project)
                 return {"ok": True, "renamed": count}

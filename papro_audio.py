@@ -337,6 +337,18 @@ def process_clip(src: Path, dst: Path, target_lufs: float, effect: bool = True) 
             "lufs_out": None if lufs_out is None else round(lufs_out, 1)}
 
 
+def level_clip(path: Path, target_lufs: float) -> float | None:
+    """Re-level an existing clip to target_lufs by gain alone (no PA sound, no other change - it may already have it).
+    Returns the new loudness."""
+    data, rate = _read(Path(path))
+    now = loudness_lufs(data, rate)
+    if now is None:
+        return None
+    data = _limit(data * float(10 ** ((target_lufs - now) / 20)))
+    _write(Path(path), data.astype("float32"), rate)
+    return loudness_lufs(data, rate)
+
+
 def _is_vorbis_ogg(path: Path) -> bool:
     """True for a genuine Ogg Vorbis file (not an mp3 renamed .ogg, and not Opus or FLAC inside an Ogg)."""
     try:

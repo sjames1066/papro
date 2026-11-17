@@ -1518,7 +1518,7 @@ function slotRow(c,r){
   };
   d.append(scl);
   if(r.variants&&r.variants.length)d.append(el("div","st","Also has: "+r.variants.join(", ")));
-  if(r.done)d.append(el("div","st",r.imported?"From your library - unchanged":r.seconds+" s"+(r.music?" · unchanged":"")));
+  if(r.done)d.append(el("div","st",r.imported?"From your library - unchanged"+(r.lufs!=null?" · "+r.lufs+" LUFS":""):r.seconds+" s"+(r.music?" · unchanged":"")));
   const act=el("div","act");
   const rec=el("button","rec",r.done?"● Re-record":"● Record");rec.onclick=()=>{if(recState&&recState.slot===r.id){recState.stop()}else startRec(r.id,rec)};
   if(r.music)rec.style.display="none";
@@ -1533,10 +1533,10 @@ function slotRow(c,r){
   if(r.done||isAp){const p=el("button","pp","▶");p.dataset.id=r.id;p.title="Play";p.onclick=()=>togglePlay(c,r.id);const sp2=el("button","stp","⏹");sp2.dataset.id=r.id;sp2.title="Stop";sp2.style.display="none";sp2.onclick=stopPlay;const x=el("button","danger","✕");x.title=isAp?(isAc?"Remove this aircraft":"Remove this airport")+(r.done?" and its recording":""):"Remove";let armT=null;x.onclick=()=>{if(!x.classList.contains("arm")){x.classList.add("arm");x.textContent="Delete?";x.title="Click again to delete";armT=setTimeout(()=>{x.classList.remove("arm");x.textContent="✕";x.title="Remove"},3500);return}clearTimeout(armT);isAp?studio(isAc?"aircraft":"airport",{...pid(c),code:apCode,remove:true}):studio("delete",{...pid(c),slot:r.id})};if(r.done)act.append(p,sp2);act.append(x)}
   if(!r.typed&&(r.stem==="PreSafetyBriefing"||r.stem==="SafetyBriefing")){const at=el("button","ghost","+ Aircraft version");at.title="Record a different version of this announcement for particular aircraft types (A320, B738...). It replaces this one on those aircraft.";
     at.onclick=async()=>{const x=await studio("typed_add",{...pid(c),base:r.stem,types:["ALL"]});if(x.ok){openGroups.add(r.group);toast("Added below - choose which aircraft types it is for");studioSig="";renderStudio()}};act.append(at)}
-  if(r.variantable){const av=el("button","ghost","+ Variation");av.title="Record another take of this announcement. PAPro picks one at random each flight.";av.onclick=async()=>{openGroups.add(r.group);await studio("variant",{...pid(c),base:r.stem});studioSig="";renderStudio()};act.append(av)}
   if(r.typed){const xt=el("button","danger","✕");xt.title="Remove this aircraft PA";let armT=null;xt.onclick=()=>{if(!xt.classList.contains("arm")){xt.classList.add("arm");xt.textContent="Delete?";armT=setTimeout(()=>{xt.classList.remove("arm");xt.textContent="✕"},3000);return}clearTimeout(armT);studio("typed_remove",{...pid(c),slot:r.id})};act.append(xt)}
   if(r.variant_of){const xv=el("button","danger","✕");xv.title="Remove this variation";let armV=null;xv.onclick=()=>{if(!xv.classList.contains("arm")){xv.classList.add("arm");xv.textContent="Delete?";armV=setTimeout(()=>{xv.classList.remove("arm");xv.textContent="✕"},3500);return}clearTimeout(armV);studio("variant",{...pid(c),base:r.variant_of,n:r.variant_n,remove:true})};act.append(xv)}
   if(r.custom){const cs=el("button","sq ghost","✕");cs.title="Remove this item's script";cs.style.fontSize="11px";cs.onclick=()=>studio("script",{...pid(c),slot:r.id,text:""});act.insertBefore(cs,up.nextSibling)}
+  if(r.variantable){const av=el("button","sq ghost","+");av.title="Add a variation: record another take of this announcement. PAPro picks one at random each flight.";av.style.fontSize="18px";av.style.lineHeight="1";av.onclick=async()=>{openGroups.add(r.group);await studio("variant",{...pid(c),base:r.stem});studioSig="";renderStudio()};act.append(av)}
   d.append(act);return d;
 }
 function renderStudio(){
@@ -1620,6 +1620,17 @@ function renderStudio(){
   [[true,"Cabin-PA sound on","Band-limited speaker voice with light compression, like the original announcements. Recommended."],[false,"Leave my recording as it is","Only the loudness is matched."]].forEach(([v,t,sub])=>{
     const r=el("div","radio"+(c.effect===v?" sel":""));r.append(el("b",null,t),el("span",null,sub));r.onclick=async()=>{if(c.effect===v)return;toast("Reprocessing...");await studio("details",{...save(),effect:v});toast("Reprocessed with "+(v?"the PA sound":"no effect"))};ef.append(r)});
   card.append(ef);
+  { const lv=el("div","lvlrow");lv.style.cssText="margin-top:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap";
+    const cb=el("button","ghost","Check clip volume"),msg=el("span","small","");
+    cb.title="Measures every clip in this pack against the target loudness. Imported clips are only measured, never changed unless you ask.";
+    const run=async(fix)=>{cb.disabled=true;msg.textContent=fix?"Matching volume...":"Measuring... (a few seconds per 100 clips)";
+      const r=await api("studio_levels",{...pid(c),fix:fix});cb.disabled=false;studioSig="";
+      if(r.error){msg.textContent=r.error;return}
+      if(fix){msg.textContent="Matched "+r.fixed+" clip"+(r.fixed==1?"":"s")+" to "+r.target+" LUFS.";return}
+      if(!r.off.length){msg.textContent="All "+r.checked+" clips are within 1 dB of "+r.target+" LUFS.";return}
+      msg.textContent=r.off.length+" of "+r.checked+" clips are more than 1 dB from "+r.target+" LUFS (e.g. "+r.off.slice(0,3).map(o=>o.file.split("/").pop().replace(/\.ogg$/,"")+" "+o.lufs).join(", ")+").";
+      const fx=el("button","ghost","Match volume");fx.title="Set those clips to "+r.target+" LUFS by volume alone (no PA sound is added, so clips that already have it keep their EQ)";fx.onclick=()=>run(true);lv.append(fx)};
+    cb.onclick=()=>{lv.querySelectorAll("button:not(:first-child)").forEach(b=>b.remove());run(false)};lv.append(cb,msg);card.append(lv)}
   card.append(el("div","sd-meta","Record in a quiet room, about a hand's width from the microphone. Your untouched recording is always kept, so you can switch the effect on or off any time."));
   { // the details can be folded away; the choice is remembered
     const h=card.firstChild,body=el("div");[...card.children].slice(1).forEach(n=>body.append(n));card.append(body);
