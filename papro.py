@@ -3140,8 +3140,7 @@ class TrayApp(UIMixin):
             _PLAYBACK["on"] = False
         if _PLAYBACK["on"] != before:   # build the PAs where they are needed (the Fenix folder / PAPro's own playback folder)
             state = load_state()
-            state.pop("last", None)
-            state.pop("live", None)
+            state.pop("last", None)   # rebuild for the new place (the landing time already taken from the sim is kept)
             save_state(state)
             self.wake.set()
 
