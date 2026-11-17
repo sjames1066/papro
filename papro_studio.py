@@ -139,8 +139,14 @@ MINUTES = {0: "o'clock", 5: "oh five", 10: "ten", 15: "fifteen", 20: "twenty", 2
 # PAs that can have extra takes; PAPro picks one at random each flight. Every announcement in the main folder, except the
 # ones PAPro builds itself from parts (the BoardingWelcome set and the generic AfterLanding): vary Modular_Welcome /
 # Modular_Landing for those.
-VARIANT_BASES = ("Modular_Welcome", "Modular_Landing") + tuple(
-    stem for stem, _, _ in GENERAL[2:] if not stem.startswith("BoardingWelcome") and stem != "AfterLanding")
+VARIANT_BASES = ("Modular_Welcome", "Modular_Landing", "Welcome_Morning", "Welcome_Afternoon", "Welcome_Evening", "Welcome_Night",
+                 "Fuel_Tag") + tuple(stem for stem, _, _ in GENERAL[2:] if stem != "AfterLanding")
+VARIANT_FOLDERS = {"Welcome_Morning": "time", "Welcome_Afternoon": "time", "Welcome_Evening": "time", "Welcome_Night": "time",
+                   "Fuel_Tag": "fuel"}   # where the takes of a PA live when it is not in main
+
+
+def variant_folder(base: str) -> str:
+    return VARIANT_FOLDERS.get(base, "main")
 MODE_SLOTS = ("CabinService", "AfterTakeoff", "SafetyBriefing", "Decompression")  # Prerecorded by default; "Manual" adds [Manual] to the file name
 MODES = ("Prerecorded", "Manual")
 
@@ -318,17 +324,18 @@ def slot_list(project: dict) -> list[dict]:
                     "script": script, "required": required, "file": f"{out_name or stem}{tag}.ogg",
                     "modes": modes, "mode": mode, "part": part})
 
+    def add_variations(stem, group, label, script, part=None, folder="main"):
+        out[-1]["variantable"] = True
+        for n in project.get("variants", {}).get(stem, []):
+            add(group, folder, f"{stem}~v{n}", f"{label} - variation {n}", script, part=part)
+            out[-1].update({"variant_of": stem, "variant_n": n})
+
     W1, W2 = "Part 1 - the greeting (ends on the start of the destination; the airport name follows)", "Part 2 - the rest of the welcome (after the airport name)"
     L1, L2 = "Part 1 - the arrival (welcome to, airport name, local time)", "Part 2 - the rest of the landing (after the time)"
     for stem, label, script in GREETINGS:
         if stem.startswith("Welcome_"):
             add("BoardingWelcome", "time", stem, label, script, required=stem != "Welcome_Night", part=W1)
-    def add_variations(stem, group, label, script, part=None):
-        out[-1]["variantable"] = True
-        for n in project.get("variants", {}).get(stem, []):
-            add(group, "main", f"{stem}~v{n}", f"{label} - variation {n}", script, part=part)
-            out[-1].update({"variant_of": stem, "variant_n": n})
-
+            add_variations(stem, "BoardingWelcome", label, script, W1, "time")
     add("BoardingWelcome", "main", "Modular_Welcome", GENERAL[0][1], GENERAL[0][2], required=True, part=W2)
     add_variations("Modular_Welcome", "BoardingWelcome", GENERAL[0][1], GENERAL[0][2], W2)
     for stem, label, script in GREETINGS:
@@ -356,6 +363,7 @@ def slot_list(project: dict) -> list[dict]:
             add("Aircraft names", "aircraft", f"{icao}_{slug(name)}", name, f'"{name}"', required=False)
     add("Refuelling", "fuel", "Fuel_Tag", "While refuelling - tag-on",
         "Added to the welcome while the aircraft is being refuelled, e.g. 'We are currently refuelling, so please keep your seatbelt unfastened...'")
+    add_variations("Fuel_Tag", "Refuelling", "While refuelling - tag-on", "Added to the welcome while the aircraft is being refuelled.", None, "fuel")
     for name in project.get("music", []):
         add("Boarding music", "main", f"BoardingMusic~{name}", f"Track: {name}",
             "Upload a track you have the rights to use. It is shown in the cabin crew panel under this name; no PA sound is applied.")
@@ -365,7 +373,7 @@ def slot_list(project: dict) -> list[dict]:
         shown = "all aircraft" if entry["types"] == ["ALL"] else ", ".join(entry["types"])
         in_safety = entry["base"] in SAFETY_TYPED   # these sit right under the normal safety briefing PA they replace
         label = next((lab for stem0, lab, _ in GENERAL if stem0 == entry["base"]), TYPED_BASES[entry["base"]]) if in_safety else TYPED_BASES[entry["base"]]
-        add("Safety briefing" if in_safety else "Aircraft-specific PAs", "main", stem, f"{label} ({shown})",
+        add("Safety briefing" if in_safety else "Other announcements", "main", stem, f"{label} ({shown})",
             "this announcement as it should sound on the aircraft types you choose. It replaces the normal one on those types.")
         out[-1].update({"typed": True, "base": entry["base"], "types": entry["types"], "n": entry.get("n", 1)})
     for name in project.get("extras", []):
@@ -380,7 +388,6 @@ PHASES = [
     ("Boarding music", ()), ("Bolt-ons", ()),
     ("Boarding complete & doors", ("BoardingComplete", "ArmDoors")),
     ("Safety briefing", ("PreSafetyBriefing", "SafetyBriefing")),
-    ("Aircraft-specific PAs", ()),
     ("Before takeoff", ("CrewTakeSeats[PreFlight]", "CabinDim[PreFlight]", "CabinSecured[PreFlight]")),
     ("Climb & cruise", ("AfterTakeoff", "SeatbeltSignOff", "CabinService", "SeatbeltSignOn")),
     ("Descent & approach", ("DescentStarted", "CrewTakeSeats[Descent]", "CabinDim[Descent]", "CabinSecured[Descent]")),
@@ -389,7 +396,7 @@ PHASES = [
     ("Emergency", ("Decompression",)),
 ]
 PHASE_NAMES = [name for name, _ in PHASES]
-BOARDING_LOOP = "While passengers board - generic welcomes (no destination)"
+BOARDING_LOOP = "Generic Boarding [no destination file]"
 REFUEL_PART = "While refuelling - the tag-on"
 LANDING_FALLBACK = "Fallback - if an airport has no recording"
 
@@ -407,6 +414,8 @@ def phase_of(slot: dict) -> tuple[str, int]:
         return slot["group"], 0
     stem = slot["stem"]
     base = re.sub(r"~v\d+$", "", stem)
+    if slot.get("typed"):   # an aircraft version sits right under the PA it replaces
+        base = slot["base"]
     for index, (name, bases) in enumerate(PHASES):
         for pos, b in enumerate(bases):
             if base == b or base.startswith(b + "[") or (b.endswith("_") and base.startswith(b)) or (b.endswith("]") and base.startswith(b[:-1])):
@@ -426,7 +435,7 @@ def arrange(slots: list[dict]) -> list[dict]:
         if name == "Boarding":
             if sl["stem"].startswith("BoardingWelcome["):
                 sl["part"] = BOARDING_LOOP
-            elif sl["stem"] == "Fuel_Tag":
+            elif re.sub(r"~v\d+$", "", sl["stem"]) == "Fuel_Tag":
                 sl["part"] = REFUEL_PART
         elif name == "Landing" and sl["stem"] == "AfterLanding":
             sl["part"] = LANDING_FALLBACK
@@ -618,7 +627,7 @@ def add_variant(root: Path, project: dict, base: str) -> int:
 
 
 def remove_variant(root: Path, project: dict, base: str, n: int) -> None:
-    slot_id = f"main/{base}~v{n}"
+    slot_id = f"{variant_folder(base)}/{base}~v{n}"
     try:
         delete_slot(root, project, slot_id)
     except StudioError:
@@ -1067,7 +1076,7 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
             project["aircraft_on"] = True
         elif folder == "extra" and EXTRA_NAME.match(stem) and stem not in project["extras"]:
             project["extras"].append(stem)
-        elif folder == "main" and re.match(rf"^({'|'.join(re.escape(b) for b in VARIANT_BASES)})~v\d+$", stem):
+        elif re.match(rf"^({'|'.join(re.escape(b) for b in VARIANT_BASES)})~v\d+$", stem) and folder == variant_folder(stem.split("~v")[0]):
             base, n = stem.split("~v")
             if int(n) not in project.setdefault("variants", {}).setdefault(base, []):
                 project["variants"][base].append(int(n))

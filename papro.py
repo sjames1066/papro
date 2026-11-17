@@ -1398,13 +1398,30 @@ def is_modular(name: str) -> bool:
     return name.lower().startswith("modular_")
 
 
+def take_choice(key: str, base: Path | None, folders, stem: str | None = None) -> Path | None:
+    """`base` or one of its extra takes (<stem>~v2.ogg ... in `folders`), rolled once per flight like the other variations.
+    With no base file the takes alone are used."""
+    stem = stem or (base.stem if base else "")
+    takes = [base] if base else []
+    for folder in folders:
+        if folder is None or not Path(folder).is_dir():
+            continue
+        for path in sorted(Path(folder).iterdir()):
+            match = VARIANT_RE.match(path.name) if path.is_file() else None
+            if match and match["base"].lower() == stem.lower() and is_variant(path.name) and path.name not in {t.name for t in takes}:
+                takes.append(path)
+    return choose_variant(key, takes) if takes else None
+
+
 def fuel_tag(base: Path) -> Path | None:
-    """The tag-on said while refuelling: the first sound file in fuel that isn't an airport clip (BAW_EGLL.ogg)."""
+    """The tag-on said while refuelling: the first sound file in fuel that isn't an airport clip (BAW_EGLL.ogg), or one of
+    its extra takes (Fuel_Tag~v2.ogg)."""
     folder = base / "fuel"
     if folder.is_dir():
         for path in sorted(folder.iterdir()):
-            if path.is_file() and path.suffix.lower() == ".ogg" and not re.match(r"[A-Za-z0-9]{3}_[A-Za-z0-9]{4}", path.name):
-                return path
+            if path.is_file() and path.suffix.lower() == ".ogg" and not re.match(r"[A-Za-z0-9]{3}_[A-Za-z0-9]{4}", path.name) \
+                    and not is_variant(path.name):
+                return take_choice(f"{base.parent.name}/{base.name}/{path.stem}", path, [folder])
     return None
 
 
@@ -1443,7 +1460,12 @@ def clock_tag() -> str:
 def welcome_pieces(lib_dir: Path, clip: Path, tag: str, tail: list[Path] | None = None) -> list[Path] | None:
     """Good morning/afternoon/evening + destination + rest of the welcome aboard (+ fuel tag-on, + a bolt-on), or None
     if a piece is missing."""
-    greeting = part_file(lib_dir, f"Welcome_{tag.capitalize()}") or (part_file(lib_dir, "Welcome_Evening") if tag == "night" else None)
+    name = f"Welcome_{tag.capitalize()}"
+    if not part_file(lib_dir, name) and tag == "night":
+        name = "Welcome_Evening"
+    base_file = part_file(lib_dir, name)
+    greeting = take_choice(f"{lib_dir.parent.name}/{lib_dir.name}/{name}", base_file,
+                           [lib_dir / PARTS_FOLDER, lib_dir / LEGACY_PARTS], name) if base_file else None
     pieces = [greeting, clip, modular_piece(lib_dir, "Welcome")]
     return [*pieces, *(tail or [])] if all(pieces) else None
 
@@ -1757,6 +1779,8 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
             for name in target_names(pristine, mapping, own_main):
                 dst = fenix_dir / name
                 generic = own_main / name if own_main and (own_main / name).is_file() else (pristine / name if pristine else None)
+                if generic and generic.is_file():   # extra takes of the generic PA (BoardingWelcome[Morning]~v2.ogg)
+                    generic = take_choice(f"{airline}/{voice_dir.name}/{name}", generic, [own_main, pristine], Path(name).stem) or generic
                 pieces = None
                 if joined and clip:
                     if folder == "dest":

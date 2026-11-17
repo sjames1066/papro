@@ -1531,7 +1531,8 @@ function slotRow(c,r){
   if(!r.done&&!r.music){const sk=el("button","ghost",r.skipped?"Unskip":"Skip");sk.title=r.skipped?"Put this back on the checklist":"Not recording this one: counts as done on the checklist";sk.onclick=()=>studio("skip",{...pid(c),slot:r.id,skip:!r.skipped});act.append(sk)}
   const isAc=r.folder==="aircraft",isAp=r.folder==="airports"||isAc,apCode=r.folder==="airports"?r.id.slice(("airports/"+c.icao+"_").length):r.label;
   if(r.done||isAp){const p=el("button","pp","▶");p.dataset.id=r.id;p.title="Play";p.onclick=()=>togglePlay(c,r.id);const sp2=el("button","stp","⏹");sp2.dataset.id=r.id;sp2.title="Stop";sp2.style.display="none";sp2.onclick=stopPlay;const x=el("button","danger","✕");x.title=isAp?(isAc?"Remove this aircraft":"Remove this airport")+(r.done?" and its recording":""):"Remove";let armT=null;x.onclick=()=>{if(!x.classList.contains("arm")){x.classList.add("arm");x.textContent="Delete?";x.title="Click again to delete";armT=setTimeout(()=>{x.classList.remove("arm");x.textContent="✕";x.title="Remove"},3500);return}clearTimeout(armT);isAp?studio(isAc?"aircraft":"airport",{...pid(c),code:apCode,remove:true}):studio("delete",{...pid(c),slot:r.id})};if(r.done)act.append(p,sp2);act.append(x)}
-  if(!r.typed&&(r.stem==="PreSafetyBriefing"||r.stem==="SafetyBriefing")){const at=el("button","ghost","+ Aircraft version");at.title="Record a different version of this announcement for particular aircraft types (A320, B738...). It replaces this one on those aircraft.";
+  if(!r.typed&&!r.variant_of&&Object.keys(c.typed_bases||{}).includes(r.stem)){const at=el("button","sq ghost");at.title="+ aircraft version";at.setAttribute("aria-label","+ aircraft version");
+    at.innerHTML='<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg>';
     at.onclick=async()=>{const x=await studio("typed_add",{...pid(c),base:r.stem,types:["ALL"]});if(x.ok){openGroups.add(r.group);toast("Added below - choose which aircraft types it is for");studioSig="";renderStudio()}};act.append(at)}
   if(r.typed){const xt=el("button","danger","✕");xt.title="Remove this aircraft PA";let armT=null;xt.onclick=()=>{if(!xt.classList.contains("arm")){xt.classList.add("arm");xt.textContent="Delete?";armT=setTimeout(()=>{xt.classList.remove("arm");xt.textContent="✕"},3000);return}clearTimeout(armT);studio("typed_remove",{...pid(c),slot:r.id})};act.append(xt)}
   if(r.variant_of){const xv=el("button","danger","✕");xv.title="Remove this variation";let armV=null;xv.onclick=()=>{if(!xv.classList.contains("arm")){xv.classList.add("arm");xv.textContent="Delete?";armV=setTimeout(()=>{xv.classList.remove("arm");xv.textContent="✕"},3500);return}clearTimeout(armV);studio("variant",{...pid(c),base:r.variant_of,n:r.variant_n,remove:true})};act.append(xv)}
@@ -1664,8 +1665,8 @@ function renderStudio(){
     ub.onclick=async()=>{const r=await studio("unskip_all",pid(c));if(r&&r.ok)toast(r.count+" announcement"+(r.count==1?"":"s")+" put back on the checklist")};pr.append(ub)}
   const bar=el("div","ptrack");const fill=el("i");fill.style.width=Math.round(100*c.done/c.total)+"%";bar.append(fill);pr.append(bar);root.append(pr);
   const groups=[];c.rows.forEach(r=>{let g=groups.find(x=>x.name===r.group);if(!g){g={name:r.group,rows:[]};groups.push(g)}g.rows.push(r)});
-  ["Airports","Aircraft names","Aircraft-specific PAs","Boarding music","Bolt-ons"].forEach(n=>{if(!groups.find(x=>x.name===n))groups.push({name:n,rows:[]})});
-  const order=["Airports","Aircraft names","Boarding","Boarding music","Bolt-ons","Boarding complete & doors","Safety briefing","Aircraft-specific PAs","Before takeoff","Climb & cruise","Descent & approach","Landing","Deboarding","Emergency"];groups.sort((a,b)=>order.indexOf(a.name)-order.indexOf(b.name));
+  ["Airports","Aircraft names","Boarding music","Bolt-ons"].forEach(n=>{if(!groups.find(x=>x.name===n))groups.push({name:n,rows:[]})});
+  const order=["Airports","Aircraft names","Boarding","Boarding music","Bolt-ons","Boarding complete & doors","Safety briefing","Before takeoff","Climb & cruise","Descent & approach","Landing","Deboarding","Emergency"];groups.sort((a,b)=>order.indexOf(a.name)-order.indexOf(b.name));
   groups.forEach(gr=>{
     const d=el("details","grp");d.open=openGroups.has(gr.name);d.ontoggle=()=>{d.open?openGroups.add(gr.name):openGroups.delete(gr.name)};
     const sm=el("summary",null,gr.name);sm.append(el("span",null,gr.rows.filter(r=>r.done||r.skipped).length+"/"+gr.rows.length));d.append(sm);
@@ -1685,12 +1686,6 @@ function renderStudio(){
         add.onclick=async()=>{if(!i.value.trim())return;const text=i.value;i.value="";i.blur();const r=await studio("aircraft",{...pid(c),code:text});if(!r.ok)i.value=text;openGroups.add("Aircraft names");studioSig="";renderStudio()};
         i.addEventListener("keydown",e=>{if(e.key==="Enter")add.click()});line.append(i,add);d.append(line);
       }
-    }
-    if(gr.name==="Aircraft-specific PAs"){
-      d.append(el("div","small","Your own versions of the safety demonstration, pre-safety briefing or boarding welcome for particular aircraft types (A320, B739, B38M...). On a flight with one of those types the matching version plays instead of the normal one; any other aircraft keeps the normal one. Pick the types after adding."));
-      const line=el("div","addline"),sel=el("select","voice");Object.entries(c.typed_bases||{}).forEach(([k,v])=>{const o=el("option",null,v);o.value=k;sel.append(o)});
-      const add=el("button",null,"Add aircraft PA");add.onclick=async()=>{const r=await studio("typed_add",{...pid(c),base:sel.value,types:["ALL"]});if(r.ok){openGroups.add("Aircraft-specific PAs");toast("Added - choose its aircraft types with the ✈ button, then record it")}studioSig="";renderStudio()};
-      line.append(sel,add);d.append(line);
     }
     if(gr.name==="Boarding music"){
       d.append(el("div","small","Background music played while passengers board. Add a track name, then upload the audio - use only music you have the right to share. It is not recorded or processed, just converted to .ogg."));
