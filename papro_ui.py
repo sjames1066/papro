@@ -812,7 +812,6 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
   <h3 id="mg-title">Manage pack</h3>
   <p id="mg-sub" class="small"></p>
   <div id="mg-voices"></div>
-  <div style="display:flex;gap:10px;align-items:center;margin-top:14px"><input type="text" id="mg-new" placeholder="New voice name, e.g. Emma" maxlength="40" autocomplete="off" style="flex:1"><button id="mg-add">Add a voice</button></div>
   <div class="small" id="mg-msg" style="margin-top:10px;color:var(--err);min-height:16px"></div>
   <div class="row" style="margin-top:8px"><button class="primary" id="mg-done">Done</button></div>
 </div></div>
@@ -1105,23 +1104,21 @@ function renderPacks(){
   $("#dlsub").textContent=more.length?more.length+" available":"";
 }
 let manageIcao=null;
-function openManage(icao){manageIcao=icao;$("#mg-new").value="";$("#mg-msg").textContent="";renderManage();$("#m-manage").classList.add("show")}
+function openManage(icao){manageIcao=icao;$("#mg-msg").textContent="";renderManage();$("#m-manage").classList.add("show")}
 function renderManage(){
   const p=(snap.packs||[]).find(x=>x.icao===manageIcao&&x.installed); if(!p){$("#m-manage").classList.remove("show");return}
   $("#mg-title").textContent="Manage "+p.name; $("#mg-sub").textContent=p.icao+" - open a voice in Pack Studio to re-record or fix it, or take a voice out of the airline.";
   const box=$("#mg-voices"); const items=p.voice_items||[]; const sig=JSON.stringify(items); if(box.dataset.s===sig) return; box.dataset.s=sig; box.replaceChildren();
-  if(!items.length) box.append(el("div","empty","This airline has no voices yet. Add one below."));
+  if(!items.length) box.append(el("div","empty","This airline has no voices yet. Add one in Pack Studio or Download packs."));
   items.forEach(v=>{
     const row=el("div","card"); row.style.cssText="display:flex;align-items:center;gap:10px;padding:10px 14px;margin-top:8px";
     const nm=el("div","name",v.key==="Default"?(v.name==="Default"?"Main recordings":v.name):v.name); nm.style.flex="1"; row.append(nm);
     const ed=el("button","ghost","Edit in Pack Studio"); ed.onclick=async()=>{const r=await studio("import",{icao:p.icao,voice:v.key});if(r.ok){$("#m-manage").classList.remove("show");setView("studio")}}; row.append(ed);
-    if(v.key!=="Default"){const rm=el("button","danger","Remove");rm.onclick=async()=>{if(!confirm("Remove the "+v.name+" voice from "+p.name+"?\nA copy is kept in the PAPro backups folder."))return;const r=await api("remove_voice",{icao:p.icao,voice:v.key});if(r.ok){box.dataset.s="";toast("Removed "+v.name)}};row.append(rm)}
+    if(v.key!=="Default"){const rm=el("button","danger","Remove");rm.onclick=async()=>{const last=items.length<=1;if(!confirm(last?"This is the last voice in "+p.name+", so removing it uninstalls the whole pack.\nA copy is kept in the PAPro backups folder.":"Remove the "+v.name+" voice from "+p.name+"?\nA copy is kept in the PAPro backups folder."))return;const r=await api("remove_voice",{icao:p.icao,voice:v.key});if(r.ok){box.dataset.s="";if(last)$("#m-manage").classList.remove("show");toast(last?"Pack uninstalled":"Removed "+v.name)}};row.append(rm)}
     box.append(row);
   });
 }
 $("#mg-done").onclick=()=>$("#m-manage").classList.remove("show");
-$("#mg-add").onclick=async()=>{const name=$("#mg-new").value.trim(),p=(snap.packs||[]).find(x=>x.icao===manageIcao&&x.installed);if(!name){$("#mg-msg").textContent="Type a name for the voice.";return}
-  const r=await studio("create",{icao:manageIcao,airline:p?p.name:manageIcao,voice:name});if(r.ok){$("#m-manage").classList.remove("show");setView("studio")}else $("#mg-msg").textContent=r.error||""};
 let importFile=null,importWatch=null;   // importWatch: after an import starts, go back to the Dashboard when it has installed
 $("#import-btn").onclick=()=>{importFile=null;$("#i-url").value="";$("#i-input").value="";$("#i-file").textContent="No file chosen";$("#i-msg").textContent="";$("#m-import").classList.add("show");setTimeout(()=>$("#i-url").focus(),60)};
 $("#i-cancel").onclick=()=>$("#m-import").classList.remove("show");
