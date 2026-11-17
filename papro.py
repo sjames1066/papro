@@ -114,7 +114,13 @@ BACKUPS_DIR = DATA_DIR / "backups"    # packs that were already in the Fenix fol
 STATE_PATH = DATA_DIR / "state.json"
 TEST_DIR = DATA_DIR / "test"            # scratch builds for the Test tab (never touches the Fenix folder or the real state)
 _STATE_LOCAL = threading.local()        # a thread can point PAPro's state at another file (the Test tab's scratch builds)
-STUDIO_DIR = DATA_DIR / "studio"        # Pack Studio projects (recordings, processed clips, exports)
+STUDIO_DIR = DATA_DIR / "studio"        # Pack Studio projects (recordings, processed clips)
+EXPORTS_DIR = DATA_DIR / "exports"      # packs exported from Pack Studio (next to "imports")
+if (STUDIO_DIR / "exports").is_dir() and not EXPORTS_DIR.exists():   # older versions kept them inside the studio folder
+    try:
+        shutil.move(str(STUDIO_DIR / "exports"), str(EXPORTS_DIR))
+    except OSError:
+        pass
 LOG_PATH = DATA_DIR / "announcer.log"
 for _d in (DATA_DIR, GENERIC_DIR, BACKUPS_DIR):
     _d.mkdir(parents=True, exist_ok=True)
@@ -2881,7 +2887,7 @@ class UIMixin:
             elif name == "delete":
                 papro_studio.delete_slot(STUDIO_DIR, project, str(data.get("slot", "")))
             elif name == "export":
-                result = papro_studio.export(STUDIO_DIR, project, STUDIO_DIR / "exports",
+                result = papro_studio.export(STUDIO_DIR, project, EXPORTS_DIR,
                                              load_languages(airline_folder(cfg, project["icao"])))
                 open_path(Path(result["zip"]).parent)
                 return {"ok": True, **result}
