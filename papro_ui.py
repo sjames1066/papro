@@ -454,9 +454,11 @@ PAGE = r"""<!doctype html>
   --ok:#3ddc97; --warn:#ffb454; --err:#ff6b81;
 }
 *{box-sizing:border-box}
-html,body{margin:0;height:100%}
-body{background:radial-gradient(900px 500px at 8% -10%,rgba(107,47,214,.28),transparent 60%),
-     radial-gradient(800px 480px at 100% 0%,rgba(255,146,24,.14),transparent 60%),var(--bg);background-attachment:fixed;
+html,body{margin:0;min-height:100%}
+html{background:var(--bg)}
+body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(900px 500px at 8% -10%,rgba(107,47,214,.28),transparent 60%),
+     radial-gradient(800px 480px at 100% 0%,rgba(255,146,24,.14),transparent 60%)}   /* a fixed layer, not a fixed background: embedded browsers re-stretch those when the page height changes */
+body{background:transparent;
      color:var(--text);font:400 14px/1.5 'Inter',system-ui,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased;
      font-feature-settings:'cv11','ss01'}
 .wrap{max-width:860px;margin:0 auto;padding:26px 28px 18px;min-height:100vh;display:flex;flex-direction:column}
