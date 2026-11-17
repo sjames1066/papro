@@ -1621,7 +1621,7 @@ def _apply_multilingual(cfg, airline, dest_icao, plan, choose, variant, arrival,
             only_bases = {m["base"] for m in cfg["mappings"] if only and m["folder"] in only}
             names = sorted({p.name for d in built_dirs.values() for p in d.iterdir()
                             if p.is_file() and p.suffix.lower() == ".ogg"})
-            pause = int(cfg.get("language_pause_ms", 450))
+            pause = int(cfg.get("language_pause_ms", 2000))
             joined = 0
             for name in names:
                 base = re.split(r"[\[~]", Path(name).stem, maxsplit=1)[0]
@@ -2834,20 +2834,32 @@ class UIMixin:
                 project = papro_studio.load(STUDIO_DIR, *current)
             except papro_studio.StudioError:
                 return out
-            target, count, label = papro_studio.DEFAULT_TARGET, 0, ""
-            rows = papro_studio.status(STUDIO_DIR, project)
-            out["current"] = {
-                "icao": project["icao"], "airline": project["airline"], "voice": project["voice"],
-                "artist": project.get("artist", ""), "credit_url": project.get("credit_url", ""),
-                "donate_url": project.get("donate_url", ""), "accent": project.get("accent", ""),
-                "also_icaos": ", ".join(project.get("also_icaos", [])), "local_time": project.get("local_time") is not False,
-                "description": project.get("description", ""), "version": project.get("version", "1.0.0"),
-                "effect": bool(project.get("effect", True)), "airports": project["airports"], "aircraft": project.get("aircraft", []), "aircraft_on": bool(project.get("aircraft_on")),
-                "app_boost": boost_percent(cfg), "languages": self.language_snapshot(project), "language": project.get("language", ""), "aircraft_presets": papro_studio.AIRCRAFT_PRESETS, "typed_bases": papro_studio.TYPED_BASES, "aircraft_types": papro_studio.AIRCRAFT_TYPES, "extras": project["extras"], "music": project.get("music", []),
-                "logo": papro_studio.logo_path(STUDIO_DIR, project).is_file(), "has_script": bool(project.get("scripts")), "origin": bool(project.get("origin")), "in_library": self.project_in_library(cfg, project["icao"], project["voice"]), "upgrades": papro_studio.upgrade_preview(STUDIO_DIR, project), "target_pending": False, "rows": rows, "missing": len(papro_studio.missing(STUDIO_DIR, project)),
-                "target": target, "target_count": count, "target_source": label,
-                "done": sum(1 for r in rows if r["done"] or r["skipped"]), "total": len(rows)}
+            out["current"] = self._studio_current(cfg, project)
         return out
+
+    def _studio_current(self, cfg: dict, project: dict, with_secondary: bool = True) -> dict:
+        """Everything the Pack Studio page shows for one voice project (and, for the primary, its secondary language)."""
+        target, count, label = papro_studio.DEFAULT_TARGET, 0, ""
+        rows = papro_studio.status(STUDIO_DIR, project)
+        info = {
+            "icao": project["icao"], "airline": project["airline"], "voice": project["voice"],
+            "artist": project.get("artist", ""), "credit_url": project.get("credit_url", ""),
+            "donate_url": project.get("donate_url", ""), "accent": project.get("accent", ""),
+            "also_icaos": ", ".join(project.get("also_icaos", [])), "local_time": project.get("local_time") is not False,
+            "description": project.get("description", ""), "version": project.get("version", "1.0.0"),
+            "effect": bool(project.get("effect", True)), "airports": project["airports"], "aircraft": project.get("aircraft", []), "aircraft_on": bool(project.get("aircraft_on")),
+            "app_boost": boost_percent(cfg), "languages": self.language_snapshot(project), "language": project.get("language", ""), "aircraft_presets": papro_studio.AIRCRAFT_PRESETS, "typed_bases": papro_studio.TYPED_BASES, "aircraft_types": papro_studio.AIRCRAFT_TYPES, "extras": project["extras"], "music": project.get("music", []),
+            "logo": papro_studio.logo_path(STUDIO_DIR, project).is_file(), "has_script": bool(project.get("scripts")), "origin": bool(project.get("origin")), "in_library": self.project_in_library(cfg, project["icao"], project["voice"]), "upgrades": papro_studio.upgrade_preview(STUDIO_DIR, project), "target_pending": False, "rows": rows, "missing": len(papro_studio.missing(STUDIO_DIR, project)),
+            "target": target, "target_count": count, "target_source": label,
+            "done": sum(1 for r in rows if r["done"] or r["skipped"]), "total": len(rows)}
+        if with_secondary:
+            sec = papro_studio.secondary_of(STUDIO_DIR, project)
+            info["secondary_language"] = (project.get("secondary") or {}).get("language", "")
+            info["secondary"] = self._studio_current(cfg, sec, False) if sec else None
+        return info
+
+    def studio_snapshot_current(self, cfg: dict, project: dict) -> dict:
+        return self._studio_current(cfg, project)
 
     def studio_project(self, data: dict) -> dict:
         return papro_studio.load(STUDIO_DIR, check_airline_code(str(data.get("icao", ""))), str(data.get("voice", "")))
@@ -2964,12 +2976,21 @@ class UIMixin:
                     project["language"] = papro_studio.clean_language(data["language"])
                     if not project["language"]:
                         project.pop("language")
+                    if (project.get("secondary") or {}).get("language") == project.get("language"):
+                        project.pop("secondary", None)   # the primary became the same language: no secondary any more
                 effect = bool(data.get("effect", project.get("effect", True)))
                 changed = effect != bool(project.get("effect", True))
                 project["effect"] = effect
                 papro_studio.save(STUDIO_DIR, project)
                 if changed:
                     papro_studio.reprocess_all(STUDIO_DIR, project, self.studio_target(cfg, project["icao"])[0])
+                if not project.get("primary_voice"):
+                    papro_studio.sync_secondary(STUDIO_DIR, project)
+            elif name == "secondary":   # the secondary language (second set of recordings); "" removes it
+                try:
+                    papro_studio.set_secondary(STUDIO_DIR, project, str(data.get("language", "")))
+                except papro_studio.StudioError as exc:
+                    return {"error": str(exc)}
             elif name == "levels":   # check (or, with fix, set) the volume of the pack's clips
                 try:
                     result = papro_studio.check_levels(STUDIO_DIR, project, self.studio_target(cfg, project["icao"])[0], bool(data.get("fix")))
@@ -3037,8 +3058,10 @@ class UIMixin:
             elif name == "airport":
                 if data.get("remove"):
                     papro_studio.remove_airport(STUDIO_DIR, project, str(data.get("code", "")))
+                    papro_studio.sync_secondary(STUDIO_DIR, project)
                 else:
                     added, skipped = papro_studio.add_airports(STUDIO_DIR, project, str(data.get("code", ""))[:5000])
+                    papro_studio.sync_secondary(STUDIO_DIR, project)
                     if not added and not skipped:
                         return {"ok": True, "added": 0}
                     if not added:
@@ -3056,7 +3079,13 @@ class UIMixin:
                 open_path(Path(result["zip"]).parent)
                 return {"ok": True, **result}
             elif name == "install":
-                dest = papro_studio.install_to_library(STUDIO_DIR, project, airline_folder(cfg, project["icao"]))
+                lib = airline_folder(cfg, project["icao"])
+                dest = papro_studio.install_to_library(STUDIO_DIR, project, lib)
+                sec = papro_studio.secondary_of(STUDIO_DIR, project)
+                if sec is not None and any((papro_studio.project_dir(STUDIO_DIR, sec["icao"], sec["voice"]) / "pack").rglob("*.ogg")):
+                    papro_studio.install_to_library(STUDIO_DIR, sec, lib)   # both languages, said one after the other
+                    old = load_languages(lib)
+                    save_languages(lib, True, [project.get("language", ""), sec["language"]], old["per_pa"])
                 self.logo_version += 1
                 state = load_state()
                 state.pop("last", None)

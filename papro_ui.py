@@ -630,6 +630,17 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
 .tabs{display:flex;gap:6px;margin:0 0 18px}
 .tabs button{background:transparent;border-color:transparent;color:var(--muted);padding:8px 16px;border-radius:999px}
 .tabs button.on{background:var(--surface2);border-color:var(--line2);color:var(--text)}
+details.master{border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.02);margin:14px 0}
+details.master>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:12px;padding:14px 16px;font-weight:700;font-size:15px}
+details.master>summary::-webkit-details-marker{display:none}
+details.master>summary:before{content:"▸";color:var(--muted);transition:transform .15s}
+details.master[open]>summary:before{transform:rotate(90deg)}
+details.master .pill{font-size:11px;font-weight:600;padding:2px 9px;border-radius:99px}
+details.master .pill.p{background:rgba(206,58,128,.18);color:#ff8fc0}details.master .pill.s{background:rgba(107,47,214,.25);color:#b9a2ff}
+details.master .count{margin-left:auto;font-weight:600;font-size:12.5px;color:var(--muted)}
+details.master .inner{padding:0 14px 14px}
+.langbox{border:1px solid var(--line);border-radius:14px;padding:12px;background:rgba(255,255,255,.02)}.langbox.req{border-color:rgba(206,58,128,.55)}
+.langbox b{display:block;margin-bottom:6px;font-size:13px;color:var(--text)}.langbox select{max-width:none!important;width:100%}
 .sd-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .sd-grid label{display:flex;flex-direction:column;gap:4px;color:var(--faint);font-size:12px}
 .sd-grid label.wide{grid-column:1/-1}
@@ -1549,6 +1560,58 @@ function slotRow(c,r){
   if(r.variantable){const av=el("button","sq ghost","+");av.title="Add a variation: record another take of this announcement. PAPro picks one at random each flight.";av.style.fontSize="18px";av.style.lineHeight="1";av.onclick=async()=>{openGroups.add(r.group);await studio("variant",{...pid(c),base:r.stem});studioSig="";renderStudio()};act.append(av)}
   d.append(act);return d;
 }
+function buildChecklist(c,host){
+  const pr=el("div",null);pr.style.margin="16px 2px";pr.append(el("div","small",c.done+" of "+c.total+" recorded or skipped"+(c.missing?" · "+c.missing+" required still to do":" · all required clips done")));
+  const nSk=c.rows.filter(r=>r.skipped).length;
+  if(nSk){const ub=el("button","ghost","Unskip all ("+nSk+")");ub.style.cssText="margin-top:8px;padding:6px 12px";ub.title="Put every skipped announcement back on the checklist";
+    ub.onclick=async()=>{const r=await studio("unskip_all",pid(c));if(r&&r.ok)toast(r.count+" announcement"+(r.count==1?"":"s")+" put back on the checklist")};pr.append(ub)}
+  const bar=el("div","ptrack");const fill=el("i");fill.style.width=Math.round(100*c.done/c.total)+"%";bar.append(fill);pr.append(bar);host.append(pr);
+  const groups=[];c.rows.forEach(r=>{let g=groups.find(x=>x.name===r.group);if(!g){g={name:r.group,rows:[]};groups.push(g)}g.rows.push(r)});
+  ["Airports","Aircraft names","Boarding music","Bolt-ons"].forEach(n=>{if(!groups.find(x=>x.name===n))groups.push({name:n,rows:[]})});
+  const order=["Airports","Aircraft names","Boarding","Boarding music","Bolt-ons","Boarding complete & doors","Safety briefing","Before takeoff","Climb & cruise","Descent & approach","After Landing","Deboarding","Emergency"];groups.sort((a,b)=>order.indexOf(a.name)-order.indexOf(b.name));
+  groups.forEach(gr=>{
+    const d=el("details","grp");d.open=openGroups.has(gr.name);d.ontoggle=()=>{d.open?openGroups.add(gr.name):openGroups.delete(gr.name)};
+    const sm=el("summary",null,gr.name);sm.append(el("span",null,gr.rows.filter(r=>r.done||r.skipped).length+"/"+gr.rows.length));d.append(sm);
+    if(gr.name==="Airports"){
+      d.append(el("div","small","Add your airports (paste a whole list if you like) and record just each name (for example “London Heathrow”). PAPro mixes that one clip into both the BoardingWelcome and the landing PA. Add a terminal variant like EGLL_T5 if you record one."));
+      const line=el("div","addline"),i=el("textarea");i.rows=2;i.placeholder="EGLL, EGKK, EGCC  (paste a list: commas, semicolons, spaces or new lines)";i.style.textTransform="uppercase";i.style.resize="vertical";const add=el("button",null,"Add airports");
+      add.onclick=async()=>{if(!i.value.trim())return;const text=i.value;i.value="";i.blur();const r=await studio("airport",{...pid(c),code:text});if(!r.ok)i.value=text;if(r.ok){openGroups.add("Airports");toast(r.added+(r.added===1?" airport added":" airports added")+(r.skipped&&r.skipped.length?" - skipped: "+r.skipped.slice(0,8).join(", "):""),r.skipped&&r.skipped.length?6000:3200)}studioSig="";renderStudio()};
+      i.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();add.click()}});line.append(i,add);d.append(line);
+    }
+    if(gr.name==="Aircraft names"){
+      d.append(el("div","small","Optional. Record the aircraft type (for example “Airbus A320” or “Boeing 737”) so an announcement can say which aircraft you are flying. Nothing is added to the pack unless this is on."));
+      const sw=el("div","switch"+(c.aircraft_on?" on":""));sw.style.margin="10px 0";sw.append(el("span",null,"Say the aircraft type"),el("div","track"));
+      sw.onclick=async()=>{openGroups.add("Aircraft names");await studio("aircraft",{...pid(c),on:!c.aircraft_on});studioSig="";renderStudio()};d.append(sw);
+      if(c.aircraft_on){
+        const pc=el("div","chiprow");(c.aircraft_presets||[]).filter(n=>!c.aircraft.includes(n)).forEach(n=>{const b=el("button","ghost","+ "+n);b.onclick=async()=>{openGroups.add("Aircraft names");await studio("aircraft",{...pid(c),code:n});studioSig="";renderStudio()};pc.append(b)});d.append(pc);
+        const line=el("div","addline"),i=el("input");i.type="text";i.placeholder="Another aircraft, e.g. Boeing 757";const add=el("button",null,"Add");
+        add.onclick=async()=>{if(!i.value.trim())return;const text=i.value;i.value="";i.blur();const r=await studio("aircraft",{...pid(c),code:text});if(!r.ok)i.value=text;openGroups.add("Aircraft names");studioSig="";renderStudio()};
+        i.addEventListener("keydown",e=>{if(e.key==="Enter")add.click()});line.append(i,add);d.append(line);
+      }
+    }
+    if(gr.name==="Boarding music"){
+      d.append(el("div","small","Background music played while passengers board. Add a track name, then upload the audio - use only music you have the right to share. It is not recorded or processed, just converted to .ogg."));
+      const line=el("div","addline"),i=el("input");i.type="text";i.placeholder="Departure lounge";const add=el("button",null,"Add track");
+      add.onclick=async()=>{if(!i.value.trim())return;const r=await studio("music",{...pid(c),name:i.value});if(r.ok)openGroups.add("Boarding music");studioSig="";renderStudio()};
+      i.addEventListener("keydown",e=>{if(e.key==="Enter")add.click()});line.append(i,add);d.append(line);
+      if(c.music.length){const cr=el("div","chiprow");c.music.forEach(a=>{const b=el("button","ghost",a+" ✕");b.onclick=()=>studio("music",{...pid(c),name:a,remove:true});cr.append(b)});d.append(cr)}
+    }
+    if(gr.name==="Bolt-ons"){
+      d.append(el("div","small","Short announcements PAPro sometimes adds to the welcome - e.g. “Nut allergy”, “Wi-Fi unavailable”, “Delayed by air traffic control”."));
+      const line=el("div","addline"),i=el("input");i.type="text";i.placeholder="Nut allergy";const add=el("button",null,"Add bolt-on");
+      add.onclick=async()=>{if(!i.value.trim())return;const r=await studio("extra",{...pid(c),name:i.value});if(r.ok)openGroups.add("Bolt-ons");studioSig="";renderStudio()};
+      i.addEventListener("keydown",e=>{if(e.key==="Enter")add.click()});line.append(i,add);d.append(line);
+      if(c.extras.length){const cr=el("div","chiprow");c.extras.forEach(a=>{const b=el("button","ghost",a.replace(/_/g," ")+" ✕");b.onclick=()=>studio("extra",{...pid(c),name:a,remove:true});cr.append(b)});d.append(cr)}
+    }
+    if(gr.rows.some(r=>r.part)){
+      const parts=[];gr.rows.forEach(r=>{let p=parts.find(x=>x.name===r.part);if(!p){p={name:r.part,rows:[]};parts.push(p)}p.rows.push(r)});
+      parts.forEach(pt=>{const key=gr.name+"/"+pt.name,sd=el("details","grp sub");sd.open=openGroups.has(key);sd.ontoggle=()=>{sd.open?openGroups.add(key):openGroups.delete(key)};
+        const ss=el("summary",null,pt.name);ss.append(el("span",null,pt.rows.filter(r=>r.done||r.skipped).length+"/"+pt.rows.length));sd.append(ss);pt.rows.forEach(r=>sd.append(slotRow(c,r)));d.append(sd)});
+    }else gr.rows.forEach(r=>d.append(slotRow(c,r)));
+    host.append(d);
+  });
+}
+
 function renderStudio(){
   if(view!=="studio"||!snap)return;
   const root=$("#view-studio"), s=snap.studio||{projects:[],current:null}, sig=JSON.stringify(s);
@@ -1578,12 +1641,12 @@ function renderStudio(){
   const mic=el("button",null,"🎧 Audio settings");mic.onclick=openMic;
   sp.append(mic);
   top.append(sp);root.append(top);
-  { // languages: which language plays first, for airlines like Lufthansa that announce in two
+  if(c.secondary){ // languages: the order they are said in (primary first); per-announcement order once both are in the library
     const L=c.languages||{available:[],order:[],per_pa:{},enabled:false,known:{},pas:[]},lc=el("section","card");lc.style.marginBottom="16px";
     const hd=el("h2",null,"Languages");lc.append(hd);
-    lc.append(el("div","small","Some airlines announce in two languages, one after the other (for example German, then English). Make one voice for each language, set the language in Voice details below, then choose the order here. PAPro builds every announcement in each language and plays them in this order."));
+    lc.append(el("div","small","Every announcement is built in the primary language, then (after a short pause) in the secondary language, and the two are joined into one PA. Once both languages are saved to your library you can also say a particular announcement in the other order here."));
     const names=Object.fromEntries(L.available.map(a=>[a.code,a.name]));
-    if(L.available.length<2){const t=el("div","small",c.language?"Only "+(names[c.language]||c.language)+" is set up for "+c.icao+" so far. Add another voice in a second language to use this.":"No language is set for this voice yet. Choose one in Voice details below.");t.style.marginTop="10px";lc.append(t)}
+    if(L.available.length<2){const t=el("div","small",c.language?"Save the pack to your library (Use in PAPro now) to set a different order for particular announcements.":"No language is set for this voice yet. Choose one in Voice details below.");t.style.marginTop="10px";lc.append(t)}
     else{
       const en=el("label","check");en.style.margin="12px 0 8px";const cb=el("input");cb.type="checkbox";cb.checked=!!L.enabled;en.append(cb,document.createTextNode(" Announce in several languages"));lc.append(en);
       let order=[...L.order],per={...L.per_pa};
@@ -1610,9 +1673,16 @@ function renderStudio(){
   g.append(field("Voice artist","artist",c,"Your name"),field("Accent","accent",c,"British"),field("Short description","description",c,"Calm and collected",true),
            field("Credit link (your site / socials)","credit_url",c,"https://..."),field("Support link (Ko-fi, Patreon...)","donate_url",c,"https://ko-fi.com/..."),field("Pack version","version",c,"1.0.0"),field("Also used by (other airline codes, e.g. SHT, CFE)","also_icaos",c,"SHT, CFE","wide"));
   card.append(g);
-  { const lw=el("label","wide","Language this voice speaks (for airlines that announce in more than one language)"),ls=el("select","voice");ls.style.cssText="margin-top:4px;max-width:320px";
-    const o0=el("option",null,"Not set");o0.value="";ls.append(o0);Object.entries((c.languages&&c.languages.known)||{}).forEach(([k,v])=>{const o=el("option",null,v);o.value=k;ls.append(o)});ls.value=c.language||"";
-    ls.onchange=async()=>{const r=await api("studio_details",{...pid(c),language:ls.value,effect:c.effect});if(r.ok)toast("Saved");await refreshNow()};lw.append(ls);g.append(lw)}
+  { const known=(c.languages&&c.languages.known)||{},opts=(sel,none,skip)=>{const o0=el("option",null,none);o0.value="";sel.append(o0);Object.entries(known).forEach(([k,v])=>{if(k===skip)return;const o=el("option",null,v);o.value=k;sel.append(o)})};
+    const gl=el("div","wide");gl.style.cssText="grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:4px";
+    const pb=el("div","langbox"+(c.language?"":" req")),ps=el("select","voice"),sb=el("div","langbox"),ss=el("select","voice");
+    pb.append(el("b",null,"Primary language (required)"),ps);opts(ps,"Choose a language...");ps.value=c.language||"";
+    pb.append(el("div","small",c.language?"The language of this voice's main announcements. It is always said first.":"Required before anything can be recorded."));
+    ps.onchange=async()=>{const r=await api("studio_details",{...pid(c),language:ps.value,effect:c.effect});if(r.ok)toast("Saved");else if(r.error)toast(r.error);await refreshNow()};
+    sb.append(el("b",null,"Secondary language (optional)"),ss);opts(ss,"None",c.language);ss.value=c.secondary_language||"";ss.disabled=!c.language;
+    sb.append(el("div","small","Adds a second set of announcements below, recorded in that language and said after the primary one, with a short pause between."));
+    ss.onchange=async()=>{const r=await api("studio_secondary",{...pid(c),language:ss.value});if(r.error){toast(r.error);ss.value=c.secondary_language||""}else toast(ss.value?"Secondary language added below":"Secondary language removed (its recordings are kept)");await refreshNow()};
+    gl.append(pb,sb);g.append(gl)}
   { const tl=el("label","wide check"),tc=el("input");tc.type="checkbox";tc.checked=c.local_time!==false;tl.append(tc,document.createTextNode(" This pack says the local time in its landing announcement (needs the hour and minute clips)"));tl.style.cssText="display:flex;align-items:center;gap:8px;margin-top:4px";
     tc.onchange=async()=>{const r=await api("studio_details",{...pid(c),local_time:tc.checked,effect:c.effect});if(r.ok)toast("Saved");studioSig=""};card.append(tl)}
   const lg=el("div","logorow"),im=el("img","logoimg");im.alt="Pack logo";
@@ -1670,55 +1740,15 @@ function renderStudio(){
     const ub=el("button","primary","Review upgrade");ub.onclick=()=>{const l=$("#up-list");l.textContent="";c.upgrades.forEach(u=>{const r=el("div","facts");const d=el("div");d.append(el("i",null,u.old),el("span",null,"→ "+u.new));r.append(d);l.append(r)});
       $("#up-ok").onclick=async()=>{$("#m-up").classList.remove("show");const r=await studio("upgrade",pid(c));if(r.ok)toast("Renamed "+r.renamed+" clip"+(r.renamed==1?"":"s"))};$("#m-up").classList.add("show")};
     b.append(ub);root.append(b)}
-  const pr=el("div",null);pr.style.margin="16px 2px";pr.append(el("div","small",c.done+" of "+c.total+" recorded or skipped"+(c.missing?" · "+c.missing+" required still to do":" · all required clips done")));
-  const nSk=c.rows.filter(r=>r.skipped).length;
-  if(nSk){const ub=el("button","ghost","Unskip all ("+nSk+")");ub.style.cssText="margin-top:8px;padding:6px 12px";ub.title="Put every skipped announcement back on the checklist";
-    ub.onclick=async()=>{const r=await studio("unskip_all",pid(c));if(r&&r.ok)toast(r.count+" announcement"+(r.count==1?"":"s")+" put back on the checklist")};pr.append(ub)}
-  const bar=el("div","ptrack");const fill=el("i");fill.style.width=Math.round(100*c.done/c.total)+"%";bar.append(fill);pr.append(bar);root.append(pr);
-  const groups=[];c.rows.forEach(r=>{let g=groups.find(x=>x.name===r.group);if(!g){g={name:r.group,rows:[]};groups.push(g)}g.rows.push(r)});
-  ["Airports","Aircraft names","Boarding music","Bolt-ons"].forEach(n=>{if(!groups.find(x=>x.name===n))groups.push({name:n,rows:[]})});
-  const order=["Airports","Aircraft names","Boarding","Boarding music","Bolt-ons","Boarding complete & doors","Safety briefing","Before takeoff","Climb & cruise","Descent & approach","After Landing","Deboarding","Emergency"];groups.sort((a,b)=>order.indexOf(a.name)-order.indexOf(b.name));
-  groups.forEach(gr=>{
-    const d=el("details","grp");d.open=openGroups.has(gr.name);d.ontoggle=()=>{d.open?openGroups.add(gr.name):openGroups.delete(gr.name)};
-    const sm=el("summary",null,gr.name);sm.append(el("span",null,gr.rows.filter(r=>r.done||r.skipped).length+"/"+gr.rows.length));d.append(sm);
-    if(gr.name==="Airports"){
-      d.append(el("div","small","Add your airports (paste a whole list if you like) and record just each name (for example “London Heathrow”). PAPro mixes that one clip into both the BoardingWelcome and the landing PA. Add a terminal variant like EGLL_T5 if you record one."));
-      const line=el("div","addline"),i=el("textarea");i.rows=2;i.placeholder="EGLL, EGKK, EGCC  (paste a list: commas, semicolons, spaces or new lines)";i.style.textTransform="uppercase";i.style.resize="vertical";const add=el("button",null,"Add airports");
-      add.onclick=async()=>{if(!i.value.trim())return;const text=i.value;i.value="";i.blur();const r=await studio("airport",{...pid(c),code:text});if(!r.ok)i.value=text;if(r.ok){openGroups.add("Airports");toast(r.added+(r.added===1?" airport added":" airports added")+(r.skipped&&r.skipped.length?" - skipped: "+r.skipped.slice(0,8).join(", "):""),r.skipped&&r.skipped.length?6000:3200)}studioSig="";renderStudio()};
-      i.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();add.click()}});line.append(i,add);d.append(line);
-    }
-    if(gr.name==="Aircraft names"){
-      d.append(el("div","small","Optional. Record the aircraft type (for example “Airbus A320” or “Boeing 737”) so an announcement can say which aircraft you are flying. Nothing is added to the pack unless this is on."));
-      const sw=el("div","switch"+(c.aircraft_on?" on":""));sw.style.margin="10px 0";sw.append(el("span",null,"Say the aircraft type"),el("div","track"));
-      sw.onclick=async()=>{openGroups.add("Aircraft names");await studio("aircraft",{...pid(c),on:!c.aircraft_on});studioSig="";renderStudio()};d.append(sw);
-      if(c.aircraft_on){
-        const pc=el("div","chiprow");(c.aircraft_presets||[]).filter(n=>!c.aircraft.includes(n)).forEach(n=>{const b=el("button","ghost","+ "+n);b.onclick=async()=>{openGroups.add("Aircraft names");await studio("aircraft",{...pid(c),code:n});studioSig="";renderStudio()};pc.append(b)});d.append(pc);
-        const line=el("div","addline"),i=el("input");i.type="text";i.placeholder="Another aircraft, e.g. Boeing 757";const add=el("button",null,"Add");
-        add.onclick=async()=>{if(!i.value.trim())return;const text=i.value;i.value="";i.blur();const r=await studio("aircraft",{...pid(c),code:text});if(!r.ok)i.value=text;openGroups.add("Aircraft names");studioSig="";renderStudio()};
-        i.addEventListener("keydown",e=>{if(e.key==="Enter")add.click()});line.append(i,add);d.append(line);
-      }
-    }
-    if(gr.name==="Boarding music"){
-      d.append(el("div","small","Background music played while passengers board. Add a track name, then upload the audio - use only music you have the right to share. It is not recorded or processed, just converted to .ogg."));
-      const line=el("div","addline"),i=el("input");i.type="text";i.placeholder="Departure lounge";const add=el("button",null,"Add track");
-      add.onclick=async()=>{if(!i.value.trim())return;const r=await studio("music",{...pid(c),name:i.value});if(r.ok)openGroups.add("Boarding music");studioSig="";renderStudio()};
-      i.addEventListener("keydown",e=>{if(e.key==="Enter")add.click()});line.append(i,add);d.append(line);
-      if(c.music.length){const cr=el("div","chiprow");c.music.forEach(a=>{const b=el("button","ghost",a+" ✕");b.onclick=()=>studio("music",{...pid(c),name:a,remove:true});cr.append(b)});d.append(cr)}
-    }
-    if(gr.name==="Bolt-ons"){
-      d.append(el("div","small","Short announcements PAPro sometimes adds to the welcome - e.g. “Nut allergy”, “Wi-Fi unavailable”, “Delayed by air traffic control”."));
-      const line=el("div","addline"),i=el("input");i.type="text";i.placeholder="Nut allergy";const add=el("button",null,"Add bolt-on");
-      add.onclick=async()=>{if(!i.value.trim())return;const r=await studio("extra",{...pid(c),name:i.value});if(r.ok)openGroups.add("Bolt-ons");studioSig="";renderStudio()};
-      i.addEventListener("keydown",e=>{if(e.key==="Enter")add.click()});line.append(i,add);d.append(line);
-      if(c.extras.length){const cr=el("div","chiprow");c.extras.forEach(a=>{const b=el("button","ghost",a.replace(/_/g," ")+" ✕");b.onclick=()=>studio("extra",{...pid(c),name:a,remove:true});cr.append(b)});d.append(cr)}
-    }
-    if(gr.rows.some(r=>r.part)){
-      const parts=[];gr.rows.forEach(r=>{let p=parts.find(x=>x.name===r.part);if(!p){p={name:r.part,rows:[]};parts.push(p)}p.rows.push(r)});
-      parts.forEach(pt=>{const key=gr.name+"/"+pt.name,sd=el("details","grp sub");sd.open=openGroups.has(key);sd.ontoggle=()=>{sd.open?openGroups.add(key):openGroups.delete(key)};
-        const ss=el("summary",null,pt.name);ss.append(el("span",null,pt.rows.filter(r=>r.done||r.skipped).length+"/"+pt.rows.length));sd.append(ss);pt.rows.forEach(r=>sd.append(slotRow(c,r)));d.append(sd)});
-    }else gr.rows.forEach(r=>d.append(slotRow(c,r)));
-    root.append(d);
-  });
+  { // one master dropdown per language: the primary first, then the secondary; every category sits under its language
+    const known=(c.languages&&c.languages.known)||{};
+    const master=(cc,primary)=>{const key="@lang:"+cc.voice,d=el("details","master");d.open=openGroups.has(key)||primary&&!openGroups.has("@closed:"+key);
+      d.ontoggle=()=>{if(d.open){openGroups.add(key);openGroups.delete("@closed:"+key)}else{openGroups.delete(key);openGroups.add("@closed:"+key)}};
+      const sm=el("summary",null,known[cc.language]||cc.language||"Language");sm.append(el("span","pill "+(primary?"p":"s"),primary?"Primary":"Secondary"),el("span","count",cc.done+" / "+cc.total+" done"));d.append(sm);
+      const body=el("div","inner");d.append(body);buildChecklist(cc,body);root.append(d)};
+    if(!c.language){const w=el("section","card");w.style.margin="16px 0";w.append(el("h2",null,"Choose a primary language"),el("div","small","Pick the language this voice speaks under Voice details above. The checklist unlocks once a primary language is chosen."));root.append(w)}
+    else{master(c,true);if(c.secondary)master(c.secondary,false)}
+  }
   const bar2=el("div","sdbar");
   const dis=el("button","ghost danger",c.in_library?"Remove from packs in progress":"Abandon this pack");dis.title=c.in_library?"Removes this working copy only. The pack in your Airlines library stays.":"Deletes this project's recordings and details. Your Airlines library is not touched.";
   dis.onclick=()=>confirmDiscard(c);

@@ -242,6 +242,14 @@ def discard(root: Path, icao: str, voice: str) -> None:
     folder = project_dir(root, icao, voice)
     if not (folder / "project.json").is_file() or root.resolve() not in folder.resolve().parents:
         raise StudioError("That project does not exist.")
+    try:   # its secondary-language half goes with it
+        link = json.loads((folder / "project.json").read_text(encoding="utf-8")).get("secondary")
+        if isinstance(link, dict) and link.get("voice"):
+            other = project_dir(root, icao, link["voice"])
+            if (other / "project.json").is_file() and root.resolve() in other.resolve().parents:
+                shutil.rmtree(other)
+    except (OSError, ValueError):
+        pass
     shutil.rmtree(folder)
     parent = folder.parent
     if parent != root and not any(parent.iterdir()):
@@ -253,6 +261,8 @@ def list_projects(root: Path) -> list[dict]:
     for file in sorted(root.glob("*/*/project.json")) if root.is_dir() else []:
         try:
             info = json.loads(file.read_text(encoding="utf-8"))
+            if info.get("primary_voice"):
+                continue   # the secondary-language half of a pack is shown inside its primary voice
             found.append({"icao": info["icao"], "voice": info["voice"], "airline": info.get("airline", "")})
         except (OSError, ValueError, KeyError):
             continue
@@ -288,6 +298,64 @@ def create(root: Path, icao: str, airline: str, voice: str) -> dict:
                "effect": True, "slots": {}}
     save(root, project)
     return project
+
+
+# --------------------------------------------------------------------------- primary / secondary language
+SHARED_FIELDS = ("artist", "accent", "description", "credit_url", "donate_url", "version", "local_time", "also_icaos")
+
+
+def secondary_of(root: Path, project: dict) -> dict | None:
+    """The project holding this pack's secondary-language recordings, or None."""
+    link = project.get("secondary")
+    if not isinstance(link, dict) or not link.get("voice"):
+        return None
+    try:
+        return load(root, project["icao"], link["voice"])
+    except StudioError:
+        return None
+
+
+def sync_secondary(root: Path, project: dict) -> None:
+    """The secondary-language project follows the primary for the things that are not language: the voice artist, links,
+    version and the list of airports (each airport name is recorded in both languages)."""
+    sec = secondary_of(root, project)
+    if sec is None:
+        return
+    for key in SHARED_FIELDS:
+        if key in project:
+            sec[key] = project[key]
+        else:
+            sec.pop(key, None)
+    sec["airline"] = project["airline"]
+    save(root, sec)
+    for code in project.get("airports", []):
+        if code not in sec["airports"]:
+            add_airports(root, sec, code)
+    for code in list(sec["airports"]):
+        if code not in project.get("airports", []):
+            remove_airport(root, sec, code)
+
+
+def set_secondary(root: Path, project: dict, code: str) -> dict | None:
+    """Choose (or, with "", remove) the secondary language. The recordings of a language that is taken off are kept in
+    their own project (and come back if it is chosen again)."""
+    code = clean_language(code)
+    if not code:
+        project.pop("secondary", None)
+        save(root, project)
+        return None
+    if not project.get("language"):
+        raise StudioError("Choose the primary language first.")
+    if code == project["language"]:
+        raise StudioError("The secondary language must be different from the primary one.")
+    name = f"{project['voice']} - {LANGUAGES[code]}"[:40]
+    sec = create(root, project["icao"], project["airline"], name)
+    sec["language"], sec["primary_voice"] = code, project["voice"]
+    save(root, sec)
+    project["secondary"] = {"voice": sec["voice"], "language": code}
+    save(root, project)
+    sync_secondary(root, project)
+    return sec
 
 
 # --------------------------------------------------------------------------- airport names
@@ -775,6 +843,8 @@ def remove_extra(root: Path, project: dict, name: str) -> None:
 def store_raw(root: Path, project: dict, slot_id: str, body: bytes, filename: str, target: float) -> dict:
     """Keep the uploaded or recorded take and process it. Returns the slot's measurements."""
     slot = find_slot(project, slot_id)
+    if not project.get("language"):
+        raise StudioError("Choose this voice's primary language in Voice details before recording.")
     ext = Path(filename).suffix.lower()
     if ext not in AUDIO_EXT:
         raise StudioError("Use a wav, mp3, ogg, m4a, flac or webm file.")
@@ -977,9 +1047,23 @@ def export(root: Path, project: dict, out_dir: Path, languages: dict | None = No
     tag = f"{pack_id}-{version}"                  # the GitHub release tag, and the zip's name: ezy-sam-james-1.0.0
     zip_path = out_dir / f"{tag}.zip"
     inside = f"voices/{slug(project['voice'])}"   # the voice lives in its own folder, so several voices of one airline merge
+    secondary = secondary_of(root, project)
+    sec_folder = project_dir(root, secondary["icao"], secondary["voice"]) / "pack" if secondary else None
+    if secondary and not (sec_folder and any(sec_folder.rglob("*.ogg"))):
+        secondary = None   # nothing recorded in the second language yet: the pack is exported without it
+    if secondary:   # both languages in one pack: the order they are said in travels with it
+        languages = {"enabled": True, "order": [project.get("language", ""), secondary["language"]],
+                     "per_pa": (languages or {}).get("per_pa", {})}
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(folder.rglob("*.ogg")):
             archive.write(path, f"{inside}/{path.relative_to(folder).as_posix()}")
+        if secondary:
+            inside2 = f"voices/{slug(secondary['voice'])}"
+            for path in sorted(sec_folder.rglob("*.ogg")):
+                archive.write(path, f"{inside2}/{path.relative_to(sec_folder).as_posix()}")
+            archive.writestr(f"{inside2}/voice.json", json.dumps(voice_json(secondary), indent=2))
+            if secondary.get("scripts"):
+                archive.writestr(f"{inside2}/scripts.json", json.dumps(secondary["scripts"], indent=2, ensure_ascii=False))
         archive.writestr(f"{inside}/voice.json", json.dumps(voice_json(project), indent=2))
         if project.get("scripts"):
             archive.writestr(f"{inside}/scripts.json", json.dumps(project["scripts"], indent=2, ensure_ascii=False))
@@ -1002,6 +1086,9 @@ def export(root: Path, project: dict, out_dir: Path, languages: dict | None = No
              "voices": [{k: v for k, v in voice_json(project).items() if k in ("name", "artist", "accent", "description")}]}
     if project.get("also_icaos"):
         entry["also_icaos"] = list(project["also_icaos"])
+    if secondary:
+        entry["voices"].append({k: v for k, v in voice_json(secondary).items() if k in ("name", "artist", "accent", "description")})
+        entry["languages"] = [project.get("language", ""), secondary["language"]]
     if has_logo:
         entry["logo"] = f"https://github.com/{PACKS_REPO}/releases/download/{tag}/{tag}.png"
     entry_path = zip_path.with_suffix(".catalog.json")
