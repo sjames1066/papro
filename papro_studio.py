@@ -465,7 +465,7 @@ PHASES = [
 ]
 PHASE_NAMES = [name for name, _ in PHASES]
 BOARDING_LOOP = "Generic Boarding [no destination file]"
-REFUEL_PART = "While refuelling - the tag-on"
+REFUEL_PART = "Refueling"
 LANDING_FALLBACK = "Generic After Landing"
 
 
