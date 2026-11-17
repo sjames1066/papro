@@ -16,6 +16,7 @@ STANDARD = [
 ]
 # LVAR names tried for the captain's PA volume / selector - guesses to be confirmed from the report
 LVARS = [
+    "L:A32NX_FMGC_FLIGHT_PHASE",
     "L:PMDG_PA_Volume", "L:switch_PA_volume", "L:SWITCH_AUDIO_PA", "L:AUDIO_PA_VOLUME", "L:PMDG_AUDIO_PA",
     "L:AudioPanel_PA", "L:PA_KNOB", "L:PA_VOLUME", "L:PA_Volume", "L:ACP_CAPT_PA_VOL", "L:ACP_CAPT_PA_KNOB",
 ]

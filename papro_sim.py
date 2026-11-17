@@ -120,7 +120,26 @@ class SimWatcher:
             "landing_light": g("LIGHT_LANDING", "LIGHT_LANDING_ON"),
             "seatbelt": g("CABIN_SEATBELTS_ALERT_SWITCH"),
             "eng_running": any(known) if known else None,
+            "fmgc_phase": self._lvar(requests, "L:A32NX_FMGC_FLIGHT_PHASE"),
         }
+
+    _lvar_failed: set = set()
+
+    def _lvar(self, requests, name):
+        """An aircraft's own variable (an L: var), or None. A name that errors is not tried again."""
+        if name in self._lvar_failed:
+            return None
+        try:
+            value = requests.get(name)
+        except Exception:
+            self._lvar_failed.add(name)
+            return None
+        if value is None:
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
 
     def loop(self) -> None:
         try:

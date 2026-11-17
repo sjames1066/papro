@@ -166,3 +166,97 @@ class PhaseEngine:
     def cruise_seen_descending(self, vs, alt) -> bool:
         """Is this the way down rather than the way up? (Only the climb triggers the after-takeoff PA.)"""
         return self.cruise_seen and vs is not None and vs < 0
+
+
+# ---------------------------------------------------------------------------------------------------------
+# The phase of flight shown on the Dashboard (any aircraft). Taken from the aircraft's own flight computer when it
+# reports one (reported_phase), otherwise worked out from the same sim readings the announcements use.
+
+PHASES = ["Preflight", "Taxi out", "Takeoff", "Climb", "Cruise", "Descent", "Approach", "Landing", "Taxi in", "Arrived"]
+
+# L:A32NX_FMGC_FLIGHT_PHASE (FlyByWire) numbering; other aircraft reporting this way would need their own table
+FMGC_PHASES = {0: "Preflight", 1: "Takeoff", 2: "Climb", 3: "Cruise", 4: "Descent", 5: "Approach", 6: "Approach", 7: "Arrived"}
+
+
+class PhaseTracker:
+    """feed() the ~1 Hz readings; phase() is the current name, source() is "aircraft" or "estimated"."""
+
+    CONFIRM = 3   # the same answer this many readings in a row before the display changes
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self) -> None:
+        self.current = None
+        self.src = "estimated"
+        self.flown = False
+        self.cruised = False
+        self.max_alt = 0.0
+        self.t_arrived = None
+        self._cand, self._n = None, 0
+
+    def phase(self):
+        return self.current
+
+    def source(self) -> str:
+        return self.src
+
+    def estimate(self, r: dict) -> str:
+        ground = bool(r.get("on_ground"))
+        gs = float(r.get("gs") or 0.0)
+        agl = float(r.get("agl") or 0.0)
+        alt = float(r.get("alt") or 0.0)
+        vs = r.get("vs")
+        vs = float(vs) if vs is not None else 0.0
+        self.max_alt = max(self.max_alt, alt)
+        if not ground:
+            self.flown = self.flown or agl > 300
+            if alt >= CRUISE_ALT_FT:
+                self.cruised = True
+            if not self.cruised and not self.flown_far(agl):
+                return "Takeoff" if vs > 200 and agl < 1500 else "Climb"
+            if vs >= 300 and not self.descending(alt):
+                return "Climb"
+            if vs <= -300 or self.descending(alt):
+                return "Approach" if agl < 3000 and self.cruised_or_long() else "Descent"
+            return "Cruise" if alt >= 10000 else "Climb"
+        if not self.flown:
+            if gs >= 40:
+                return "Takeoff"
+            return "Taxi out" if gs >= 1 else "Preflight"
+        if gs >= 40:
+            return "Landing"
+        if gs >= 1:
+            return "Taxi in"
+        return "Arrived"
+
+    def flown_far(self, agl: float) -> bool:
+        return agl >= 1500
+
+    def descending(self, alt: float) -> bool:
+        return self.cruised and alt < self.max_alt - 1500
+
+    def cruised_or_long(self) -> bool:
+        return self.cruised or self.max_alt > 8000
+
+    def feed(self, r: dict, reported: str | None = None) -> None:
+        if reported:
+            name, src = reported, "aircraft"
+            self.estimate(r)   # keep the flown / cruised memory going
+        else:
+            name, src = self.estimate(r), "estimated"
+        t = float(r.get("t", 0.0))
+        # a minute parked after arriving: the next flight starts from the beginning
+        if name == "Arrived":
+            self.t_arrived = self.t_arrived if self.t_arrived is not None else t
+            if t - self.t_arrived > 300 and self.current == "Arrived" and r.get("eng_running") is True:
+                self.reset()
+                name = "Preflight"
+        else:
+            self.t_arrived = None
+        if name == self._cand:
+            self._n += 1
+        else:
+            self._cand, self._n = name, 1
+        if self.current is None or (name != self.current and self._n >= self.CONFIRM) or src != self.src:
+            self.current, self.src = name, src

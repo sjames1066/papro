@@ -2147,6 +2147,7 @@ class UIMixin:
             "catalog_error": self.catalog_error,
             "app_update": app_update(),
             "aircraft": getattr(self, "aircraft", None),
+            "phase": self.phase_info(),
             "update_checked": int(getattr(self, "update_checked", 0) * 1000),
             "logo_v": self.logo_version,
             "installs_done": self.installs_done,
@@ -3150,6 +3151,9 @@ class TrayApp(UIMixin):
         """From the SimConnect watcher: the aircraft now loaded in the sim (None when the sim is closed)."""
         before = _PLAYBACK["on"]
         self.aircraft = info
+        if not info and getattr(self, "tracker", None):
+            self.tracker.reset()
+            self.tracker.current = None   # the sim is closed: no phase to show
         if info:
             log.info("Aircraft: %s (%s)", info["title"], "PAs supported" if info["supported"] else "PAPro plays the PAs itself")
         try:
@@ -3161,6 +3165,15 @@ class TrayApp(UIMixin):
             state.pop("last", None)   # rebuild for the new place (the landing time already taken from the sim is kept)
             save_state(state)
             self.wake.set()
+
+    def phase_info(self):
+        from papro_phases import PHASES
+
+        tracker = getattr(self, "tracker", None)
+        if not tracker or not tracker.phase() or not getattr(self, "aircraft", None):
+            return None
+        name = tracker.phase()
+        return {"name": name, "source": tracker.source(), "index": PHASES.index(name) if name in PHASES else -1, "steps": PHASES}
 
     def sync_knob(self) -> None:
         try:
@@ -3200,6 +3213,12 @@ class TrayApp(UIMixin):
 
     def telemetry(self, reading: dict) -> None:
         """From the SimConnect watcher, about once a second: drives the phase engine for aircraft PAPro plays for."""
+        from papro_phases import FMGC_PHASES, PhaseTracker
+
+        tracker = getattr(self, "tracker", None)
+        if tracker is None:
+            tracker = self.tracker = PhaseTracker()
+        tracker.feed(reading, FMGC_PHASES.get(reading.get("fmgc_phase")) if reading.get("fmgc_phase") is not None else None)
         if not _PLAYBACK["on"]:
             return
         engine = getattr(self, "phases", None)
