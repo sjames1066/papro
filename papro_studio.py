@@ -116,7 +116,7 @@ GENERAL = [  # (file name, label, what to say). The file names are Fenix's annou
     ("CabinSecured[PreFlight]", "Before takeoff - cabin secure report", "Interphone to the cockpit: cabin secure for takeoff. (Tagged [PreFlight].)"),
     ("CabinSecured[Descent][Approach]", "Before landing - cabin secure report", "Interphone to the cockpit: cabin secure for landing. (Tagged [Descent][Approach].)"),
     ("AfterTakeoff", "After takeoff - welcome and flight details", "PA after takeoff, once past acceleration altitude."),
-    ("SeatbeltSignOn", "Seatbelt sign switched on", "The seatbelt signs have been switched on."),
+    ("SeatbeltSignOn", "Seatbelt Sign On (Turbulence)", "The seatbelt signs have been switched on."),
     ("SeatbeltSignOff", "Seatbelt sign switched off", "The seatbelt signs have been switched off."),
     ("CabinService", "Cabin service begins", "Cabin service is about to begin."),
     ("DescentStarted", "Descent has started", "We have started our descent."),
