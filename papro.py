@@ -151,7 +151,7 @@ DEFAULT_CONFIG = {
     "airline_aliases": {},
     "auto_poll": True,
     "poll_interval_seconds": 60,
-    "notifications": True,
+    "notifications": False,
     "minimize_to_tray": False,        # minimizing the PAPro window hides it in the tray instead of the taskbar
     "close_to_tray": False,           # closing the PAPro window: False = PAPro quits, True = it keeps running in the tray
     "pa_boost": 30,                   # percent louder than the recordings when PAPro puts a PA into the Fenix folder (0 = untouched)
@@ -3559,7 +3559,7 @@ class TrayApp(UIMixin):
         try:
             self.icon.title = f"{APP_NAME}: {self.status_text()}"[:127]
             self.icon.update_menu()
-            if notify:
+            if notify and load_config().get("notifications", False):   # Windows pop-ups are off by default: PAPro works quietly in the background
                 self.icon.notify(text if len(text) <= 250 else text[:247] + "...", APP_NAME)
         except Exception:  # tray backends can be flaky; never let that kill the worker
             log.exception("Tray update failed")
@@ -3621,8 +3621,7 @@ class TrayApp(UIMixin):
         try:
             cfg = load_config()
             changed, message = update(cfg, force=force)
-            notify = changed and bool(cfg.get("notifications", True))
-            self.set_status(message, notify=notify)
+            self.set_status(message, notify=False)   # pack updates happen quietly in the background
         except AppError as exc:
             self.set_status(str(exc))
         except Exception as exc:

@@ -711,9 +711,10 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
 .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--surface2);border:1px solid var(--line2);
        padding:10px 16px;border-radius:12px;opacity:0;transition:.25s;pointer-events:none}
 .toast.show{opacity:1}
-</style>
+body.remote .pc-only{display:none!important}body.remote .remote-note{display:block!important}#m-settings .dialog{max-width:calc(100vw - 24px);max-height:calc(100vh - 24px);overflow-y:auto}</style>
 </head>
 <body>
+<script>try{var h=location.hostname;if(h&&h!=="localhost"&&h!=="127.0.0.1"&&h!=="[::1]"&&h!=="::1")document.body.classList.add("remote")}catch(e){}</script>
 <div class="wrap">
   <header>
     <img src="/icon.png?t=__TOKEN__" alt="">
@@ -843,17 +844,18 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
 
 <div class="modal" id="m-settings"><div class="dialog" style="width:500px">
   <h3>Settings</h3><p>How PAPro behaves. Changes apply when you press Save.</p>
-  <div class="setting"><div class="label">Updates</div>
+  <div class="small remote-note" style="display:none;margin-bottom:14px">You are viewing PAPro from another device, so settings that belong to the PC (window, startup, audio output, updates) are hidden here. Change those on the PC itself.</div>
+  <div class="setting pc-only"><div class="label">Updates</div>
     <div style="display:flex;align-items:center;gap:12px"><div style="flex:1;min-width:0"><b id="s-ver" style="display:block;font-size:13.5px"></b><span id="s-chk" style="color:var(--muted);font-size:12.5px"></span></div>
       <button id="s-check">Check for updates</button><button class="primary" id="s-upd" style="display:none">Update now</button></div></div>
   <div class="setting"><div class="label">SimBrief username</div>
     <input type="text" id="s-name" placeholder="e.g. captainsmith123" autocomplete="off" spellcheck="false"></div>
-  <div class="setting"><div class="label">When I close this window</div>
+  <div class="setting pc-only"><div class="label">When I close this window</div>
     <div class="radios" id="s-close">
       <div class="radio" data-v="no"><b>Close PAPro</b><span>PAPro quits. It only builds the landing announcement while it is running, so keep it open during a flight</span></div>
       <div class="radio" data-v="yes"><b>Keep it running in the tray</b><span>The window closes but PAPro carries on; double-click the tray icon to open it again</span></div>
     </div></div>
-  <div class="setting"><div class="label">When I minimize this window</div>
+  <div class="setting pc-only"><div class="label">When I minimize this window</div>
     <div class="radios" id="s-min">
       <div class="radio" data-v="no"><b>Minimize normally</b><span>It stays in the taskbar</span></div>
       <div class="radio" data-v="yes"><b>Hide it in the tray</b><span>It leaves the taskbar; double-click the tray icon to bring it back</span></div>
@@ -876,7 +878,7 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
       <div class="radio" data-v="30"><b>Louder (+30%)</b><span>Recommended if the cabin PAs sound quiet in the sim</span></div>
       <div class="radio" data-v="50"><b>Much louder (+50%)</b><span>Peaks are softly limited so it never distorts</span></div>
     </div></div>
-  <div class="setting"><div class="label">Audio output</div>
+  <div class="setting pc-only"><div class="label">Audio output</div>
     <div class="small" style="margin-bottom:10px">For aircraft that PAPro plays announcements for itself (not the Fenix, which plays them in the sim). Choose where the sound comes out.</div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <select class="voice" id="s-adev" style="flex:1;min-width:200px;max-width:100%"></select>
@@ -891,7 +893,7 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
     <div class="small" style="margin-bottom:10px">Reads GSX's boarding and deboarding status so the Dashboard's flight phase follows the ground services. Does nothing if GSX isn't installed.</div>
     <label class="check" style="margin:0"><input type="checkbox" id="s-gsx"> Use GSX for boarding and deboarding</label>
   </div>
-  <div class="setting"><div class="label">Start PAPro automatically</div>
+  <div class="setting pc-only"><div class="label">Start PAPro automatically</div>
     <div class="radios" id="s-start">
       <div class="radio" data-v="off"><b>No</b><span>I'll start it myself</span></div>
       <div class="radio" data-v="msfs"><b>With MSFS</b><span>The sim launches PAPro every time it starts (through its EXE.xml)</span></div>
@@ -899,14 +901,14 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
     </div>
     <label class="check" id="s-quit-row" style="margin:12px 0 0"><input type="checkbox" id="s-quit"> Close PAPro when MSFS closes</label>
   </div>
-  <div class="setting"><div class="label">PAPro's web address</div>
+  <div class="setting pc-only"><div class="label">PAPro's web address</div>
     <div class="small" style="margin-bottom:10px">PAPro also runs as a local web page. This address is always the same, so another app (such as EFBx.io) can open it as an internal app. It only works on this PC while PAPro is running.</div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><input type="text" id="s-addr" readonly style="flex:1;min-width:220px;font:600 12px 'Inter',sans-serif" onclick="this.select()"><button class="ghost" id="s-addr-copy">Copy</button><button class="ghost" data-open="browser">Open in browser</button></div>
     <label class="check" style="margin:14px 0 0"><input type="checkbox" id="s-lan"> Let other devices on my network or VPN open PAPro</label>
     <div class="small" id="s-lan-note" style="margin-top:6px">Turn this on for EFBx on another device or over a VPN. Anyone who can reach this PC on that network could then change your PAPro settings, so only use it on a network you trust. Windows may ask whether to allow PAPro through its firewall - allow it for private networks.</div>
     <div id="s-lan-addrs" style="margin-top:8px"></div>
   </div>
-  <div class="setting"><div class="label">Fenix packs folder and log</div>
+  <div class="setting pc-only"><div class="label">Fenix packs folder and log</div>
     <div style="display:flex;align-items:center;gap:12px"><button class="ghost" data-open="fenix">Open folder</button><span class="small">Where PAPro puts your announcements for the Fenix.</span></div>
     <div style="display:flex;align-items:center;gap:12px;margin-top:10px"><button class="ghost" data-open="log">View log</button><span class="small">Useful if something is not working.</span></div></div>
   <div class="row"><button class="ghost" id="s-cancel">Cancel</button><button class="primary" id="s-save">Save</button></div>
