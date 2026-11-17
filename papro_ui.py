@@ -878,8 +878,11 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
     </div>
     <div class="small" id="s-anote" style="margin-top:8px"></div>
     <label class="check" style="margin:12px 0 0"><input type="checkbox" id="s-aplay"> Play the announcements through PAPro when the aircraft isn't a Fenix</label>
-    <label class="check" style="margin:12px 0 0"><input type="checkbox" id="s-gsx"> GSX integration: use GSX's boarding / deboarding status for the flight phase</label>
     <div class="small" style="margin-top:6px">Volume and mute are on the PA knob on the Dashboard.</div>
+  </div>
+  <div class="setting"><div class="label">GSX integration</div>
+    <div class="small" style="margin-bottom:10px">Reads GSX's boarding and deboarding status so the Dashboard's flight phase follows the ground services. Does nothing if GSX isn't installed.</div>
+    <label class="check" style="margin:0"><input type="checkbox" id="s-gsx"> Use GSX for boarding and deboarding</label>
   </div>
   <div class="setting"><div class="label">Start PAPro automatically</div>
     <div class="radios" id="s-start">
