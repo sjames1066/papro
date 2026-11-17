@@ -1605,14 +1605,14 @@ function renderStudio(){
     const card=el("section","card");card.append(el("h2",null,"Pack Studio"));
     const intro=el("p","small","Make an airline pack: record (or upload) each announcement, and PAPro gives it the cabin-PA sound and sets it to the loudness of the original Fenix announcements, so every pack sounds consistent. Then export a zip to share.");
     intro.style.fontSize="13.5px";intro.style.color="var(--muted)";card.append(intro);
-    if(!newPackOpen){const row=el("div","row");row.style.marginTop="14px";const go=el("button","primary","Start New Pack");go.onclick=()=>{newPackOpen=true;studioSig="";renderStudio()};row.append(go);card.append(row);root.append(card)}
+    if(!newPackOpen){const row=el("div","row");row.style.cssText="margin-top:14px;justify-content:flex-start";const go=el("button","primary","Start New Pack");go.onclick=()=>{newPackOpen=true;studioSig="";renderStudio()};row.append(go);card.append(row);root.append(card)}
     else{
     const g=el("div","sd-grid");const ic=el("label",null,"Airline code (3 letters)"),i1=el("input");i1.type="text";i1.maxLength=3;i1.placeholder="BAW";i1.style.textTransform="uppercase";ic.append(i1);
     const an=el("label",null,"Airline name"),i2=el("input");i2.type="text";i2.placeholder="British Airways";an.append(i2);
     const vn=el("label","wide","Name of this voice"),i3=el("input");i3.type="text";i3.placeholder="Emma";vn.append(i3);g.append(ic,an,vn);card.append(g);
-    const row=el("div","row");row.style.marginTop="14px";const go=el("button","primary","Start New Pack"),cn=el("button","ghost","Cancel");
+    const row=el("div","row");row.style.cssText="margin-top:14px;justify-content:flex-start";const go=el("button","primary","Start New Pack"),cn=el("button","ghost","Cancel");
     cn.onclick=()=>{newPackOpen=false;studioSig="";renderStudio()};
-    go.onclick=async()=>{const r=await studio("create",{icao:i1.value,airline:i2.value,voice:i3.value});if(r.ok){newPackOpen=false;toast("Pack started")}};row.append(cn,go);card.append(row);root.append(card);setTimeout(()=>i1.focus(),0)}
+    go.onclick=async()=>{const r=await studio("create",{icao:i1.value,airline:i2.value,voice:i3.value});if(r.ok){newPackOpen=false;toast("Pack started")}};row.append(go,cn);card.append(row);root.append(card);setTimeout(()=>i1.focus(),0)}
     if(s.library&&s.library.length){const h=el("div","section-head");h.append(el("h2",null,"Edit a pack from your library"),el("span",null,"change clips, add airports, fix a recording"));root.append(h);
       s.library.forEach(p=>{const b=el("button","ghost",p.icao+" - "+p.name);b.style.margin="0 8px 8px 0";b.onclick=async()=>{const r=await studio("import",p);if(r.ok)toast("Opened for editing - your clips are unchanged until you replace them")};root.append(b)})}
     if(s.projects.length){const h=el("div","section-head");h.append(el("h2",null,"Your packs in progress"));root.append(h);
