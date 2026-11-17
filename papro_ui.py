@@ -549,6 +549,8 @@ input[type=text]:focus{border-color:var(--magenta)}
 .tlab select,.tlab input{height:44px;box-sizing:border-box}
 .tlab{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--faint);position:relative}
 #t-spoken{position:absolute;left:2px;top:100%;margin-top:4px;white-space:nowrap;color:var(--magenta);font-size:11.5px}
+#t-build.go{background:linear-gradient(#35c47a,#22a763);color:#fff;border:1px solid #1d8f55;font-weight:700;font-size:15px;padding:0 30px;height:44px;border-radius:12px;cursor:pointer;box-shadow:0 4px 14px rgba(53,196,122,.28)}
+#t-build.go:hover{filter:brightness(1.08)}#t-build.go:disabled{opacity:.5;cursor:default}
 #t-all{font-size:18px;font-weight:700;padding:16px 44px;border-radius:16px;min-width:230px}
 #t-all.running{background:var(--surface2);border-color:var(--line2);box-shadow:none}
 #t-all:disabled{opacity:.5}
@@ -741,7 +743,7 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
       <label class="tlab">Destination<select class="voice" id="t-dest"></select></label>
       <label class="tlab">Aircraft type<input type="text" id="t-ac" list="t-aclist" maxlength="4" placeholder="Any" autocomplete="off" style="width:130px;text-transform:uppercase" title="ICAO aircraft type to build for, e.g. A320. Empty = the normal PAs. Packs can have PAs that only play on some types."><datalist id="t-aclist"></datalist></label>
       <label class="tlab">Local arrival time<input type="text" id="t-time" value="14:35" style="width:90px"><span id="t-spoken"></span></label>
-      <button class="ghost" id="t-build">Rebuild (re-roll variations)</button>
+      <button class="go" id="t-build" title="Build these announcements again, re-rolling the variations (Enter does the same)">Go</button>
     </div>
     <div style="display:flex;align-items:center;gap:16px;margin-top:16px">
       <button class="primary" id="t-all">&#9654;  Test All</button><button class="ghost" id="t-skip" style="display:none;padding:14px 22px">⏭  Skip</button><button class="ghost" id="t-stop" style="display:none;padding:14px 22px">■  Stop</button><span id="t-now"></span>
@@ -1261,6 +1263,7 @@ async function testInit(){
   $("#t-time").onchange=()=>{const m=$("#t-time").value.trim().match(/^(\d{1,2})[:.]?(\d{2})$/); if(m&&+m[1]<24&&+m[2]<60)$("#t-time").value=m[1].padStart(2,"0")+":"+m[2]; tSpoken(); testBuild(false)};
   $("#t-time").oninput=tSpoken;
   $("#t-build").onclick=()=>testBuild(true);
+  $("#view-test").onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey&&!e.ctrlKey&&!e.altKey&&["INPUT","SELECT"].includes(e.target.tagName)&&e.target.id!=="t-seek"){e.preventDefault();$("#t-build").click()}};
   $("#t-all").onclick=()=>{ if(tPlaylist&&tAudio){ if(tPaused){tPaused=false;tAudio.play().catch(()=>{})}else{tPaused=true;tAudio.pause()} testMark(); return} testAll()};
   $("#t-skip").onclick=()=>{ if(tIdx<0||!tRows.length)return; tPlaylist=true; tPaused=false; testPlay(tIdx+1)};
   $("#t-stop").onclick=testStop;
