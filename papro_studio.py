@@ -398,7 +398,7 @@ def slot_list(project: dict) -> list[dict]:
             add(group, folder, f"{stem}~v{n}", f"{label} - variation {n}", script, part=part)
             out[-1].update({"variant_of": stem, "variant_n": n})
 
-    W1, W2 = "Part 1 - the greeting (ends on the start of the destination; the airport name follows)", "Part 2 - the rest of the welcome (after the airport name)"
+    W1, W2 = "Part 1 - Welcome onboard this flight to...", "Part 2"
     L1, L2 = "Part 1 - Welcome to... [destination] [local time if enabled in Pack settings]", "Part 2"
     for stem, label, script in GREETINGS:
         if stem.startswith("Welcome_"):
