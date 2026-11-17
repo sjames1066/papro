@@ -1011,7 +1011,7 @@ function renderHero(){
     const ids=[f.number,f.callsign].filter(Boolean).join(" / ");
     if(ids) mid.append(el("div","h-ids",ids));
     mid.append(el("div","h-name",snap.company||f.airline||"???"));
-    const d=el("div","h-dest"); d.append(el("b",null,f.dest)); if(f.name) d.append(document.createTextNode(" / "+f.name)); mid.append(d);
+    const d=el("div","h-dest"); if(f.origin){d.append(el("b",null,f.origin),document.createTextNode(" \u2192 "))} d.append(el("b",null,f.dest)); if(f.name) d.append(document.createTextNode(" | "+f.name)); mid.append(d);
   }else mid.append(el("div","h-name","No flight yet"));
   if(snap.message&&!noPack){const m=el("div","msg"); m.textContent=snap.message; mid.append(m)}
   if(snap.aircraft){const ac=snap.aircraft,chip=el("div","h-ac "+(ac.supported?"ok":"warn"));chip.title=ac.supported?"PAs can be played in the sim for this aircraft":"PAPro can't play PAs inside this aircraft yet";

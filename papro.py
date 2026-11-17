@@ -544,6 +544,7 @@ def fetch_flight(cfg: dict) -> dict:
         raise AppError("SimBrief plan has no destination.")
     return {
         "icao": icao,
+        "origin": str((data.get("origin") or {}).get("icao_code", "")).strip().upper(),
         "name": str(dest.get("name", "")).strip(),
         "airline": str((data.get("general") or {}).get("icao_airline", "")).strip().upper(),
         "arrival": arrival_clock(data),
@@ -1956,7 +1957,7 @@ def update(cfg: dict, force: bool = False, airline: str | None = None, dest: str
         raise AppError(f"'{flight['icao']}' is not a valid airport code.")
     key = f"{code}_{flight['icao']}_{flight.get('arrival') or ''}_{flight.get('aircraft') or ''}{'_pb' if _PLAYBACK['on'] else ''}"  # a new landing time or aircraft rebuilds the PAs
     state = load_state()
-    shown = {"airline": code, "dest": flight["icao"], "name": flight.get("name", ""),
+    shown = {"airline": code, "dest": flight["icao"], "origin": flight.get("origin", ""), "name": flight.get("name", ""),
              "number": flight.get("number", ""), "callsign": flight.get("callsign", ""), "aircraft": flight.get("aircraft", ""),
              "dest_lat": flight.get("dest_lat"), "dest_lon": flight.get("dest_lon"), "cruise_ft": flight.get("cruise_ft")}
     if state.get("flight") != shown:
