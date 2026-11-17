@@ -649,6 +649,7 @@ details.grp.sub{margin:6px 0 6px 16px;padding-left:10px;border-left:2px solid va
 details.grp.sub summary{font-weight:500;font-size:13.5px}
 details.grp summary span{color:var(--faint);font-weight:500;font-size:12.5px;margin-left:8px}
 .slot{display:grid;grid-template-columns:1fr auto;gap:2px 12px;align-items:center;padding:9px 12px;margin:6px 0;border:1px solid var(--line);border-radius:12px;background:var(--surface2)}
+.seekrow{grid-column:1/-1;display:flex;align-items:center;gap:10px;margin-top:6px}.seekrow input[type=range]{flex:1;accent-color:var(--magenta);cursor:pointer;height:6px}.seekrow .tt{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;min-width:30px}.seekrow .tt:last-child{text-align:right}
 .slot.done{border-color:rgba(80,200,140,.35)}
 .slot.skipped{border-color:rgba(240,200,60,.6);background:rgba(240,200,60,.09)}
 .slot .nm2 em.sk{color:#f0c83c}
@@ -1433,14 +1434,37 @@ function syncPlayer(){
   document.querySelectorAll("#view-studio .pp").forEach(b=>{const on=player&&player.id===b.dataset.id,playingNow=on&&!player.audio.paused;
     b.textContent=playingNow?"⏸":"▶";b.title=playingNow?"Pause":"Play"});
   document.querySelectorAll("#view-studio .stp").forEach(b=>{b.style.display=player&&player.id===b.dataset.id?"":"none"});
+  syncSeek();
 }
+// a seek bar under the clip that is playing (or paused): drag or click to jump, arrow keys step
+function fmtT(t){t=Math.max(0,Math.floor(t||0));return Math.floor(t/60)+":"+String(t%60).padStart(2,"0")}
+function syncSeek(){
+  document.querySelectorAll("#view-studio .slot").forEach(slot=>{
+    const b=slot.querySelector(".pp"),on=!!(b&&player&&player.id===b.dataset.id);let row=slot.querySelector(".seekrow");
+    if(!on){if(row)row.remove();return}
+    if(!row){
+      row=el("div","seekrow");const cur=el("span","tt","0:00"),rg=document.createElement("input"),dur=el("span","tt","0:00");
+      rg.type="range";rg.min=0;rg.max=1000;rg.value=0;rg.step=1;rg.setAttribute("aria-label","Playback position");
+      rg.oninput=()=>{const a=player&&player.audio;row.dataset.drag="1";if(a&&isFinite(a.duration)){a.currentTime=rg.value/1000*a.duration;cur.textContent=fmtT(a.currentTime)}};
+      rg.onchange=()=>{delete row.dataset.drag};rg.onpointerup=()=>{delete row.dataset.drag};
+      row.append(cur,rg,dur);slot.append(row);
+    }
+    updateSeek(row)})
+}
+function updateSeek(row){
+  const a=player&&player.audio;if(!a)return;const d=isFinite(a.duration)?a.duration:0,sp=row.children;
+  sp[0].textContent=fmtT(a.currentTime);sp[2].textContent=fmtT(d);
+  if(!row.dataset.drag)sp[1].value=d?Math.round(a.currentTime/d*1000):0}
+function tickSeek(){document.querySelectorAll("#view-studio .seekrow").forEach(updateSeek)}
 function togglePlay(c,id){
   if(player&&player.id===id){const a=player.audio;if(a.paused)a.play().catch(()=>{});else a.pause();syncPlayer();return}
   stopPlay();
-  const a=newAudio("/studio/audio?"+new URLSearchParams({icao:c.icao,voice:c.voice,slot:id,t:TOKEN,v:Date.now()}));
-  player={id,audio:a};["play","pause"].forEach(e=>a.addEventListener(e,syncPlayer));
-  a.addEventListener("ended",()=>{if(player&&player.audio===a)player=null;syncPlayer()});
-  a.play().then(syncPlayer).catch(()=>{player=null;syncPlayer();toast("Could not play that")});syncPlayer();
+  const a=newAudio();player={id,audio:a};
+  ["play","pause"].forEach(e=>a.addEventListener(e,syncPlayer));["timeupdate","loadedmetadata","durationchange"].forEach(e=>a.addEventListener(e,tickSeek));
+  a.addEventListener("ended",()=>{if(player&&player.audio===a)player=null;syncPlayer()});syncPlayer();
+  // fetched whole first, so the seek bar can jump anywhere in the clip
+  fetch("/studio/audio?"+new URLSearchParams({icao:c.icao,voice:c.voice,slot:id,t:TOKEN,v:Date.now()})).then(r=>{if(!r.ok)throw 0;return r.blob()}).then(blob=>{
+    if(!player||player.audio!==a)return;a.src=URL.createObjectURL(blob);return a.play()}).then(syncPlayer).catch(()=>{if(player&&player.audio===a)player=null;syncPlayer();toast("Could not play that")});
 }
 function stopPlay(){if(player){const a=player.audio;player=null;a.pause();a.currentTime=0}syncPlayer()}
 function typesPicker(c,r,anchor){
