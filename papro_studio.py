@@ -398,7 +398,7 @@ PHASES = [
 PHASE_NAMES = [name for name, _ in PHASES]
 BOARDING_LOOP = "Generic Boarding [no destination file]"
 REFUEL_PART = "While refuelling - the tag-on"
-LANDING_FALLBACK = "Fallback - if an airport has no recording"
+LANDING_FALLBACK = 'Fallback - "Generic After Landing"'
 
 
 SAFETY_TYPED = ("PreSafetyBriefing", "SafetyBriefing")   # aircraft versions of these are listed in the Safety briefing group
