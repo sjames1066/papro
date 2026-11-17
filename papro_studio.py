@@ -399,7 +399,7 @@ def slot_list(project: dict) -> list[dict]:
             out[-1].update({"variant_of": stem, "variant_n": n})
 
     W1, W2 = "Part 1 - the greeting (ends on the start of the destination; the airport name follows)", "Part 2 - the rest of the welcome (after the airport name)"
-    L1, L2 = "Part 1 - the arrival (welcome to, airport name, local time)", "Part 2 - the rest of the landing (after the time)"
+    L1, L2 = "Part 1 - Welcome to... [destination] [local time if enabled in Pack settings]", "Part 2"
     for stem, label, script in GREETINGS:
         if stem.startswith("Welcome_"):
             add("BoardingWelcome", "time", stem, label, script, required=stem != "Welcome_Night", part=W1)
@@ -466,7 +466,7 @@ PHASES = [
 PHASE_NAMES = [name for name, _ in PHASES]
 BOARDING_LOOP = "Generic Boarding [no destination file]"
 REFUEL_PART = "Refueling"
-LANDING_FALLBACK = "Generic After Landing"
+LANDING_FALLBACK = "Generic After Landing [no destination file]"
 
 
 SAFETY_TYPED = ("PreSafetyBriefing", "SafetyBriefing")   # aircraft versions of these are listed in the Safety briefing group
