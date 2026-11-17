@@ -546,6 +546,7 @@ button.danger:hover{border-color:var(--err);color:var(--err)}
 input[type=text]{font:500 14px 'Inter',sans-serif;color:var(--text);background:var(--bg);border:1px solid var(--line2);
        border-radius:11px;padding:10px 13px;width:100%;outline:none}
 input[type=text]:focus{border-color:var(--magenta)}
+.tlab select,.tlab input{height:44px;box-sizing:border-box}
 .tlab{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--faint);position:relative}
 #t-spoken{position:absolute;left:2px;top:100%;margin-top:4px;white-space:nowrap;color:var(--magenta);font-size:11.5px}
 #t-all{font-size:18px;font-weight:700;padding:16px 44px;border-radius:16px;min-width:230px}
@@ -738,7 +739,7 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
       <label class="tlab">Pack<select class="voice" id="t-air"></select></label>
       <label class="tlab">Voice<select class="voice" id="t-voice"></select></label>
       <label class="tlab">Destination<select class="voice" id="t-dest"></select></label>
-      <label class="tlab">Aircraft type<input type="text" id="t-ac" list="t-aclist" maxlength="4" placeholder="Any (generic)" autocomplete="off" style="width:130px;text-transform:uppercase" title="ICAO aircraft type to build for, e.g. A320. Empty = the normal PAs. Packs can have PAs that only play on some types."><datalist id="t-aclist"></datalist></label>
+      <label class="tlab">Aircraft type<input type="text" id="t-ac" list="t-aclist" maxlength="4" placeholder="Any" autocomplete="off" style="width:130px;text-transform:uppercase" title="ICAO aircraft type to build for, e.g. A320. Empty = the normal PAs. Packs can have PAs that only play on some types."><datalist id="t-aclist"></datalist></label>
       <label class="tlab">Local arrival time<input type="text" id="t-time" value="14:35" style="width:90px"><span id="t-spoken"></span></label>
       <button class="ghost" id="t-build">Rebuild (re-roll variations)</button>
     </div>
