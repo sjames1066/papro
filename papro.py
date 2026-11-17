@@ -891,6 +891,12 @@ def install_pack(cfg: dict, entry: dict, progress=None) -> str:
         staging = Path(tmp) / "extract"
         extract_pack(zip_path, staging)
         report("Installing files", 0.88)
+        try:   # the pack's own default for the local time (from its voice.json), unless you already chose
+            said = json.loads((staging / "voice.json").read_text(encoding="utf-8-sig")).get("local_time")
+            if isinstance(said, bool) and "local_time" not in pack_settings(cfg, icao):
+                set_pack_setting(cfg, icao, "local_time", said)
+        except (OSError, ValueError, AttributeError):
+            pass
         also_added = adopt_aliases(cfg, icao, staging)
         if also_added:
             log.info("%s pack: %s now use its recordings", icao, ", ".join(also_added))
@@ -1784,7 +1790,7 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
                 pieces = None
                 if joined and clip:
                     if folder == "dest":
-                        pieces, note = landing_pieces(voice_dir, clip, arrival, bool(cfg.get("announce_local_time", True)),
+                        pieces, note = landing_pieces(voice_dir, clip, arrival, local_time_on(cfg, source),
                                                       lead if landing_from_name else None)
                         if note and note not in notes:
                             notes.append(note)
@@ -1831,6 +1837,34 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
     return message
 
 
+PACK_SETTINGS = "settings.json"   # Airlines\\<ICAO>\\settings.json: this pack's own settings, e.g. {"local_time": true}
+
+
+def pack_settings(cfg: dict, code: str) -> dict:
+    """The settings kept with an airline pack (after any alias), {} if it has none."""
+    try:
+        source = load_aliases(cfg).get(code, code)
+        data = json.loads((airline_folder(cfg, source) / PACK_SETTINGS).read_text(encoding="utf-8-sig"))
+        return data if isinstance(data, dict) else {}
+    except (AppError, OSError, ValueError):
+        return {}
+
+
+def set_pack_setting(cfg: dict, code: str, key: str, value) -> None:
+    folder = airline_folder(cfg, code)
+    data = pack_settings(cfg, code) if code not in load_aliases(cfg) else {}
+    data[key] = value
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / PACK_SETTINGS).write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+
+def local_time_on(cfg: dict, code: str) -> bool:
+    """Does this pack say the local time in the landing PA? The pack's own setting; packs without one use the old global
+    setting (config.json), which defaults to yes."""
+    value = pack_settings(cfg, code).get("local_time")
+    return bool(value) if isinstance(value, bool) else bool(cfg.get("announce_local_time", True))
+
+
 def callsign_airline(cfg: dict, code: str, callsign: str) -> str | None:
     """The airline in the callsign (SHT2A -> SHT) when it differs from the SimBrief airline (BAW) and has a pack of its
     own or an alias - the Fenix livery reads the folder of the callsign's airline, so that folder needs filling too."""
@@ -1856,7 +1890,7 @@ def rebuild_landing(cfg: dict, arrival: str | None) -> str:
     airline, dest = flight.get("airline"), flight.get("dest")
     if not airline or not dest:
         raise AppError("No flight is set up, so there is no landing PA to build.")
-    if not cfg.get("announce_local_time", True):
+    if not local_time_on(cfg, airline):
         return f"Landed at {dest}"
     if not arrival:
         return f"Landed at {dest} - no local time from the sim, kept the PA as it was"
@@ -2167,7 +2201,7 @@ class UIMixin:
             update = any(have_entry(e) not in (None, e["version"]) for e in entries)
             packs.append({"icao": code, "key": code, "name": airline_display_name(cfg, code, have, known_names.get(code, "")),
                           "version": (have or {}).get("version", "Your recordings") if have else "Your recordings",
-                          "voices": library_voices(cfg, code), "voice_items": library_voice_items(cfg, code), "size_mb": 0,
+                          "voices": library_voices(cfg, code), "voice_items": library_voice_items(cfg, code), "local_time": local_time_on(cfg, code), "size_mb": 0,
                           "installed": True, "update": update, "task": self.tasks.get(code),
                           "update_id": next((e["id"] for e in entries if have_entry(e) not in (None, e["version"])), "")})
         shown = {p["icao"] for p in packs}
@@ -2222,7 +2256,6 @@ class UIMixin:
             "settings": {
                 "close_to_tray": bool(cfg.get("close_to_tray", False)),
                 "minimize_to_tray": bool(cfg.get("minimize_to_tray", False)),
-                "local_time": bool(cfg.get("announce_local_time", True)),
                 "extra_chance": int(cfg.get("extra_chance", 25)),
                 "pa_boost": boost_percent(cfg),
                 "lan": {"on": bool(cfg.get("lan_access", False)), "addresses": [f"http://{ip}:{self.ui.httpd.server_address[1]}/" for ip in self.ui.private_ips()] if getattr(self.ui, "httpd", None) and self.ui.lan_on else []},
@@ -2510,6 +2543,20 @@ class UIMixin:
             except AppError as exc:
                 return {"error": str(exc)}
             threading.Thread(target=self.import_download, args=(zip_url,), daemon=True).start()
+        elif name == "pack_local_time":   # a pack's own choice: say the local time in its landing PA, or leave it out
+            cfg = load_config()
+            try:
+                code = check_airline_code(str(data.get("icao", "")))
+                if not airline_folder(cfg, code).is_dir():
+                    return {"error": "That pack is not installed."}
+                set_pack_setting(cfg, code, "local_time", bool(data.get("on")))
+            except (AppError, OSError) as exc:
+                return {"error": str(exc)}
+            state = load_state()   # rebuild the landing PA with / without the time on the next check
+            state.pop("last", None)
+            state.pop("live", None)
+            save_state(state)
+            self.wake.set()
         elif name == "remove_voice":
             try:
                 message = remove_voice(load_config(), str(data.get("icao", "")), str(data.get("voice", "")))
@@ -2650,14 +2697,6 @@ class UIMixin:
                     set_config_value("pa_boost", boost)
                     state = load_state()
                     state.pop("last", None)   # rebuild everything at the new volume
-                    save_state(state)
-                    self.wake.set()
-                wanted = bool(data.get("local_time", True))
-                if wanted != bool(load_config().get("announce_local_time", True)):
-                    set_config_value("announce_local_time", wanted)
-                    state = load_state()  # rebuild the landing PA with / without the time on the next check
-                    state.pop("last", None)
-                    state.pop("live", None)
                     save_state(state)
                     self.wake.set()
             except (AppError, OSError) as exc:
@@ -2801,7 +2840,7 @@ class UIMixin:
                 "icao": project["icao"], "airline": project["airline"], "voice": project["voice"],
                 "artist": project.get("artist", ""), "credit_url": project.get("credit_url", ""),
                 "donate_url": project.get("donate_url", ""), "accent": project.get("accent", ""),
-                "also_icaos": ", ".join(project.get("also_icaos", [])),
+                "also_icaos": ", ".join(project.get("also_icaos", [])), "local_time": project.get("local_time") is not False,
                 "description": project.get("description", ""), "version": project.get("version", "1.0.0"),
                 "effect": bool(project.get("effect", True)), "airports": project["airports"], "aircraft": project.get("aircraft", []), "aircraft_on": bool(project.get("aircraft_on")),
                 "app_boost": boost_percent(cfg), "languages": self.language_snapshot(project), "language": project.get("language", ""), "aircraft_presets": papro_studio.AIRCRAFT_PRESETS, "typed_bases": papro_studio.TYPED_BASES, "aircraft_types": papro_studio.AIRCRAFT_TYPES, "extras": project["extras"], "music": project.get("music", []),
@@ -2914,6 +2953,8 @@ class UIMixin:
                         if value and not _is_http(value):
                             return {"error": "Links must start with http:// or https://"}
                         project[key] = value
+                if "local_time" in data:
+                    project["local_time"] = bool(data["local_time"])
                 if "also_icaos" in data:
                     try:
                         project["also_icaos"] = papro_studio.clean_also(str(data["also_icaos"]), project["icao"])

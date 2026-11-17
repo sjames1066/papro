@@ -911,7 +911,10 @@ def voice_json(project: dict) -> dict:
         data["language"] = project["language"]
     if project.get("also_icaos"):
         data["also_icaos"] = list(project["also_icaos"])
-    return {k: v for k, v in data.items() if v}
+    out = {k: v for k, v in data.items() if v}
+    if project.get("local_time") is False:
+        out["local_time"] = False
+    return out
 
 
 def clean_also(value, own: str = "") -> list[str]:
@@ -985,7 +988,8 @@ def export(root: Path, project: dict, out_dir: Path, languages: dict | None = No
         if languages and languages.get("enabled"):   # the airline's language order travels with its packs
             archive.writestr("languages.json", json.dumps(languages, indent=2))
         archive.writestr("voice.json", json.dumps({"icao": project["icao"], "airline": project.get("airline", ""),
-                                                   **({"also_icaos": list(project["also_icaos"])} if project.get("also_icaos") else {})}, indent=2))
+                                                   **({"also_icaos": list(project["also_icaos"])} if project.get("also_icaos") else {}),
+                                                   **({"local_time": False} if project.get("local_time") is False else {})}, indent=2))
         if logo_path(root, project).is_file():
             archive.write(logo_path(root, project), "logo.png")
     has_logo = logo_path(root, project).is_file()
@@ -1051,6 +1055,8 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
     project = create(root, icao, airline or icao, voice)
     for key, limit in (("artist", 80), ("accent", 40), ("description", 200)):
         project[key] = str(info.get(key, "")).strip()[:limit]
+    if info.get("local_time") is False:
+        project["local_time"] = False
     try:
         also = info.get("also_icaos")
         if not also:   # the airline-level voice.json sits beside the voices folder
@@ -1188,6 +1194,14 @@ def install_to_library(root: Path, project: dict, airline_dir: Path) -> Path:
         for path in music:
             shutil.copyfile(path, airline_dir / "main" / path.name)
     (dest / "voice.json").write_text(json.dumps(voice_json(project), indent=2), encoding="utf-8")
+    try:   # the pack's own local-time choice travels with it
+        path = airline_dir / "settings.json"
+        data = json.loads(path.read_text(encoding="utf-8-sig")) if path.is_file() else {}
+        data = data if isinstance(data, dict) else {}
+        data["local_time"] = project.get("local_time") is not False
+        path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    except (OSError, ValueError):
+        pass
     if project.get("scripts"):
         (dest / "scripts.json").write_text(json.dumps(project["scripts"], indent=2, ensure_ascii=False), encoding="utf-8")
     skipped_file = dest / "skipped.json"

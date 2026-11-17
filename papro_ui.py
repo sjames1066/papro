@@ -799,6 +799,7 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
 <div class="modal" id="m-manage"><div class="dialog" style="width:540px">
   <h3 id="mg-title">Manage pack</h3>
   <p id="mg-sub" class="small"></p>
+  <label class="check" style="margin:10px 0 4px"><input type="checkbox" id="mg-time"> Say the local time in this pack's landing announcement ("&hellip;where the local time is four thirty-five")</label>
   <div id="mg-voices"></div>
   <div style="display:flex;gap:10px;align-items:center;margin-top:14px"><input type="text" id="mg-new" placeholder="New voice name, e.g. Emma" maxlength="40" autocomplete="off" style="flex:1"><button id="mg-add">Add a voice</button></div>
   <div class="small" id="mg-msg" style="margin-top:10px;color:var(--err);min-height:16px"></div>
@@ -845,11 +846,6 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
     <div class="radios" id="s-min">
       <div class="radio" data-v="no"><b>Minimize normally</b><span>It stays in the taskbar</span></div>
       <div class="radio" data-v="yes"><b>Hide it in the tray</b><span>It leaves the taskbar; double-click the tray icon to bring it back</span></div>
-    </div></div>
-  <div class="setting"><div class="label">Local time in the landing announcement</div>
-    <div class="radios" id="s-time">
-      <div class="radio" data-v="yes"><b>Say the local time</b><span>"&hellip;where the local time is four thirty-five", read from the sim once you have landed</span></div>
-      <div class="radio" data-v="no"><b>Leave it out</b><span>The landing announcement goes straight on without the time</span></div>
     </div></div>
   <div class="setting"><div class="label">Extra announcements (nut allergy, Wi-Fi down...)</div>
     <div class="radios" id="s-extra">
@@ -1102,6 +1098,7 @@ function openManage(icao){manageIcao=icao;$("#mg-new").value="";$("#mg-msg").tex
 function renderManage(){
   const p=(snap.packs||[]).find(x=>x.icao===manageIcao&&x.installed); if(!p){$("#m-manage").classList.remove("show");return}
   $("#mg-title").textContent="Manage "+p.name; $("#mg-sub").textContent=p.icao+" - open a voice in Pack Studio to re-record or fix it, or take a voice out of the airline.";
+  $("#mg-time").checked=p.local_time!==false;
   const box=$("#mg-voices"); const items=p.voice_items||[]; const sig=JSON.stringify(items); if(box.dataset.s===sig) return; box.dataset.s=sig; box.replaceChildren();
   if(!items.length) box.append(el("div","empty","This airline has no voices yet. Add one below."));
   items.forEach(v=>{
@@ -1112,6 +1109,7 @@ function renderManage(){
     box.append(row);
   });
 }
+$("#mg-time").onchange=async()=>{const r=await api("pack_local_time",{icao:manageIcao,on:$("#mg-time").checked});if(r.error){toast(r.error)}else toast($("#mg-time").checked?"The landing PA will say the local time":"The landing PA will leave the local time out")};
 $("#mg-done").onclick=()=>$("#m-manage").classList.remove("show");
 $("#mg-add").onclick=async()=>{const name=$("#mg-new").value.trim(),p=(snap.packs||[]).find(x=>x.icao===manageIcao&&x.installed);if(!name){$("#mg-msg").textContent="Type a name for the voice.";return}
   const r=await studio("create",{icao:manageIcao,airline:p?p.name:manageIcao,voice:name});if(r.ok){$("#m-manage").classList.remove("show");setView("studio")}else $("#mg-msg").textContent=r.error||""};
@@ -1192,7 +1190,7 @@ document.querySelectorAll(".radios").forEach(g=>g.querySelectorAll(".radio").for
 function openSettings(){
   const s=snap.settings||{}; cfg={close:s.close_to_tray?"yes":"no",autostart:s.autostart||"off",min:s.minimize_to_tray?"yes":"no",time:s.local_time===false?"no":"yes",extra:String(s.extra_chance===undefined?25:s.extra_chance),boost:String(s.pa_boost===undefined?30:s.pa_boost),flow:s.join_style==="pauses"?"pauses":"flow"};
   $("#s-name").value=snap.username||""; $("#s-quit").checked=s.quit_with_msfs!==false;
-  pickRadio("s-start",cfg.autostart); pickRadio("s-close",cfg.close); pickRadio("s-min",cfg.min); pickRadio("s-time",cfg.time); pickRadio("s-extra",cfg.extra);pickRadio("s-boost",cfg.boost);pickRadio("s-flow",cfg.flow);
+  pickRadio("s-start",cfg.autostart); pickRadio("s-close",cfg.close); pickRadio("s-min",cfg.min); pickRadio("s-extra",cfg.extra);pickRadio("s-boost",cfg.boost);pickRadio("s-flow",cfg.flow);
   $("#s-quit-row").style.display=cfg.autostart==="msfs"?"flex":"none";
   $("#s-addr").value=snap.address||"";
   const lan=s.lan||{};$("#s-lan").checked=!!lan.on;renderLanAddrs(lan);
@@ -1230,7 +1228,7 @@ $("#s-cancel").onclick=()=>$("#m-settings").classList.remove("show");
 $("#s-save").onclick=async()=>{
   const name=$("#s-name").value.trim();
   if(name&&name!==(snap.username||"")){const r=await api("username",{name}); if(r.error)return}
-  const r=await api("settings",{close_to_tray:cfg.close==="yes",autostart:cfg.autostart,minimize_to_tray:cfg.min==="yes",local_time:cfg.time==="yes",extra_chance:parseInt(cfg.extra,10),pa_boost:parseInt(cfg.boost,10),join_style:cfg.flow,quit_with_msfs:$("#s-quit").checked,audio_device:audioChosen,audio_playback:$("#s-aplay").checked,gsx:$("#s-gsx").checked,lan_access:$("#s-lan").checked});
+  const r=await api("settings",{close_to_tray:cfg.close==="yes",autostart:cfg.autostart,minimize_to_tray:cfg.min==="yes",extra_chance:parseInt(cfg.extra,10),pa_boost:parseInt(cfg.boost,10),join_style:cfg.flow,quit_with_msfs:$("#s-quit").checked,audio_device:audioChosen,audio_playback:$("#s-aplay").checked,gsx:$("#s-gsx").checked,lan_access:$("#s-lan").checked});
   if(!r.error){$("#m-settings").classList.remove("show");toast("Settings saved")}
 };
 let minSent=false;
@@ -1615,6 +1613,8 @@ function renderStudio(){
   { const lw=el("label","wide","Language this voice speaks (for airlines that announce in more than one language)"),ls=el("select","voice");ls.style.cssText="margin-top:4px;max-width:320px";
     const o0=el("option",null,"Not set");o0.value="";ls.append(o0);Object.entries((c.languages&&c.languages.known)||{}).forEach(([k,v])=>{const o=el("option",null,v);o.value=k;ls.append(o)});ls.value=c.language||"";
     ls.onchange=async()=>{const r=await api("studio_details",{...pid(c),language:ls.value,effect:c.effect});if(r.ok)toast("Saved");await refreshNow()};lw.append(ls);g.append(lw)}
+  { const tl=el("label","wide check"),tc=el("input");tc.type="checkbox";tc.checked=c.local_time!==false;tl.append(tc,document.createTextNode(" This pack says the local time in its landing announcement (needs the hour and minute clips)"));tl.style.cssText="display:flex;align-items:center;gap:8px;margin-top:4px";
+    tc.onchange=async()=>{const r=await api("studio_details",{...pid(c),local_time:tc.checked,effect:c.effect});if(r.ok)toast("Saved");studioSig=""};card.append(tl)}
   const lg=el("div","logorow"),im=el("img","logoimg");im.alt="Pack logo";
   im.src=c.logo?"/studio/logo?"+new URLSearchParams({icao:c.icao,voice:c.voice,t:TOKEN,v:Date.now()}):"/logo/"+c.icao+".png?t="+TOKEN+"&v="+(snap.logo_v||0);
   const lt=el("div",null);lt.append(el("div","nm2","Pack logo"),el("div","small",c.logo?"Shown in the pack list and the window header, and included in the exported zip.":"Optional. A png, jpg or webp - a square or wide logo on a transparent or light background works best."));
