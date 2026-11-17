@@ -121,7 +121,27 @@ class SimWatcher:
             "seatbelt": g("CABIN_SEATBELTS_ALERT_SWITCH"),
             "eng_running": any(known) if known else None,
             "fmgc_phase": self._lvar(requests, "L:A32NX_FMGC_FLIGHT_PHASE"),
+            "lat": g("PLANE_LATITUDE"), "lon": g("PLANE_LONGITUDE"),
+            "heading": g("PLANE_HEADING_DEGREES_TRUE", "PLANE_HEADING_DEGREES_MAGNETIC"),
+            "door_open": self._doors_open(requests),
+            "gsx_boarding": self._lvar(requests, "L:FSDT_GSX_BOARDING_STATE"),      # 5 = boarding, 6 = done
+            "gsx_deboarding": self._lvar(requests, "L:FSDT_GSX_DEBOARDING_STATE"),  # 5 = deboarding
         }
+
+    def _doors_open(self, requests):
+        """True when any exit reports open; None if the aircraft reports none of them."""
+        seen = False
+        for i in range(0, 6):
+            try:
+                value = requests.get(f"EXIT_OPEN:{i}")
+            except Exception:
+                continue
+            if value is None:
+                continue
+            seen = True
+            if float(value) > 0.05:
+                return True
+        return False if seen else None
 
     _lvar_failed: set = set()
 

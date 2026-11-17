@@ -874,6 +874,7 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
     </div>
     <div class="small" id="s-anote" style="margin-top:8px"></div>
     <label class="check" style="margin:12px 0 0"><input type="checkbox" id="s-aplay"> Play the announcements through PAPro when the aircraft isn't a Fenix</label>
+    <label class="check" style="margin:12px 0 0"><input type="checkbox" id="s-gsx"> GSX integration: use GSX's boarding / deboarding status for the flight phase</label>
     <div class="small" style="margin-top:6px">Volume and mute are on the PA knob on the Dashboard.</div>
   </div>
   <div class="setting"><div class="label">Start PAPro automatically</div>
@@ -1000,9 +1001,12 @@ function renderHero(){
   if(snap.message&&!noPack){const m=el("div","msg"); m.textContent=snap.message; mid.append(m)}
   if(snap.aircraft){const ac=snap.aircraft,chip=el("div","h-ac "+(ac.supported?"ok":"warn"));chip.title=ac.supported?"PAs can be played in the sim for this aircraft":"PAPro can't play PAs inside this aircraft yet";
     chip.append(el("i"),el("span",null,ac.title+(ac.supported?" · PAs supported":" · not supported yet")));mid.append(chip)}
-  if(snap.phase){const ph=snap.phase,box=el("div","h-phase");box.title=ph.source==="aircraft"?"Read from the aircraft's flight computer":"Worked out from speed, altitude and climb rate";
-    const top=el("div","h-ptop");top.append(el("span","h-plab","Flight phase"),el("b",null,ph.name),el("span","h-psrc",ph.source==="aircraft"?"from the aircraft":"estimated"));
-    const bar=el("div","h-pbar");ph.steps.forEach((n,i)=>{const sg=el("i",i<ph.index?"done":i===ph.index?"now":"");sg.title=n;bar.append(sg)});box.append(top,bar);mid.append(box)}
+  if(snap.phase){const ph=snap.phase,box=el("div","h-phase");box.title="Worked out from the sim: speed, direction, altitude, lights and doors (and GSX when it is on). It only moves forward until a new flight plan is loaded.";
+    const top=el("div","h-ptop");top.append(el("span","h-plab","Flight phase"),el("b",null,ph.name),el("span","h-psrc",""));
+    const bar=el("div","h-pbar");ph.steps.forEach((n,i)=>{const sg=el("i",i<ph.index?"done":i===ph.index?"now":"");sg.title=n;bar.append(sg)});box.append(top,bar);
+    if(ph.can_board){const bb=el("button","ghost","Start boarding");bb.style.marginTop="10px";bb.title="Begin the boarding phase (this aircraft has no GSX status to do it for you)";bb.onclick=()=>api("phase_boarding");box.append(bb)}
+    if(ph.can_disarm){const bd=el("button","ghost","Disarm Doors PA");bd.style.marginTop="10px";bd.title="Play the Disarm Doors announcement now";bd.onclick=()=>api("phase_disarm");box.append(bd)}
+    mid.append(box)}
   h.append(mid);
   const side=el("div","side");
   const b=el("button","primary"); b.innerHTML='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:7px"><path d="M21 12a9 9 0 0 1-15.4 6.4L3 16"/><path d="M3 12a9 9 0 0 1 15.4-6.4L21 8"/><path d="M21 3v5h-5"/><path d="M3 21v-5h5"/></svg>Refresh'; b.title="Rebuild this flight's announcements now"; b.disabled=snap.busy||!snap.voices; b.onclick=()=>api("update");
@@ -1185,7 +1189,7 @@ function openSettings(){
   $("#s-quit-row").style.display=cfg.autostart==="msfs"?"flex":"none";
   $("#s-addr").value=snap.address||"";
   const lan=s.lan||{};$("#s-lan").checked=!!lan.on;renderLanAddrs(lan);
-  const au=s.audio||{};audioChosen=au.device||"";$("#s-aplay").checked=au.playback!==false;loadAudioDevices();
+  const au=s.audio||{};audioChosen=au.device||"";$("#s-aplay").checked=au.playback!==false;$("#s-gsx").checked=s.gsx!==false;loadAudioDevices();
   renderSetUpd();$("#m-settings").classList.add("show");
 }
 $("#settings").onclick=openSettings;
@@ -1219,7 +1223,7 @@ $("#s-cancel").onclick=()=>$("#m-settings").classList.remove("show");
 $("#s-save").onclick=async()=>{
   const name=$("#s-name").value.trim();
   if(name&&name!==(snap.username||"")){const r=await api("username",{name}); if(r.error)return}
-  const r=await api("settings",{close_to_tray:cfg.close==="yes",autostart:cfg.autostart,minimize_to_tray:cfg.min==="yes",local_time:cfg.time==="yes",extra_chance:parseInt(cfg.extra,10),pa_boost:parseInt(cfg.boost,10),join_style:cfg.flow,quit_with_msfs:$("#s-quit").checked,audio_device:audioChosen,audio_playback:$("#s-aplay").checked,lan_access:$("#s-lan").checked});
+  const r=await api("settings",{close_to_tray:cfg.close==="yes",autostart:cfg.autostart,minimize_to_tray:cfg.min==="yes",local_time:cfg.time==="yes",extra_chance:parseInt(cfg.extra,10),pa_boost:parseInt(cfg.boost,10),join_style:cfg.flow,quit_with_msfs:$("#s-quit").checked,audio_device:audioChosen,audio_playback:$("#s-aplay").checked,gsx:$("#s-gsx").checked,lan_access:$("#s-lan").checked});
   if(!r.error){$("#m-settings").classList.remove("show");toast("Settings saved")}
 };
 let minSent=false;

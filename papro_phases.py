@@ -169,94 +169,222 @@ class PhaseEngine:
 
 
 # ---------------------------------------------------------------------------------------------------------
-# The phase of flight shown on the Dashboard (any aircraft). Taken from the aircraft's own flight computer when it
-# reports one (reported_phase), otherwise worked out from the same sim readings the announcements use.
+# The phase of flight shown on the Dashboard (any aircraft). Worked out from the sim readings below, and it only ever
+# moves forward: nothing goes back (pushback -> boarding, say) until a new flight is loaded (reset()).
+#
+#   Boarding           GSX says boarding is under way (GSX integration on), or the "Start boarding" button was pressed
+#   Boarding complete  GSX says boarding is done, or the parking brake comes off / the beacon goes on
+#   Pushback           moving backwards (more than 110 degrees off the nose, judged after 10 m) slower than 12 kt
+#   Taxi out           ground speed 5 kt or more (stopping at a holding point keeps it)
+#   Initial climb      ground speed over 60 kt and airborne for 30 s
+#   Climb              altitude has been increasing for 3 minutes
+#   Cruise             at the planned cruise altitude (SimBrief), or level for 5 minutes
+#   Descent            3000 ft below the highest altitude of the flight
+#   Approach           descending within 25 NM of the destination
+#   Taxi in            landed and ground speed under 60 kt
+#   Deboarding         a door is open, or GSX says deboarding is under way
 
-PHASES = ["Preflight", "Taxi out", "Takeoff", "Climb", "Cruise", "Descent", "Approach", "Landing", "Taxi in", "Arrived"]
+import math
 
-# L:A32NX_FMGC_FLIGHT_PHASE (FlyByWire) numbering; other aircraft reporting this way would need their own table
+PHASES = ["Preflight", "Boarding", "Boarding complete", "Pushback", "Taxi out", "Initial climb", "Climb", "Cruise",
+          "Descent", "Approach", "Taxi in", "Deboarding"]
+
+# L:A32NX_FMGC_FLIGHT_PHASE (FlyByWire) numbering - kept for the probe report only
 FMGC_PHASES = {0: "Preflight", 1: "Takeoff", 2: "Climb", 3: "Cruise", 4: "Descent", 5: "Approach", 6: "Approach", 7: "Arrived"}
+
+PUSHBACK_MAX_KT = 12.0
+PUSHBACK_BACKWARD_DEG = 110.0
+PUSHBACK_MIN_MOVE_M = 10.0
+TAXI_MIN_KT = 5.0
+INITIAL_CLIMB_KT = 60.0
+INITIAL_CLIMB_AIRBORNE_S = 30.0
+CLIMB_INCREASING_S = 180.0
+CLIMB_VS_FPM = 200.0
+CLIMB_GAP_S = 45.0               # a pause in the climb (level-off for a step) this short does not restart the 3 minutes
+CRUISE_LEVEL_S = 300.0
+CRUISE_LEVEL_BAND_FT = 150.0
+CRUISE_MATCH_FT = 300.0
+DESCENT_DROP_FT = 3000.0
+APPROACH_NM = 25.0
+LANDED_KT = 60.0
+GSX_PERFORMING, GSX_COMPLETED = 5, 6
+
+
+def haversine_nm(lat1, lon1, lat2, lon2) -> float:
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    a = math.sin((p2 - p1) / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lon2 - lon1) / 2) ** 2
+    return 2 * 3440.065 * math.asin(min(1.0, math.sqrt(a)))
+
+
+def bearing_deg(lat1, lon1, lat2, lon2) -> float:
+    p1, p2, dl = math.radians(lat1), math.radians(lat2), math.radians(lon2 - lon1)
+    y = math.sin(dl) * math.cos(p2)
+    x = math.cos(p1) * math.sin(p2) - math.sin(p1) * math.cos(p2) * math.cos(dl)
+    return math.degrees(math.atan2(y, x)) % 360
+
+
+def position_degrees(lat, lon, heading):
+    """The sim library answers in radians (some builds in degrees): work out which and return degrees."""
+    if lat is None or lon is None:
+        return None, None, None
+    lat, lon = float(lat), float(lon)
+    if abs(lat) <= math.pi / 2 + 0.01 and abs(lon) <= math.pi + 0.01:   # radians
+        return math.degrees(lat), math.degrees(lon), None if heading is None else math.degrees(float(heading)) % 360
+    return lat, lon, None if heading is None else float(heading) % 360
 
 
 class PhaseTracker:
-    """feed() the ~1 Hz readings; phase() is the current name, source() is "aircraft" or "estimated"."""
-
-    CONFIRM = 3   # the same answer this many readings in a row before the display changes
+    """feed() the ~1 Hz readings; phase() is the current name. Readings: t, on_ground, agl, gs (kt), alt, vs, lat, lon,
+    heading (the sim's own units - see position_degrees), parking_brake, beacon, door_open, gsx_boarding, gsx_deboarding."""
 
     def __init__(self):
+        self.use_gsx = True
+        self.dest = None          # (lat, lon) of the destination airport, degrees
+        self.cruise_ft = None     # planned cruise altitude
         self.reset()
 
     def reset(self) -> None:
+        """A new flight: start again from Preflight."""
         self.current = None
-        self.src = "estimated"
-        self.flown = False
-        self.cruised = False
+        self.rank = 0
+        self.manual_boarding_flag = False
+        self.flown = False            # has been airborne at some point this flight
+        self.air_since = None
         self.max_alt = 0.0
-        self.t_arrived = None
-        self._cand, self._n = None, 0
+        self.inc_start = self.last_inc = None
+        self.level_alt = self.level_since = None
+        self.anchor = None            # (lat, lon) where movement is being measured from
+        self.move_back = False
+        self.prev_brake = None
+        self.dist_nm = None
+
+    # -- outside help ----------------------------------------------------------------------------------
+    def start_boarding(self) -> None:
+        """The "Start boarding" button (aircraft with no GSX to say so)."""
+        self.manual_boarding_flag = True
+
+    def set_flight(self, dest, cruise_ft) -> None:
+        self.dest, self.cruise_ft = dest, cruise_ft
 
     def phase(self):
         return self.current
 
     def source(self) -> str:
-        return self.src
+        return "estimated"
 
-    def estimate(self, r: dict) -> str:
+    # -- helpers ---------------------------------------------------------------------------------------
+    def _go(self, name: str) -> None:
+        i = PHASES.index(name)
+        if i > self.rank:
+            self.rank = i
+
+    def _backward(self, r, heading, lat, lon, gs) -> bool:
+        """Is the aircraft moving backwards? Judged from where it went (at least 10 m), not from the speed sign."""
+        if lat is None or heading is None:
+            return self.move_back
+        if self.anchor is None:
+            self.anchor = (lat, lon)
+            return self.move_back
+        dy = (lat - self.anchor[0]) * 111320.0
+        dx = (lon - self.anchor[1]) * 111320.0 * math.cos(math.radians(lat))
+        if math.hypot(dx, dy) >= PUSHBACK_MIN_MOVE_M:
+            course = bearing_deg(self.anchor[0], self.anchor[1], lat, lon)
+            off = abs((course - heading + 180) % 360 - 180)
+            self.move_back = off > PUSHBACK_BACKWARD_DEG
+            self.anchor = (lat, lon)
+        elif gs < 0.5:
+            self.move_back = False if self.rank < PHASES.index("Pushback") else self.move_back
+        return self.move_back
+
+    @staticmethod
+    def _int(v):
+        try:
+            return None if v is None else int(v)
+        except (TypeError, ValueError):
+            return None
+
+    # -- the readings ----------------------------------------------------------------------------------
+    def feed(self, r: dict, reported=None) -> None:
+        t = float(r.get("t", 0.0))
         ground = bool(r.get("on_ground"))
         gs = float(r.get("gs") or 0.0)
-        agl = float(r.get("agl") or 0.0)
         alt = float(r.get("alt") or 0.0)
+        agl = float(r.get("agl") or 0.0)
         vs = r.get("vs")
         vs = float(vs) if vs is not None else 0.0
-        self.max_alt = max(self.max_alt, alt)
-        if not ground:
-            self.flown = self.flown or agl > 300
-            if alt >= CRUISE_ALT_FT:
-                self.cruised = True
-            if not self.cruised and not self.flown_far(agl):
-                return "Takeoff" if vs > 200 and agl < 1500 else "Climb"
-            if vs >= 300 and not self.descending(alt):
-                return "Climb"
-            if vs <= -300 or self.descending(alt):
-                return "Approach" if agl < 3000 and self.cruised_or_long() else "Descent"
-            return "Cruise" if alt >= 10000 else "Climb"
-        if not self.flown:
-            if gs >= 40:
-                return "Takeoff"
-            return "Taxi out" if gs >= 1 else "Preflight"
-        if gs >= 40:
-            return "Landing"
-        if gs >= 1:
-            return "Taxi in"
-        return "Arrived"
+        lat, lon, heading = position_degrees(r.get("lat"), r.get("lon"), r.get("heading"))
+        brake = None if r.get("parking_brake") is None else bool(r.get("parking_brake"))
+        beacon = None if r.get("beacon") is None else bool(r.get("beacon"))
+        gsx_b = self._int(r.get("gsx_boarding")) if self.use_gsx else None
+        gsx_d = self._int(r.get("gsx_deboarding")) if self.use_gsx else None
+        R = {n: i for i, n in enumerate(PHASES)}
 
-    def flown_far(self, agl: float) -> bool:
-        return agl >= 1500
-
-    def descending(self, alt: float) -> bool:
-        return self.cruised and alt < self.max_alt - 1500
-
-    def cruised_or_long(self) -> bool:
-        return self.cruised or self.max_alt > 8000
-
-    def feed(self, r: dict, reported: str | None = None) -> None:
-        if reported:
-            name, src = reported, "aircraft"
-            self.estimate(r)   # keep the flown / cruised memory going
+        if lat is not None and self.dest:
+            self.dist_nm = haversine_nm(lat, lon, self.dest[0], self.dest[1])
         else:
-            name, src = self.estimate(r), "estimated"
-        t = float(r.get("t", 0.0))
-        # a minute parked after arriving: the next flight starts from the beginning
-        if name == "Arrived":
-            self.t_arrived = self.t_arrived if self.t_arrived is not None else t
-            if t - self.t_arrived > 300 and self.current == "Arrived" and r.get("eng_running") is True:
-                self.reset()
-                name = "Preflight"
+            self.dist_nm = None
+        self.max_alt = max(self.max_alt, alt) if not ground else self.max_alt
+
+        if ground:
+            self.air_since = None
+            if self.flown:
+                # landed: slow enough -> Taxi in; a door open / GSX deboarding -> Deboarding
+                if gs < LANDED_KT:
+                    self._go("Taxi in")
+                if self.rank >= R["Taxi in"] and (r.get("door_open") or gsx_d == GSX_PERFORMING):
+                    self._go("Deboarding")
+            else:
+                # before the flight
+                if gsx_b == GSX_PERFORMING or self.manual_boarding_flag:
+                    self._go("Boarding")
+                released = self.prev_brake is True and brake is False
+                if gsx_b == GSX_COMPLETED or beacon is True or released:
+                    self._go("Boarding complete")
+                if self.rank >= R["Boarding complete"]:
+                    back = self._backward(r, heading, lat, lon, gs)
+                    if back and 0.0 < gs < PUSHBACK_MAX_KT:
+                        self._go("Pushback")
+                    elif gs >= TAXI_MIN_KT and not back:
+                        self._go("Taxi out")
+                elif gs >= TAXI_MIN_KT:   # no boarding signals seen at all, but it is taxiing
+                    self._go("Taxi out")
         else:
-            self.t_arrived = None
-        if name == self._cand:
-            self._n += 1
-        else:
-            self._cand, self._n = name, 1
-        if self.current is None or (name != self.current and self._n >= self.CONFIRM) or src != self.src:
-            self.current, self.src = name, src
+            self.air_since = self.air_since if self.air_since is not None else t
+            self.flown = self.flown or agl > 50
+            if gs > INITIAL_CLIMB_KT and t - self.air_since >= INITIAL_CLIMB_AIRBORNE_S:
+                self._go("Initial climb")
+            if self.rank >= R["Initial climb"]:
+                # climb: altitude increasing for 3 minutes (short pauses allowed)
+                if vs > CLIMB_VS_FPM:
+                    self.last_inc = t
+                    self.inc_start = self.inc_start if self.inc_start is not None else t
+                elif self.last_inc is not None and t - self.last_inc > CLIMB_GAP_S:
+                    self.inc_start = None
+                if self.inc_start is not None and t - self.inc_start >= CLIMB_INCREASING_S:
+                    self._go("Climb")
+                # cruise: the planned altitude, or level for 5 minutes
+                level_ok = False
+                if self.level_alt is None or abs(alt - self.level_alt) > CRUISE_LEVEL_BAND_FT:
+                    self.level_alt, self.level_since = alt, t
+                elif t - self.level_since >= CRUISE_LEVEL_S:
+                    level_ok = True
+                at_plan = bool(self.cruise_ft) and alt >= self.cruise_ft - CRUISE_MATCH_FT
+                if (at_plan or level_ok) and self.rank >= R["Initial climb"] and agl > 1000:
+                    self._go("Cruise")
+                # descent / approach
+                if self.max_alt - alt >= DESCENT_DROP_FT:
+                    self._go("Descent")
+                if self.rank >= R["Initial climb"] and vs < -CLIMB_VS_FPM and agl > 0:
+                    if self.dist_nm is not None and self.dist_nm <= APPROACH_NM and self.max_alt - alt >= 500:
+                        self._go("Approach")
+                    elif self.dist_nm is None and self.rank >= R["Descent"] and agl < 5000:
+                        self._go("Approach")
+        self.prev_brake = brake if brake is not None else self.prev_brake
+        self.current = PHASES[self.rank]
+
+    # -- what the Dashboard may offer ------------------------------------------------------------------
+    def can_start_boarding(self) -> bool:
+        return self.rank < PHASES.index("Boarding") and not self.flown
+
+    def can_disarm_doors(self) -> bool:
+        return self.rank == PHASES.index("Taxi in")

@@ -163,6 +163,7 @@ DEFAULT_CONFIG = {
     "pa_knob_on": True,               # the on-screen PA knob (aircraft whose PAs PAPro plays itself): pushed up = PAs audible
     "pa_knob_volume": 70,             # ... and how loud (0-100)
     "lan_access": False,              # also answer on this PC's private network / VPN addresses (EFBx on another device)
+    "gsx_integration": True,          # read GSX's boarding / deboarding state for the flight phase
     "pa_playback": True,              # play the PAs in PAPro itself for aircraft that can't use the Fenix folder
     "pa_output_device": "",           # sound output for those PAs ("" = the Windows default)
     "quit_with_msfs": True,           # when started with MSFS: close PAPro when the sim closes
@@ -547,6 +548,8 @@ def fetch_flight(cfg: dict) -> dict:
         "airline": str((data.get("general") or {}).get("icao_airline", "")).strip().upper(),
         "arrival": arrival_clock(data),
         "aircraft": str((data.get("aircraft") or {}).get("icaocode", "")).strip().upper(),   # ICAO type, e.g. A320
+        "dest_lat": _number(dest.get("pos_lat")), "dest_lon": _number(dest.get("pos_long")),
+        "cruise_ft": _number((data.get("general") or {}).get("initial_altitude")),
         **flight_labels(data),
     }
 
@@ -1896,7 +1899,8 @@ def update(cfg: dict, force: bool = False, airline: str | None = None, dest: str
     key = f"{code}_{flight['icao']}_{flight.get('arrival') or ''}_{flight.get('aircraft') or ''}{'_pb' if _PLAYBACK['on'] else ''}"  # a new landing time or aircraft rebuilds the PAs
     state = load_state()
     shown = {"airline": code, "dest": flight["icao"], "name": flight.get("name", ""),
-             "number": flight.get("number", ""), "callsign": flight.get("callsign", ""), "aircraft": flight.get("aircraft", "")}
+             "number": flight.get("number", ""), "callsign": flight.get("callsign", ""), "aircraft": flight.get("aircraft", ""),
+             "dest_lat": flight.get("dest_lat"), "dest_lon": flight.get("dest_lon"), "cruise_ft": flight.get("cruise_ft")}
     if state.get("flight") != shown:
         state["flight"] = shown
         save_state(state)
@@ -2198,6 +2202,7 @@ class UIMixin:
                 "extra_chance": int(cfg.get("extra_chance", 25)),
                 "pa_boost": boost_percent(cfg),
                 "lan": {"on": bool(cfg.get("lan_access", False)), "addresses": [f"http://{ip}:{self.ui.httpd.server_address[1]}/" for ip in self.ui.private_ips()] if getattr(self.ui, "httpd", None) and self.ui.lan_on else []},
+                "gsx": bool(cfg.get("gsx_integration", True)),
                 "audio": {"device": str(cfg.get("pa_output_device") or ""), "playback": bool(cfg.get("pa_playback", True))},
                 "pa_knob": {"on": bool(cfg.get("pa_knob_on", True)), "volume": max(0, min(100, int(cfg.get("pa_knob_volume", 70))))},
                 "join_style": "pauses" if cfg.get("join_style") == "pauses" else "flow",
@@ -2560,6 +2565,8 @@ class UIMixin:
                 except (TypeError, ValueError):
                     return {"error": "The volume must be a number from 0 to 100."}
             self.sync_knob()
+        elif name in ("phase_boarding", "phase_disarm"):
+            self.phase_action(name.split("_", 1)[1])
         elif name == "audio_devices":   # the sound outputs on this PC (listed when Settings opens, not with every refresh)
             import papro_play
 
@@ -2591,6 +2598,8 @@ class UIMixin:
                 if "lan_access" in data and bool(data["lan_access"]) != bool(load_config().get("lan_access", False)):
                     set_config_value("lan_access", bool(data["lan_access"]))
                     self.ui.set_lan(bool(data["lan_access"]))
+                if "gsx" in data:
+                    set_config_value("gsx_integration", bool(data["gsx"]))
                 if "audio_device" in data:
                     set_config_value("pa_output_device", str(data.get("audio_device") or "")[:200])
                 if "audio_playback" in data and bool(data["audio_playback"]) != bool(load_config().get("pa_playback", True)):
@@ -3256,7 +3265,9 @@ class TrayApp(UIMixin):
         if not tracker or not tracker.phase() or not getattr(self, "aircraft", None):
             return None
         name = tracker.phase()
-        return {"name": name, "source": tracker.source(), "index": PHASES.index(name) if name in PHASES else -1, "steps": PHASES}
+        playing = _PLAYBACK["on"]   # PAPro plays the PAs itself (not a Fenix): it has buttons the Fenix doesn't need
+        return {"name": name, "source": tracker.source(), "index": PHASES.index(name) if name in PHASES else -1, "steps": PHASES,
+                "can_board": bool(playing and tracker.can_start_boarding()), "can_disarm": bool(playing and tracker.can_disarm_doors())}
 
     def sync_knob(self) -> None:
         try:
@@ -3294,6 +3305,37 @@ class TrayApp(UIMixin):
             self.player_device = device
         return self.player
 
+    def _sync_tracker(self, tracker, now: float) -> None:
+        """Every 20 s: the destination / cruise level of the loaded plan and the GSX setting. A different plan is a new
+        flight, so the phase starts again from Preflight."""
+        if now - getattr(self, "_tracker_sync", 0.0) < 20.0:
+            return
+        self._tracker_sync = now
+        try:
+            tracker.use_gsx = bool(load_config().get("gsx_integration", True))
+            flight = load_state().get("flight") or {}
+        except (AppError, OSError):
+            return
+        identity = (flight.get("airline"), flight.get("dest"), flight.get("number"), flight.get("aircraft"))
+        if getattr(self, "_flight_identity", None) not in (None, identity) and identity != (None,) * 4:
+            log.info("A different flight plan: the flight phase starts again")
+            tracker.reset()
+        self._flight_identity = identity
+        lat, lon = flight.get("dest_lat"), flight.get("dest_lon")
+        tracker.set_flight((lat, lon) if lat is not None and lon is not None else None, flight.get("cruise_ft"))
+
+    def phase_action(self, what: str) -> None:
+        """A Dashboard button: "boarding" (start the boarding phase) or "disarm" (the Disarm Doors PA)."""
+        tracker = getattr(self, "tracker", None)
+        if what == "boarding" and tracker:
+            tracker.start_boarding()
+        elif what == "disarm" and _PLAYBACK["on"]:
+            engine = getattr(self, "phases", None)
+            if engine is not None:
+                engine._fire("disarm_doors")
+            else:
+                self.play_key("disarm_doors")
+
     def telemetry(self, reading: dict) -> None:
         """From the SimConnect watcher, about once a second: drives the phase engine for aircraft PAPro plays for."""
         from papro_phases import FMGC_PHASES, PhaseTracker
@@ -3301,7 +3343,8 @@ class TrayApp(UIMixin):
         tracker = getattr(self, "tracker", None)
         if tracker is None:
             tracker = self.tracker = PhaseTracker()
-        tracker.feed(reading, FMGC_PHASES.get(reading.get("fmgc_phase")) if reading.get("fmgc_phase") is not None else None)
+        self._sync_tracker(tracker, reading["t"])
+        tracker.feed(reading)
         if not _PLAYBACK["on"]:
             return
         engine = getattr(self, "phases", None)
