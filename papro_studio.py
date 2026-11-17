@@ -426,9 +426,6 @@ def slot_list(project: dict) -> list[dict]:
         name = airport_name(code)
         add("Airports", "airports", f"{icao}_{code}", f"{code}: {name}" if name else f"Airport name - {code}",
             "Say airport name", required=False)
-    if project.get("aircraft_on"):   # optional: the aircraft type, so a PA can say "this Airbus A320"
-        for name in project.get("aircraft", []):
-            add("Aircraft names", "aircraft", f"{icao}_{slug(name)}", name, f'"{name}"', required=False)
     add("Refuelling", "fuel", "Fuel_Tag", "While refuelling - tag-on",
         "Added to the welcome while the aircraft is being refuelled, e.g. 'We are currently refuelling, so please keep your seatbelt unfastened...'")
     add_variations("Fuel_Tag", "Refuelling", "While refuelling - tag-on", "Added to the welcome while the aircraft is being refuelled.", None, "fuel")
@@ -451,7 +448,7 @@ def slot_list(project: dict) -> list[dict]:
 
 # The checklist in the order the announcements are heard on a flight. (group, the file-name bases that belong to it.)
 PHASES = [
-    ("Airports", ()), ("Aircraft names", ()),
+    ("Airports", ()),
     ("Boarding", ("Welcome_", "Modular_Welcome", "BoardingWelcome", "Fuel_Tag")),
     ("Boarding music", ()), ("Bolt-ons", ()),
     ("Boarding complete & doors", ("BoardingComplete", "ArmDoors")),

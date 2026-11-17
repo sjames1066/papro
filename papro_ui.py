@@ -1567,8 +1567,8 @@ function buildChecklist(c,host){
     ub.onclick=async()=>{const r=await studio("unskip_all",pid(c));if(r&&r.ok)toast(r.count+" announcement"+(r.count==1?"":"s")+" put back on the checklist")};pr.append(ub)}
   const bar=el("div","ptrack");const fill=el("i");fill.style.width=Math.round(100*c.done/c.total)+"%";bar.append(fill);pr.append(bar);host.append(pr);
   const groups=[];c.rows.forEach(r=>{let g=groups.find(x=>x.name===r.group);if(!g){g={name:r.group,rows:[]};groups.push(g)}g.rows.push(r)});
-  ["Airports","Aircraft names","Boarding music","Bolt-ons"].forEach(n=>{if(!groups.find(x=>x.name===n))groups.push({name:n,rows:[]})});
-  const order=["Airports","Aircraft names","Boarding","Boarding music","Bolt-ons","Boarding complete & doors","Safety briefing","Before takeoff","Climb & cruise","Descent & approach","After Landing","Deboarding","Emergency"];groups.sort((a,b)=>order.indexOf(a.name)-order.indexOf(b.name));
+  ["Airports","Boarding music","Bolt-ons"].forEach(n=>{if(!groups.find(x=>x.name===n))groups.push({name:n,rows:[]})});
+  const order=["Airports","Boarding","Boarding music","Bolt-ons","Boarding complete & doors","Safety briefing","Before takeoff","Climb & cruise","Descent & approach","After Landing","Deboarding","Emergency"];groups.sort((a,b)=>order.indexOf(a.name)-order.indexOf(b.name));
   groups.forEach(gr=>{
     const d=el("details","grp");d.open=openGroups.has(gr.name);d.ontoggle=()=>{d.open?openGroups.add(gr.name):openGroups.delete(gr.name)};
     const sm=el("summary",null,gr.name);sm.append(el("span",null,gr.rows.filter(r=>r.done||r.skipped).length+"/"+gr.rows.length));d.append(sm);
@@ -1577,17 +1577,6 @@ function buildChecklist(c,host){
       const line=el("div","addline"),i=el("textarea");i.rows=2;i.placeholder="EGLL, EGKK, EGCC  (paste a list: commas, semicolons, spaces or new lines)";i.style.textTransform="uppercase";i.style.resize="vertical";const add=el("button",null,"Add airports");
       add.onclick=async()=>{if(!i.value.trim())return;const text=i.value;i.value="";i.blur();const r=await studio("airport",{...pid(c),code:text});if(!r.ok)i.value=text;if(r.ok){openGroups.add("Airports");toast(r.added+(r.added===1?" airport added":" airports added")+(r.skipped&&r.skipped.length?" - skipped: "+r.skipped.slice(0,8).join(", "):""),r.skipped&&r.skipped.length?6000:3200)}studioSig="";renderStudio()};
       i.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();add.click()}});line.append(i,add);d.append(line);
-    }
-    if(gr.name==="Aircraft names"){
-      d.append(el("div","small","Optional. Record the aircraft type (for example “Airbus A320” or “Boeing 737”) so an announcement can say which aircraft you are flying. Nothing is added to the pack unless this is on."));
-      const sw=el("div","switch"+(c.aircraft_on?" on":""));sw.style.margin="10px 0";sw.append(el("span",null,"Say the aircraft type"),el("div","track"));
-      sw.onclick=async()=>{openGroups.add("Aircraft names");await studio("aircraft",{...pid(c),on:!c.aircraft_on});studioSig="";renderStudio()};d.append(sw);
-      if(c.aircraft_on){
-        const pc=el("div","chiprow");(c.aircraft_presets||[]).filter(n=>!c.aircraft.includes(n)).forEach(n=>{const b=el("button","ghost","+ "+n);b.onclick=async()=>{openGroups.add("Aircraft names");await studio("aircraft",{...pid(c),code:n});studioSig="";renderStudio()};pc.append(b)});d.append(pc);
-        const line=el("div","addline"),i=el("input");i.type="text";i.placeholder="Another aircraft, e.g. Boeing 757";const add=el("button",null,"Add");
-        add.onclick=async()=>{if(!i.value.trim())return;const text=i.value;i.value="";i.blur();const r=await studio("aircraft",{...pid(c),code:text});if(!r.ok)i.value=text;openGroups.add("Aircraft names");studioSig="";renderStudio()};
-        i.addEventListener("keydown",e=>{if(e.key==="Enter")add.click()});line.append(i,add);d.append(line);
-      }
     }
     if(gr.name==="Boarding music"){
       d.append(el("div","small","Background music played while passengers board. Add a track name, then upload the audio - use only music you have the right to share. It is not recorded or processed, just converted to .ogg."));
