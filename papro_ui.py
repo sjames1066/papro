@@ -1038,14 +1038,13 @@ function renderHero(){
     if(v.selected==="random"&&cur) side.append(el("span","small","This flight: "+cur.name));
     if(cur&&(cur.artist||cur.accent)){
       const line=el("span","small credit");
-      const link=cur.donate_url||cur.credit_url;   // the name goes to the artist's support page (Ko-fi...), else their own site
+      const link=cur.donate_url;   // the name goes to the artist's support page (Ko-fi...)
       if(cur.artist){
         line.append(document.createTextNode("Voiced by "));
-        if(link){const a=el("a","who",cur.artist); a.href=link; a.target="_blank"; a.rel="noopener"; a.title=cur.donate_url?"Support "+cur.artist:cur.artist; line.append(a)}
+        if(link){const a=el("a","who",cur.artist); a.href=link; a.target="_blank"; a.rel="noopener"; a.title="Support "+cur.artist; line.append(a)}
         else line.append(document.createTextNode(cur.artist));
       }
       if(cur.accent) line.append(document.createTextNode((cur.artist?" · ":"")+cur.accent));
-      if(cur.donate_url&&cur.credit_url&&cur.credit_url!==cur.donate_url){const a=el("a",null," ↗"); a.href=cur.credit_url; a.target="_blank"; a.rel="noopener"; line.append(a)}
       side.append(line);
     }
   } else side.append(b);
@@ -1657,7 +1656,7 @@ function renderStudio(){
   const card=el("section","card");card.append(el("h2",null,"Voice details"));
   const g=el("div","sd-grid");
   g.append(field("Voice artist","artist",c,"Your name"),field("Accent","accent",c,"British"),field("Short description","description",c,"Calm and collected",true),
-           field("Credit link (your site / socials)","credit_url",c,"https://..."),field("Support link (Ko-fi, Patreon...)","donate_url",c,"https://ko-fi.com/..."),field("Pack version","version",c,"1.0.0"),field("Also used by (other airline codes, e.g. SHT, CFE)","also_icaos",c,"SHT, CFE","wide"));
+           field("Support link (Ko-fi, Patreon...)","donate_url",c,"https://ko-fi.com/..."),field("Pack version","version",c,"1.0.0"),field("Also used by (other airline codes, e.g. SHT, CFE)","also_icaos",c,"SHT, CFE","wide"));
   card.append(g);
   { const known=(c.languages&&c.languages.known)||{},opts=(sel,none,skip)=>{const o0=el("option",null,none);o0.value="";sel.append(o0);Object.entries(known).forEach(([k,v])=>{if(k===skip)return;const o=el("option",null,v);o.value=k;sel.append(o)})};
     const gl=el("div","wide");gl.style.cssText="grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:4px";
