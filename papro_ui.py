@@ -762,6 +762,8 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
     </div>
     <label class="check" id="s-quit-row" style="margin:12px 0 0"><input type="checkbox" id="s-quit"> Close PAPro when MSFS closes</label>
   </div>
+  <div class="setting"><div class="label">Open in my web browser</div>
+    <div style="display:flex;align-items:center;gap:12px"><button class="ghost" data-open="browser">Open in browser</button><span class="small">Shows PAPro in a normal browser tab on this PC (it only works while PAPro is running).</span></div></div>
   <div class="setting"><div class="label">Fenix packs folder and log</div>
     <div style="display:flex;align-items:center;gap:12px"><button class="ghost" data-open="fenix">Open folder</button><span class="small">Where PAPro puts your announcements for the Fenix.</span></div>
     <div style="display:flex;align-items:center;gap:12px;margin-top:10px"><button class="ghost" data-open="log">View log</button><span class="small">Useful if something is not working.</span></div></div>

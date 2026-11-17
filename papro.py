@@ -2561,7 +2561,12 @@ class UIMixin:
         elif name.startswith("studio_"):
             return self.studio_action(name[7:], data)
         elif name == "open":
-            self._open_folder(str(data.get("what", "")))
+            if data.get("what") == "browser":   # the same page in a normal browser tab (the address changes every time PAPro starts)
+                import webbrowser
+
+                webbrowser.open(self.ui.url())
+            else:
+                self._open_folder(str(data.get("what", "")))
         elif name == "test_options":
             r = self.test_options()
             return r if r.get("error") else {"ok": True, **r}
