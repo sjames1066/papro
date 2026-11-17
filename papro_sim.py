@@ -51,7 +51,7 @@ def classify_aircraft(title: str) -> dict | None:
     """What the sim says is loaded -> {"title": ..., "supported": bool}. Supported = PAs can be played in the sim by
     swapping the aircraft's own announcement files (the Fenix A32X series)."""
     title = " ".join(str(title or "").replace("\x00", " ").split())
-    if not title:
+    if not title or title.upper().startswith("ATCCOM."):   # an unresolved text key (the sim answered mid-load), not a name
         return None
     low = title.lower()
     return {"title": title, "supported": any(m in low for m in SUPPORTED_MAKERS)}
@@ -72,7 +72,12 @@ class SimWatcher:
         self.thread.start()
 
     def _report_aircraft(self, info) -> None:
-        if info != self._aircraft:
+        """Report a change of aircraft only once it has been seen three times in a row: the sim sometimes answers with
+        nothing or a placeholder for a second, and that must not look like swapping aircraft."""
+        if info != getattr(self, "_candidate", None):
+            self._candidate, self._seen = info, 0
+        self._seen = getattr(self, "_seen", 0) + 1
+        if info != self._aircraft and (self._seen >= 3 or (info is None and not self.running())):
             self._aircraft = info
             if self.on_aircraft:
                 try:
@@ -81,7 +86,7 @@ class SimWatcher:
                     log.exception("Aircraft callback failed")
 
     def _read_title(self, requests) -> str:
-        for name in ("TITLE", "ATC_MODEL"):
+        for name in ("TITLE",) if self._aircraft else ("TITLE", "ATC_MODEL"):   # ATC_MODEL only to name an aircraft with no title
             try:
                 value = requests.get(name)
             except Exception:
