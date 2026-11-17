@@ -284,12 +284,30 @@ class UIServer:
 
     # window -------------------------------------------------------------
     def open_window(self) -> None:
-        """Show PAPro in the default web browser. PAPro no longer opens a window of its own: the page is served at a fixed
-        address (Settings shows it) so it can also be opened by hand or wrapped in another app."""
+        """Open the PAPro window (or leave the already open one alone)."""
         with self._lock:
             if self.httpd is None:
                 self.start()
-            webbrowser.open(self.url())
+            if self.window is not None and self.window.poll() is None:
+                raise_window()  # already open (maybe behind other windows): bring it forward
+                return
+            url = self.url()
+            for exe in _browser_candidates():
+                if exe.is_file():
+                    try:
+                        self.profile_dir.mkdir(parents=True, exist_ok=True)
+                        x, y, w, h = centered_geometry()
+                        self.window = subprocess.Popen(
+                            [str(exe), f"--app={url}", f"--user-data-dir={self.profile_dir}", f"--window-size={w},{h}",
+                             f"--window-position={x},{y}",
+                             "--no-first-run", "--no-default-browser-check", "--hide-crash-restore-bubble"],
+                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                        )
+                        raise_window()
+                        return
+                    except OSError:
+                        log.exception("Could not start %s", exe)
+            webbrowser.open(url)  # no Edge/Chrome found: the default browser still works
 
     def close_window(self) -> None:
         """Close the PAPro window (the browser process it runs in, with its helper processes)."""
@@ -754,8 +772,8 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
     <label class="check" id="s-quit-row" style="margin:12px 0 0"><input type="checkbox" id="s-quit"> Close PAPro when MSFS closes</label>
   </div>
   <div class="setting"><div class="label">PAPro's web address</div>
-    <div class="small" style="margin-bottom:10px">PAPro runs as a local web page. This address is always the same, so you can bookmark it or put it in another app. It only works on this PC while PAPro is running.</div>
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><input id="s-addr" readonly style="flex:1;min-width:220px;font:600 12px 'Inter',sans-serif" onclick="this.select()"><button class="ghost" id="s-addr-copy">Copy</button><button class="ghost" data-open="browser">Open</button></div>
+    <div class="small" style="margin-bottom:10px">PAPro also runs as a local web page. This address is always the same, so another app (such as EFBx.io) can open it as an internal app. It only works on this PC while PAPro is running.</div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><input id="s-addr" readonly style="flex:1;min-width:220px;font:600 12px 'Inter',sans-serif" onclick="this.select()"><button class="ghost" id="s-addr-copy">Copy</button><button class="ghost" data-open="browser">Open in browser</button></div>
   </div>
   <div class="setting"><div class="label">Fenix packs folder and log</div>
     <div style="display:flex;align-items:center;gap:12px"><button class="ghost" data-open="fenix">Open folder</button><span class="small">Where PAPro puts your announcements for the Fenix.</span></div>
