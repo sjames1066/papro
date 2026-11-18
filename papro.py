@@ -952,7 +952,13 @@ def install_pack(cfg: dict, entry: dict, progress=None) -> str:
     state.pop("last", None)  # force the next update to apply the destination
     save_state(state)
     log.info("Installed pack %s v%s (%d files, %d of yours kept)", icao, entry.get("version", ""), len(added), skipped)
-    version = f" v{entry['version']}" if entry.get("version") else ""
+    shown = str(entry.get("version") or "").strip()
+    if shown in ("", "imported"):   # an imported pack has no catalog version: use the one stored with the pack, if any
+        try:
+            shown = library_version(cfg, icao)
+        except (OSError, AppError):
+            shown = ""
+    version = f" v{shown}" if shown[:1].isdigit() else ""
     note = f" ({skipped} of your own files kept)" if skipped else ""
     voice = f" ({entry['voice']})" if entry.get("voice") else ""
     return f"Installed {icao} - {entry.get('name', icao)}{voice}{version}{note}"
