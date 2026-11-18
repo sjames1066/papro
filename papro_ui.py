@@ -387,6 +387,13 @@ class UIServer:
     def url(self) -> str:
         return f"http://localhost:{self.httpd.server_address[1]}/"
 
+    def ensure_server(self) -> None:
+        """Start the web server if it is not running yet. PAPro does this at startup, so the page and the network address (EFBx,
+        an iPad) work when PAPro was started by Windows or MSFS, without anyone opening the window first."""
+        with self._lock:
+            if self.httpd is None:
+                self.start()
+
     # window -------------------------------------------------------------
     def open_window(self) -> None:
         """Open the PAPro window (or leave the already open one alone)."""

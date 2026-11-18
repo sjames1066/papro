@@ -3749,6 +3749,10 @@ class TrayApp(UIMixin):
             airlines_root(load_config()).mkdir(parents=True, exist_ok=True)
         except (AppError, OSError):
             pass  # reported later when the first update runs
+        try:   # the web page / network address must work right away, also when Windows started PAPro in the tray
+            self.ui.ensure_server()
+        except Exception:
+            log.exception("Could not start PAPro's web server")
         self.refresh_catalog()
         self.sync_knob()
         try:
