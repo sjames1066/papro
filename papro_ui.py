@@ -443,7 +443,7 @@ PAGE = r"""<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PAPro</title>
-<link rel="icon" href="/icon.png?t=__TOKEN__">
+<link rel="icon" href="/icon.png?t=__TOKEN__&v=2">
 <style>
 /*FONTS*/
 :root{
@@ -717,7 +717,7 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
 <script>try{var h=location.hostname;if(h&&h!=="localhost"&&h!=="127.0.0.1"&&h!=="[::1]"&&h!=="::1")document.body.classList.add("remote")}catch(e){}</script>
 <div class="wrap">
   <header>
-    <img src="/icon.png?t=__TOKEN__" alt="">
+    <img src="/icon.png?t=__TOKEN__&v=2" alt="">
     <div><h1>PAPro</h1><p>Cabin announcements for MSFS</p></div>
     <div class="spacer"></div>
     <div class="switch" id="auto"><span>Active</span><div class="track"></div></div>
