@@ -1200,6 +1200,33 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
     for stem in MODE_SLOTS:  # a clip already called SafetyBriefing[Manual].ogg keeps that mode
         if (pack / "main" / f"{stem}[Manual].ogg").is_file() and not (pack / "main" / f"{stem}.ogg").is_file():
             project.setdefault("modes", {})[f"main/{stem}"] = "Manual"
+    try:  # the checklist entries that had no clip when the pack was saved (so skipped ones are still there)
+        saved = json.loads((src / "studio.json").read_text(encoding="utf-8-sig"))
+        if isinstance(saved, dict):
+            for code in saved.get("airports", []):
+                code = str(code).upper()
+                if re.fullmatch(r"[A-Z0-9]{4}(?:_[A-Z0-9]{1,8})?", code) and code not in project["airports"]:
+                    project["airports"].append(code)
+            project["airports"].sort()
+            for name in saved.get("extras", []):
+                if isinstance(name, str) and EXTRA_NAME.match(name) and name not in project["extras"]:
+                    project["extras"].append(name)
+            for base, numbers in (saved.get("variants") or {}).items():
+                if base in VARIANT_BASES and isinstance(numbers, list):
+                    have = project.setdefault("variants", {}).setdefault(base, [])
+                    for n in numbers:
+                        if isinstance(n, int) and 2 <= n <= 99 and n not in have:
+                            have.append(n)
+                    have.sort()
+            for entry in saved.get("typed", []):
+                try:
+                    clean = {"base": entry["base"], "types": clean_types(entry["types"], False), "n": int(entry.get("n", 1))}
+                except (StudioError, KeyError, TypeError, ValueError):
+                    continue
+                if clean["base"] in TYPED_BASES and clean not in project.setdefault("typed", []):
+                    project["typed"].append(clean)
+    except (OSError, ValueError, AttributeError):
+        pass
     for slot in slot_list(project):
         if (pack / slot["folder"] / slot["file"]).is_file():
             project["slots"][slot["id"]] = {"imported": True}
@@ -1290,6 +1317,12 @@ def install_to_library(root: Path, project: dict, airline_dir: Path) -> Path:
         pass
     if project.get("scripts"):
         (dest / "scripts.json").write_text(json.dumps(project["scripts"], indent=2, ensure_ascii=False), encoding="utf-8")
+    structure = {k: project[k] for k in ("airports", "extras", "variants", "typed") if project.get(k)}
+    structure_file = dest / "studio.json"   # the parts of the checklist that are not backed by a clip yet (an airport you have not recorded, a skipped "+")
+    if structure:
+        structure_file.write_text(json.dumps(structure, indent=2), encoding="utf-8")
+    else:
+        structure_file.unlink(missing_ok=True)
     skipped_file = dest / "skipped.json"
     if project.get("skipped"):   # the clips you chose not to record are remembered with the pack
         skipped_file.write_text(json.dumps(sorted(project["skipped"]), indent=2), encoding="utf-8")
