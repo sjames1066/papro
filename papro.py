@@ -2066,6 +2066,7 @@ def update(cfg: dict, force: bool = False, airline: str | None = None, dest: str
             log.warning("Could not fill the %s pack: %s", other, exc)
     state = load_state()
     state["last"] = key
+    state["loaded"] = [c for c in (code, other) if c]   # the airline codes whose PAs were just filled (for the tray hover text)
     state["applied"] = APPLIED_MARK in message
     state["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
     save_state(state)
@@ -3292,6 +3293,13 @@ class UIMixin:
 def tray_tooltip(status: str) -> str:
     """The short text shown when you hover the tray icon: "PAPro - BAW to EGCC, updated 3 minutes ago"."""
     text = status.strip()
+    try:
+        state = load_state()
+        loaded, dest = state.get("loaded") or [], (state.get("flight") or {}).get("dest", "")
+        if state.get("applied") and loaded and dest and (text.startswith("Unchanged:") or "last updated" in text or APPLIED_MARK in text):
+            return f"PAs loaded for {'/'.join(loaded)} for {dest}"[:127]
+    except Exception:
+        pass
     for sep in (" - your announcements", " - updated ", " - landing PA", ", planned landing", "; also "):
         if sep in text and not text.startswith(sep.strip()):
             text = text.split(sep, 1)[0]
