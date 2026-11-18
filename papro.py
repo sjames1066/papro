@@ -3335,7 +3335,7 @@ class TrayApp(UIMixin):
         item, menu = self.pystray.MenuItem, self.pystray.Menu
         return menu(
             item("Open PAPro window", self.open_window, default=True),
-            item(lambda _: self.status_text(), None, enabled=False),
+            item(lambda _: tray_tooltip(self.status_text()).replace("PAPro - ", "", 1), None, enabled=False),
             menu.SEPARATOR,
             item("Update from SimBrief now", lambda: self.run_task("Updating", self.do_update)),
             item(lambda _: f"\u2714  {ACTIVE_BOLD}" if self.auto else "Off", self.toggle_auto),   # "✔  Active" in bold letters; plain "Off" when switched off
