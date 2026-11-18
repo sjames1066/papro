@@ -711,7 +711,7 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
 .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--surface2);border:1px solid var(--line2);
        padding:10px 16px;border-radius:12px;opacity:0;transition:.25s;pointer-events:none}
 .toast.show{opacity:1}
-body.remote .pc-only{display:none!important}body.remote .remote-note{display:block!important}#m-settings .dialog{max-width:calc(100vw - 24px);max-height:calc(100vh - 24px);overflow-y:auto}</style>
+body.remote .pc-only{display:none!important}body.remote .remote-note{display:block!important}#m-settings .dialog{max-width:calc(100vw - 24px);max-height:calc(100vh - 24px);overflow-y:auto}html{-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}body{-webkit-user-select:none;user-select:none}input,textarea,select,[contenteditable]{-webkit-user-select:text;user-select:text}img,a{-webkit-user-drag:none;user-drag:none}</style>
 </head>
 <body>
 <script>try{var h=location.hostname;if(h&&h!=="localhost"&&h!=="127.0.0.1"&&h!=="[::1]"&&h!=="::1")document.body.classList.add("remote")}catch(e){}</script>
@@ -939,6 +939,7 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
 <div class="toast" id="toast"></div>
 
 <script>
+document.addEventListener("contextmenu",e=>{if(!e.target.closest||!e.target.closest("input,textarea,[contenteditable]"))e.preventDefault()});document.addEventListener("dragstart",e=>{if(!e.target.closest||!e.target.closest("[draggable=true]"))e.preventDefault()});
 const TOKEN="__TOKEN__";
 const $=s=>document.querySelector(s);
 const el=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e};
