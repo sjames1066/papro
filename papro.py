@@ -3289,6 +3289,19 @@ class UIMixin:
         return (prompt or {}).get("answer") or (options[0], False)
 
 
+def tray_tooltip(status: str) -> str:
+    """The short text shown when you hover the tray icon: "PAPro - BAW to EGCC, updated 3 minutes ago"."""
+    text = status.strip()
+    for sep in (" - your announcements", " - updated ", " - landing PA", ", planned landing", "; also "):
+        if sep in text and not text.startswith(sep.strip()):
+            text = text.split(sep, 1)[0]
+    ago = re.search(r"last updated (.+)$", status)
+    if ago and "last updated" not in text:
+        text = f"{text}, updated {ago.group(1)}"
+    text = text.replace(" - last updated ", ", updated ")
+    return f"PAPro - {text}"[:63]
+
+
 class TrayApp(UIMixin):
     def __init__(self, show_window: bool = False) -> None:
         import pystray
@@ -3635,7 +3648,7 @@ class TrayApp(UIMixin):
         self.status = text[:120]
         log.info(text)
         try:
-            self.icon.title = f"{APP_NAME}: {self.status_text()}"[:127]
+            self.icon.title = tray_tooltip(self.status_text())
             self.icon.update_menu()
             if notify and load_config().get("notifications", False):   # Windows pop-ups are off by default: PAPro works quietly in the background
                 self.icon.notify(text if len(text) <= 250 else text[:247] + "...", APP_NAME)
