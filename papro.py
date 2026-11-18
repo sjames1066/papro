@@ -516,8 +516,62 @@ def airline_packs_dir(cfg: dict) -> Path:
 
 
 # --------------------------------------------------------------------------- SimBrief
+EFBX_SIMBRIEF_URL = "http://localhost:35810/efbx/simbrief"
+_EFBX = {"down_until": 0.0, "logged": False, "plan": None, "plan_until": 0.0}
+
+
+def _find_plan(node, depth: int = 0):
+    """The SimBrief plan inside whatever EFBx returned: the JSON itself, or a dict somewhere inside it that has a destination."""
+    if isinstance(node, dict):
+        dest = node.get("destination")
+        if isinstance(dest, dict) and str(dest.get("icao_code", "")).strip():
+            return node
+        if depth < 4:
+            for value in node.values():
+                found = _find_plan(value, depth + 1)
+                if found is not None:
+                    return found
+    elif isinstance(node, list) and depth < 4:
+        for value in node[:5]:
+            found = _find_plan(value, depth + 1)
+            if found is not None:
+                return found
+    return None
+
+
+def efbx_plan(cfg: dict) -> dict | None:
+    """The latest SimBrief plan from EFBx running on this PC (http://localhost:35810/efbx/simbrief), or None when EFBx is not
+    running or has no plan, so PAPro falls back to SimBrief itself. A miss is remembered for 30 seconds so PAPro never waits on it."""
+    if not cfg.get("efbx_simbrief", True) or time.monotonic() < _EFBX["down_until"]:
+        return None
+    if _EFBX["plan"] is not None and time.monotonic() < _EFBX["plan_until"]:   # the Dashboard asks every second: answer from the last reply
+        return _EFBX["plan"]
+    url = str(cfg.get("efbx_simbrief_url") or EFBX_SIMBRIEF_URL)
+    try:
+        resp = requests.get(url, timeout=2)
+        if resp.status_code != 200:
+            raise ValueError(f"HTTP {resp.status_code}")
+        plan = _find_plan(resp.json())
+        if plan is None:
+            raise ValueError("no plan in the reply")
+    except (requests.RequestException, ValueError) as exc:
+        _EFBX["down_until"] = time.monotonic() + 30
+        if not _EFBX["logged"]:
+            _EFBX["logged"] = True
+            log.info("EFBx SimBrief not used (%s): using your SimBrief account instead", exc)
+        return None
+    _EFBX["plan"], _EFBX["plan_until"] = plan, time.monotonic() + 5
+    if _EFBX["logged"]:
+        log.info("Using the SimBrief plan from EFBx")
+        _EFBX["logged"] = False
+    return plan
+
+
 def fetch_flight(cfg: dict) -> dict:
     """Return {'airline','icao','name'} (airline ICAO, destination ICAO) from the latest SimBrief plan."""
+    data = efbx_plan(cfg)   # EFBx already has your SimBrief plan: ask it first (no username needed)
+    if data is not None:
+        return _flight_from_plan(data)
     params = {"json": "1"}
     if str(cfg.get("simbrief_userid", "")).strip():
         params["userid"] = str(cfg["simbrief_userid"]).strip()
@@ -538,6 +592,11 @@ def fetch_flight(cfg: dict) -> dict:
     if resp.status_code != 200 or (status and status.lower() != "success"):
         raise AppError(f"SimBrief: {status or resp.status_code} (check your username and that a plan exists).")
 
+    return _flight_from_plan(data)
+
+
+def _flight_from_plan(data: dict) -> dict:
+    """The flight PAPro needs from a SimBrief plan (the API's JSON, from SimBrief itself or from EFBx)."""
     dest = data.get("destination") or {}
     icao = str(dest.get("icao_code", "")).strip().upper()
     if not icao:
@@ -2292,7 +2351,7 @@ class UIMixin:
             "aliases": aliases,
             "alias_sources": sorted(set(sources)),
             "library": str(airlines_root(cfg)),
-            "setup_needed": not (str(cfg.get("simbrief_username", "")).strip() or str(cfg.get("simbrief_userid", "")).strip()),
+            "setup_needed": not (str(cfg.get("simbrief_username", "")).strip() or str(cfg.get("simbrief_userid", "")).strip() or efbx_plan(cfg) is not None),
             "username": cfg.get("simbrief_username", ""),
             "flight": state.get("flight"),
             "message": "" if self._quiet_status(state) else self.status.replace(APPLIED_MARK, "") if APPLIED_MARK not in self.status else "",
