@@ -1621,7 +1621,7 @@ function renderStudio(){
   studioSig=sig; root.textContent="";
   const c=s.current;
   if(!c){
-    const card=el("section","card");card.append(el("h2",null,"Pack Studio"));
+    const card=el("section","card");const hs=el("h2",null,"Pack Studio");hs.style.marginTop="0";card.append(hs);
     const intro=el("p","small","Pack Studio offers the ability to record or upload announcements alongside automatic volume balancing and cabin EQ effects. Certain sections offer aircraft type customizations and most sections allow for additional recordings to improve and enhance variety.");
     intro.style.fontSize="13.5px";intro.style.color="var(--muted)";card.append(intro);
     if(!newPackOpen){const row=el("div","row");row.style.cssText="margin-top:14px;justify-content:flex-start";const go=el("button","primary","Start New Pack");go.onclick=()=>{newPackOpen=true;studioSig="";renderStudio()};row.append(go);card.append(row);root.append(card)}
