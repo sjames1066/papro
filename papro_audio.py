@@ -313,6 +313,13 @@ def boost(src: Path, dst: Path, percent: int) -> None:
     _write(dst, y.astype("float32"), rate)
 
 
+def write_silence(dst: Path, seconds: float = 1.0, rate: int = 44100) -> dict:
+    """A clip of pure silence (.ogg): a PA that plays nothing, so it overrides the default pack's clip."""
+    Path(dst).parent.mkdir(parents=True, exist_ok=True)
+    _write(Path(dst), np.zeros((int(rate * seconds), 1), dtype="float32"), rate)
+    return {"seconds": float(seconds), "lufs_in": None, "lufs_out": None, "silent": True}
+
+
 def process_clip(src: Path, dst: Path, target_lufs: float, effect: bool = True) -> dict:
     """Read any audio file, optionally apply the PA sound, set its loudness to target_lufs and save an .ogg.
     Returns {"seconds", "lufs_in", "lufs_out"}."""

@@ -3176,7 +3176,7 @@ class UIMixin:
                     self.studio_current = None
                 return {"ok": True, "path": str(dest), "finished": finished}
             elif name == "skip":
-                papro_studio.set_skip(STUDIO_DIR, project, str(data.get("slot", "")), bool(data.get("skip", True)))
+                papro_studio.set_skip(STUDIO_DIR, project, str(data.get("slot", "")), bool(data.get("skip", True)), "silent" if data.get("mode") == "silent" else "default")
             elif name == "unskip_all":
                 return {"ok": True, "count": papro_studio.unskip_all(STUDIO_DIR, project)}
             elif name == "logo_remove":

@@ -594,7 +594,7 @@ def status(root: Path, project: dict) -> list[dict]:
             have, info = True, {"imported": True}
         slot = {**slot, "script": project.get("scripts", {}).get(slot["id"], slot["script"]),
                 "custom": slot["id"] in project.get("scripts", {})}
-        rows.append({**slot, "music": bool(slot.get("music")), "skipped": bool(not have and slot["id"] in project.get("skipped", [])), "done": have, "seconds": info.get("seconds") if have else None,
+        rows.append({**slot, "music": bool(slot.get("music")), "skipped": bool(not have and slot["id"] in project.get("skipped", [])), "silent": bool(have and slot["id"] in project.get("silent", [])), "done": have, "seconds": info.get("seconds") if have else None,
                      "lufs": info.get("lufs_out") if have else None, "imported": bool(have and info.get("imported")), "variants": variants})
     alphabetical = {"Boarding music", "Bolt-ons"}  # the clock stays in clock order; everything else is in flight order
     first = {}
@@ -872,6 +872,7 @@ def process_slot(root: Path, project: dict, slot: dict, target: float) -> dict:
         raise StudioError(str(exc))
     result["target"] = target
     project["skipped"] = [i for i in project.get("skipped", []) if i != slot["id"]]
+    project["silent"] = [i for i in project.get("silent", []) if i != slot["id"]]
     project.setdefault("slots", {})[slot["id"]] = result
     save(root, project)
     return result
@@ -921,6 +922,7 @@ def delete_slot(root: Path, project: dict, slot_id: str) -> None:
         path.unlink()
     (folder / "pack" / slot["folder"] / slot["file"]).unlink(missing_ok=True)
     project.get("slots", {}).pop(slot_id, None)
+    project["silent"] = [i for i in project.get("silent", []) if i != slot_id]
     save(root, project)
 
 
@@ -999,19 +1001,36 @@ def clean_also(value, own: str = "") -> list[str]:
     return sorted(out)
 
 
-def set_skip(root: Path, project: dict, slot_id: str, skip: bool) -> None:
-    """Mark an announcement as skipped (you are not recording it): it counts as done for the checklist and the export."""
-    find_slot(project, slot_id)
+def set_skip(root: Path, project: dict, slot_id: str, skip: bool, mode: str = "default") -> None:
+    """Skip an announcement (you are not recording it): it counts as done for the checklist and the export.
+    mode "default": the pack has no clip, so PAPro's default clip plays.
+    mode "silent": a 1 second silent clip is put in the pack, so nothing plays (it overrides the default)."""
+    slot = find_slot(project, slot_id)
+    path = project_dir(root, project["icao"], project["voice"]) / "pack" / slot["folder"] / slot["file"]
+    silent = [i for i in project.get("silent", []) if i != slot_id]
+    if slot_id in project.get("silent", []):   # leaving silence (unskip, or switching to the default): remove the silent clip
+        path.unlink(missing_ok=True)
+        project.get("slots", {}).pop(slot_id, None)
     skipped = [i for i in project.get("skipped", []) if i != slot_id]
-    if skip:
+    if skip and mode == "silent":
+        if path.is_file() and slot_id not in project.get("silent", []):
+            raise StudioError("That one already has a recording. Remove the recording first.")
+        project.setdefault("slots", {})[slot_id] = papro_audio.write_silence(path)
+        silent.append(slot_id)
+    elif skip:
         skipped.append(slot_id)
     project["skipped"] = skipped
+    project["silent"] = silent
     save(root, project)
 
 
 def unskip_all(root: Path, project: dict) -> int:
     """Put every skipped announcement back on the checklist. Returns how many were skipped."""
-    n = len([r for r in status(root, project) if r["skipped"]])
+    rows = status(root, project)
+    n = len([r for r in rows if r["skipped"] or r["silent"]])
+    for r in rows:
+        if r["silent"]:
+            set_skip(root, project, r["id"], False)
     project["skipped"] = []
     save(root, project)
     return n
@@ -1218,6 +1237,7 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
                         if isinstance(n, int) and 2 <= n <= 99 and n not in have:
                             have.append(n)
                     have.sort()
+            project["_silent_saved"] = [i for i in saved.get("silent", []) if isinstance(i, str)]
             for entry in saved.get("typed", []):
                 try:
                     clean = {"base": entry["base"], "types": clean_types(entry["types"], False), "n": int(entry.get("n", 1))}
@@ -1230,6 +1250,10 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
     for slot in slot_list(project):
         if (pack / slot["folder"] / slot["file"]).is_file():
             project["slots"][slot["id"]] = {"imported": True}
+    known_ids = {slot["id"] for slot in slot_list(project)}
+    project["silent"] = [i for i in project.pop("_silent_saved", []) if i in known_ids and i in project["slots"]]
+    for i in project["silent"]:   # these clips are the silent "no sound" ones
+        project["slots"][i] = {"seconds": 1.0, "lufs_in": None, "lufs_out": None, "silent": True}
     try:  # the scripts that were saved with the pack
         scripts = json.loads((src / "scripts.json").read_text(encoding="utf-8-sig"))
         if isinstance(scripts, dict):
@@ -1317,7 +1341,7 @@ def install_to_library(root: Path, project: dict, airline_dir: Path) -> Path:
         pass
     if project.get("scripts"):
         (dest / "scripts.json").write_text(json.dumps(project["scripts"], indent=2, ensure_ascii=False), encoding="utf-8")
-    structure = {k: project[k] for k in ("airports", "extras", "variants", "typed") if project.get(k)}
+    structure = {k: project[k] for k in ("airports", "extras", "variants", "typed", "silent") if project.get(k)}
     structure_file = dest / "studio.json"   # the parts of the checklist that are not backed by a clip yet (an airport you have not recorded, a skipped "+")
     if structure:
         structure_file.write_text(json.dumps(structure, indent=2), encoding="utf-8")

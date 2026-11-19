@@ -718,7 +718,7 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
 .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--surface2);border:1px solid var(--line2);
        padding:10px 16px;border-radius:12px;opacity:0;transition:.25s;pointer-events:none}
 .toast.show{opacity:1}
-body.remote .pc-only{display:none!important}body.remote .remote-note{display:block!important}#m-settings .dialog{max-width:calc(100vw - 24px);max-height:calc(100vh - 24px);overflow-y:auto}html{-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}body{-webkit-user-select:none;user-select:none}input,textarea,select,[contenteditable]{-webkit-user-select:text;user-select:text}img,a{-webkit-user-drag:none;user-drag:none}</style>
+body.remote .pc-only{display:none!important}body.remote .remote-note{display:block!important}#m-settings .dialog{max-width:calc(100vw - 24px);max-height:calc(100vh - 24px);overflow-y:auto}html{-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}body{-webkit-user-select:none;user-select:none}input,textarea,select,[contenteditable]{-webkit-user-select:text;user-select:text}img,a{-webkit-user-drag:none;user-drag:none}.skipmenu{position:fixed;z-index:60;background:var(--surface2,#1c1738);border:1px solid var(--line,#2b2550);border-radius:12px;padding:6px;box-shadow:0 12px 30px rgba(0,0,0,.45);min-width:250px}.skipmenu button{display:block;width:100%;text-align:left;background:none;border:0;color:var(--text);padding:9px 12px;border-radius:8px;font:inherit;font-weight:600;cursor:pointer}.skipmenu button:hover{background:rgba(255,255,255,.07)}.skipmenu small{display:block;font-weight:400;color:var(--muted);font-size:12px;margin-top:2px}</style>
 </head>
 <body>
 <script>try{var h=location.hostname;if(h&&h!=="localhost"&&h!=="127.0.0.1"&&h!=="[::1]"&&h!=="::1")document.body.classList.add("remote")}catch(e){}</script>
@@ -1348,6 +1348,15 @@ async function testBuild(rebuild){
 $("#tab-main").onclick=()=>setView("main"); $("#tab-studio").onclick=()=>setView("studio"); $("#tab-dl").onclick=()=>setView("dl"); $("#tab-test").onclick=()=>setView("test");
 
 function field(label,key,cur,ph,wide){const l=el("label",wide?"wide":"",label);const i=el("input");i.type="text";i.value=cur[key]||"";i.placeholder=ph||"";i.dataset.k=key;l.append(i);return l}
+function skipMenu(btn,c,r){
+  document.querySelectorAll(".skipmenu").forEach(m=>m.remove());
+  const m=el("div","skipmenu");const rc=btn.getBoundingClientRect();
+  const mk=(t,sub,mode)=>{const b=el("button",null,t);b.append(el("small",null,sub));b.onclick=()=>{m.remove();studio("skip",{...pid(c),slot:r.id,skip:true,mode})};return b};
+  m.append(mk("Use the default sound","PAPro's default clip plays for this PA","default"),mk("No sound","A 1 second silent clip is added, so nothing plays","silent"));
+  document.body.append(m);
+  m.style.top=Math.min(rc.bottom+6,innerHeight-m.offsetHeight-8)+"px";m.style.left=Math.max(8,Math.min(rc.right-m.offsetWidth,innerWidth-m.offsetWidth-8))+"px";
+  setTimeout(()=>document.addEventListener("click",()=>m.remove(),{once:true}),0);
+}
 function pid(c){return {icao:c.icao,voice:c.voice}}
 async function studio(name,data){const r=await api("studio_"+name,data);await refreshNow();return r}
 async function refreshNow(){try{const r=await fetch("/api/state",{headers:{"X-Token":TOKEN}});snap=await r.json();studioSig="";renderStudio()}catch(e){}}
@@ -1518,7 +1527,7 @@ function typesPicker(c,r,anchor){
 }
 function slotRow(c,r){
   const d=el("div","slot"+(r.done?" done":"")+(r.skipped?" skipped":""));
-  const nm=el("div","nm2",r.label); if(r.skipped)nm.append(el("em","sk","skipped")); else if(r.required&&!r.done)nm.append(el("em",null,"needed"));
+  const nm=el("div","nm2",r.label); if(r.skipped)nm.append(el("em","sk","skipped - default sound plays")); else if(r.silent)nm.append(el("em","sk","no sound")); else if(r.required&&!r.done)nm.append(el("em",null,"needed"));
   if(r.typed){const tb=el("button","typbtn","✈ "+(r.types.includes("ALL")?"All aircraft":r.types.join(", "))+" ▾");tb.title="Aircraft types this announcement plays on";tb.onclick=e=>{e.stopPropagation();typesPicker(c,r,tb)};nm.append(tb)}
   if(r.modes){const ms=el("select","voice");ms.style.cssText="margin-left:10px;padding:3px 8px;font-size:12px";ms.title="How Fenix plays it: Prerecorded = chosen in the cabin crew panel; Manual = the purser announces it (adds [Manual] to the file name)";
     r.modes.forEach(m=>{const o=el("option",null,m);o.value=m;ms.append(o)});ms.value=r.mode;ms.onchange=()=>studio("mode",{...pid(c),slot:r.id,mode:ms.value});nm.append(ms)}
@@ -1538,7 +1547,8 @@ function slotRow(c,r){
   };
   d.append(scl);
   if(r.variants&&r.variants.length)d.append(el("div","st","Also has: "+r.variants.join(", ")));
-  if(r.done)d.append(el("div","st",r.imported?"From your library - unchanged"+(r.lufs!=null?" · "+r.lufs+" LUFS":""):r.seconds+" s"+(r.music?" · unchanged":"")));
+  if(r.silent)d.append(el("div","st","No sound: a 1 second silent clip overrides the default pack's clip"));
+  else if(r.done)d.append(el("div","st",r.imported?"From your library - unchanged"+(r.lufs!=null?" · "+r.lufs+" LUFS":""):r.seconds+" s"+(r.music?" · unchanged":"")));
   const act=el("div","act");
   const rec=el("button","rec",r.done?"● Re-record":"● Record");rec.onclick=()=>{if(recState&&recState.slot===r.id){recState.stop()}else startRec(r.id,rec)};
   if(r.music)rec.style.display="none";
@@ -1548,7 +1558,9 @@ function slotRow(c,r){
     xp.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>';
     xp.onclick=()=>{const q=new URLSearchParams({icao:c.icao,voice:c.voice,slot:r.id,t:TOKEN});const a=document.createElement("a");a.href="/studio/audio?"+q;
       a.download=(c.icao+"_"+c.voice+"_"+r.id.replace(/[\\/:*?"<>|]+/g,"_").replace(/\.ogg$/i,"")).replace(/\s+/g,"_")+".ogg";document.body.appendChild(a);a.click();a.remove();toast("Exported "+r.label)};act.append(xp)}
-  if(!r.done&&!r.music){const sk=el("button","ghost",r.skipped?"Unskip":"Skip");sk.title=r.skipped?"Put this back on the checklist":"Not recording this one: counts as done on the checklist";sk.onclick=()=>studio("skip",{...pid(c),slot:r.id,skip:!r.skipped});act.append(sk)}
+  if(r.silent){const us=el("button","ghost","Unskip");us.title="Remove the silent clip and put this back on the checklist";us.onclick=()=>studio("skip",{...pid(c),slot:r.id,skip:false});act.prepend(us)}
+  if(r.skipped){const un=el("button","ghost","Unskip");un.title="Put this back on the checklist";un.onclick=()=>studio("skip",{...pid(c),slot:r.id,skip:false});const ns=el("button","ghost","No sound");ns.title="Skipped: the default pack's clip plays. Press to play nothing instead (a 1 second silent clip is added)";ns.onclick=()=>studio("skip",{...pid(c),slot:r.id,skip:true,mode:"silent"});act.append(un,ns)}
+  else if(!r.done&&!r.music){const sk=el("button","ghost","Skip ▾");sk.title="Not recording this one";sk.onclick=e=>{e.stopPropagation();skipMenu(sk,c,r)};act.append(sk)}
   const isAc=r.folder==="aircraft",isAp=r.folder==="airports"||isAc,apCode=r.folder==="airports"?r.id.slice(("airports/"+c.icao+"_").length):r.label;
   if(r.done||isAp){const p=el("button","pp","▶");p.dataset.id=r.id;p.title="Play";p.onclick=()=>togglePlay(c,r.id);const sp2=el("button","stp","⏹");sp2.dataset.id=r.id;sp2.title="Stop";sp2.style.display="none";sp2.onclick=stopPlay;const x=el("button","danger","✕");x.title=isAp?(isAc?"Remove this aircraft":"Remove this airport")+(r.done?" and its recording":""):"Remove";let armT=null;x.onclick=()=>{if(!x.classList.contains("arm")){x.classList.add("arm");x.textContent="Delete?";x.title="Click again to delete";armT=setTimeout(()=>{x.classList.remove("arm");x.textContent="✕";x.title="Remove"},3500);return}clearTimeout(armT);isAp?studio(isAc?"aircraft":"airport",{...pid(c),code:apCode,remove:true}):studio("delete",{...pid(c),slot:r.id})};if(r.done)act.append(p,sp2);if(!(r.typed||r.variant_of))act.append(x)}
   if(!r.typed&&!r.variant_of&&Object.keys(c.typed_bases||{}).includes(r.stem)){const at=el("button","sq ghost");at.title="+ aircraft version";at.setAttribute("aria-label","+ aircraft version");
