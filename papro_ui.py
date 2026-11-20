@@ -1260,7 +1260,7 @@ $("#forget").onclick=async()=>{await api("forget");toast("Remembered choices cle
 document.querySelectorAll("[data-open]").forEach(b=>b.onclick=()=>api("open",{what:b.dataset.open}));
 
 // ---------------------------------------------------------------- Pack Studio
-let view="main", studioSig="", recState=null, openGroups=new Set(["Boarding"]), playing=null;
+let airportFilter="", view="main", studioSig="", recState=null, openGroups=new Set(["Boarding"]), playing=null;
 function setView(v){view=v;for(const n of ["main","studio","dl","test"]){$("#view-"+n).style.display=v===n?"":"none";$("#tab-"+n).classList.toggle("on",v===n)}
   if(v==="studio"){studioSig="";renderStudio()} if(v==="test")testInit()}
 let tOpts=null,tKey="",tAudio=null,tRows=[],tIdx=-1,tPlaylist=false,tBusy=false,tPaused=false;
@@ -1591,6 +1591,14 @@ function buildChecklist(c,host){
       const line=el("div","addline"),i=el("textarea");i.rows=2;i.placeholder="EGLL, EGKK, EGCC  (paste a list: commas, semicolons, spaces or new lines)";i.style.textTransform="uppercase";i.style.resize="vertical";const add=el("button",null,"Add airports");
       add.onclick=async()=>{if(!i.value.trim())return;const text=i.value;i.value="";i.blur();const r=await studio("airport",{...pid(c),code:text});if(!r.ok)i.value=text;if(r.ok){openGroups.add("Airports");toast(r.added+(r.added===1?" airport added":" airports added")+(r.skipped&&r.skipped.length?" - skipped: "+r.skipped.slice(0,8).join(", "):""),r.skipped&&r.skipped.length?6000:3200)}studioSig="";renderStudio()};
       i.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();add.click()}});line.append(i,add);d.append(line);
+      if(gr.rows.length>4){
+        const fl=el("input");fl.type="search";fl.placeholder="Search airports (code or name)";fl.value=airportFilter;fl.style.cssText="margin:12px 0 4px;width:100%";fl.setAttribute("aria-label","Search airports");
+        const none=el("div","small","No airport matches that search.");none.style.cssText="display:none;margin:8px 2px";
+        const apply=()=>{airportFilter=fl.value;const q=fl.value.trim().toLowerCase();let n=0;
+          d.querySelectorAll(":scope > .slot").forEach(row=>{const hit=!q||row.textContent.toLowerCase().includes(q);row.style.display=hit?"":"none";if(hit)n++});
+          none.style.display=q&&!n?"":"none"};
+        fl.addEventListener("input",apply);d.append(fl,none);setTimeout(apply,0);
+      }
     }
     if(gr.name==="Boarding music"){
       d.append(el("div","small","Background music played while passengers board. Add a track name, then upload the audio - use only music you have the right to share. It is not recorded or processed, just converted to .ogg."));

@@ -3499,10 +3499,23 @@ class TrayApp(UIMixin):
             except Exception:
                 log.exception("Could not stop the playing PA")
 
+    def release_held(self) -> None:
+        """Pack Studio is closed again: play the announcements that came due meanwhile, in the order they came."""
+        held = self.__dict__.get("held_keys")
+        if not held or time.monotonic() < getattr(self, "studio_quiet_until", 0.0):
+            return
+        self.held_keys = []
+        for key in held:
+            log.info("Playing the held PA: %s", key)
+            self.play_key(key)
+
     def play_key(self, key: str) -> None:
         """An announcement is due: find it in the pack built for this flight and queue it."""
         if time.monotonic() < getattr(self, "studio_quiet_until", 0.0):
-            log.info("PA due: %s - not played, Pack Studio is open", key)
+            held = self.__dict__.setdefault("held_keys", [])
+            if key not in held:
+                held.append(key)
+            log.info("PA due: %s - held until the Dashboard is open again (Pack Studio is open)", key)
             return
         path = None
         try:
@@ -3577,6 +3590,7 @@ class TrayApp(UIMixin):
             from papro_phases import PhaseEngine
 
             engine = self.phases = PhaseEngine(self.play_key)
+        self.release_held()
         if not engine.joined:   # PAPro opened part way through a flight: don't play what is already behind you
             engine.join(reading, tracker.phase())
         engine.feed(reading)
@@ -3584,6 +3598,7 @@ class TrayApp(UIMixin):
             self._reset_at = getattr(self, "_reset_at", None) or reading["t"] + 60
             if reading["t"] >= self._reset_at:
                 engine.reset()
+                self.held_keys = []
                 self._reset_at = None
 
     def sim_event(self, event: str, clock: str | None) -> None:
