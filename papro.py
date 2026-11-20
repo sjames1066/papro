@@ -1235,6 +1235,28 @@ def boost_stamp(src: Path, percent: int) -> str:
     return f"{info.st_mtime_ns}:{info.st_size}:{percent}"
 
 
+def merged_music(tracks: list[Path]) -> Path | None:
+    """The boarding tracks joined into one file (kept in the data folder and rebuilt only when a track changes).
+    One track is used as it is. None if joining is not possible."""
+    if len(tracks) == 1:
+        return tracks[0]
+    if papro_audio is None or not papro_audio.have_backend():
+        return None
+    stamp = hashlib.sha1("|".join(f"{t.name}:{t.stat().st_size}:{int(t.stat().st_mtime)}" for t in tracks).encode()).hexdigest()[:12]
+    out = DATA_DIR / "music" / f"BoardingMusic-{stamp}.ogg"
+    if not out.is_file():
+        try:
+            for old in out.parent.glob("BoardingMusic-*.ogg") if out.parent.is_dir() else ():
+                old.unlink()
+            papro_audio.merge_tracks(tracks, out)
+        except (papro_audio.AudioError, OSError) as exc:
+            log.warning("Could not merge the boarding music: %s", exc)
+            return None
+    out2 = out.with_name("BoardingMusic.ogg")
+    shutil.copyfile(out, out2)
+    return out2
+
+
 def sync_needed(src: Path, dst: Path, percent: int) -> bool:
     """Is the Fenix copy of a general PA out of date? (A boosted copy never equals its source, so it is tracked by stamp.)"""
     if not dst.is_file():
@@ -1529,6 +1551,7 @@ def pick_extra(cfg: dict, base: Path, key: str) -> Path | None:
     return next((p for p in files if p.name == used[key]), None)
 
 
+BOARDING_PA_MIN_S, BOARDING_PA_MAX_S = 180, 420     # the boarding announcement repeats this often while boarding
 PLAYBACK_DIR = DATA_DIR / "playback"          # where PAs are built for aircraft that PAPro plays itself
 _PLAYBACK = {"on": False}                      # set from the sim: the loaded aircraft is not a supported (Fenix) one
 KNOB = {"on": True, "volume": 70}              # the on-screen PA knob, mirrored here for the audio thread
@@ -1823,6 +1846,19 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
             chosen_take = typed_choice(f"{airline}/{voice_dir.name}/{name}", [sources[name]] if name in sources else [], list(found.values()))
             if chosen_take:
                 sources[name] = chosen_take
+        music = sorted(n for n in sources if n.startswith("BoardingMusic"))
+        if music:   # all the boarding tracks become ONE BoardingMusic.ogg (it plays on repeat until boarding is complete)
+            tracks = [sources.pop(n) for n in music]
+            merged = merged_music(tracks)
+            if merged:
+                sources["BoardingMusic.ogg"] = merged
+            else:
+                sources.update({t.name: t for t in tracks})
+        for stale in fenix_dir.glob("BoardingMusic~*.ogg") if "BoardingMusic.ogg" in sources else ():
+            try:
+                stale.unlink()   # older versions of PAPro installed each track separately
+            except OSError:
+                pass
         for name, path in sources.items():
             dst = fenix_dir / name
             if sync_needed(path, dst, boost):
@@ -3500,6 +3536,8 @@ class TrayApp(UIMixin):
         now = time.monotonic()
         was_quiet = now < getattr(self, "studio_quiet_until", 0.0)
         self.studio_quiet_until = now + 6.0
+        if not was_quiet and getattr(self, "music", None) is not None:
+            self.music.stop(fade=False)
         if not was_quiet and getattr(self, "player", None) is not None:
             try:
                 self.player.clear()
@@ -3536,6 +3574,9 @@ class TrayApp(UIMixin):
             return
         log.info("PA due: %s -> %s", key, path.name)
         self.player_for().play(path)
+        if key == "welcome":
+            self.boarding_live = True
+            self.next_boarding_pa = time.monotonic() + random.uniform(BOARDING_PA_MIN_S, BOARDING_PA_MAX_S)
 
     def player_for(self):
         from papro_play import Player, SoundDeviceBackend
@@ -3601,12 +3642,53 @@ class TrayApp(UIMixin):
         if not engine.joined:   # PAPro opened part way through a flight: don't play what is already behind you
             engine.join(reading, tracker.phase())
         engine.feed(reading)
+        self.boarding_music(engine, tracker)
         if "deboard_complete" in engine.done:   # flight over: a minute later get ready for the next one
             self._reset_at = getattr(self, "_reset_at", None) or reading["t"] + 60
             if reading["t"] >= self._reset_at:
                 engine.reset()
                 self.held_keys = []
                 self._reset_at = None
+
+    def boarding_music(self, engine, tracker) -> None:
+        """Non-Fenix aircraft: the boarding music plays on repeat from when boarding starts until boarding is complete, and the
+        boarding announcement is repeated every 3-7 minutes meanwhile."""
+        from papro_phases import PHASES
+
+        music = getattr(self, "music", None)
+        over = "boarding_complete" in engine.done or engine.flown or tracker.rank >= PHASES.index("Boarding complete")
+        started = getattr(self, "boarding_live", False) or tracker.phase() == "Boarding"
+        quiet = time.monotonic() < getattr(self, "studio_quiet_until", 0.0)
+        if over or not started:
+            self.boarding_live = False
+            if music is not None and music.running():
+                music.stop()
+            return
+        if quiet:
+            return
+        from papro_play import MusicLoop, SoundDeviceBackend, music_file, resolve
+
+        device = str(load_config().get("pa_output_device") or "")
+        if music is None or getattr(self, "music_device", None) != device:
+            if music is not None:
+                music.stop(fade=False)
+            self.sync_knob()
+            music = self.music = MusicLoop(knob_gain, SoundDeviceBackend(device))
+            self.music_device = device
+        music.ping()
+        track = music_file(PLAYBACK_DIR)
+        if track and not music.running():
+            log.info("Boarding music starts (plays until boarding is complete)")
+            music.start(track)
+        due = getattr(self, "next_boarding_pa", None)
+        if due is None:
+            self.next_boarding_pa = time.monotonic() + random.uniform(BOARDING_PA_MIN_S, BOARDING_PA_MAX_S)
+        elif time.monotonic() >= due and "welcome" in engine.done:
+            self.next_boarding_pa = time.monotonic() + random.uniform(BOARDING_PA_MIN_S, BOARDING_PA_MAX_S)
+            path = resolve(PLAYBACK_DIR, "welcome", clock_tag())
+            if path:
+                log.info("Boarding announcement again")
+                self.player_for().play(path)
 
     def sim_event(self, event: str, clock: str | None) -> None:
         """From the SimConnect watcher: "takeoff" (a new flight) or "landed" with the local time at the airport."""

@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import queue
 import threading
+import time
 from pathlib import Path
 from typing import Callable
 
@@ -172,6 +173,73 @@ class Player:
                 pass
 
 
+class MusicLoop:
+    """The boarding music: one file played over and over on its own stream (so announcements can play on top of it)
+    until stop() - which fades it out. Level and mute come from `gain()` like the announcements."""
+
+    FADE_S = 2.0
+
+    def __init__(self, gain: Callable[[], float], backend=None, loader=load_clip):
+        self.gain, self.backend, self.loader = gain, backend or SoundDeviceBackend(), loader
+        self.stop_flag = threading.Event()
+        self.thread: threading.Thread | None = None
+        self.pinged = time.monotonic()
+
+    def ping(self) -> None:
+        """Called about once a second while the sim is sending data; the music stops by itself if the calls stop (sim closed)."""
+        self.pinged = time.monotonic()
+
+    def running(self) -> bool:
+        return self.thread is not None and self.thread.is_alive() and not self.stop_flag.is_set()
+
+    def start(self, path: Path) -> None:
+        if self.running():
+            return
+        self.stop_flag = threading.Event()
+        self.thread = threading.Thread(target=self._run, args=(Path(path), self.stop_flag), daemon=True)
+        self.thread.start()
+
+    def stop(self, fade: bool = True) -> None:
+        self.stop_flag.set()
+        self.fade = fade
+
+    fade = True
+
+    def _run(self, path: Path, stop: threading.Event) -> None:
+        try:
+            data, rate = self.loader(path)
+            if not len(data):
+                return
+            stream = self.backend.open(rate, data.shape[1])
+        except Exception:
+            log.exception("Could not start the boarding music %s", path)
+            return
+        fade_total = int(rate * self.FADE_S)
+        faded = 0
+        try:
+            while True:
+                for start in range(0, len(data), CHUNK):
+                    level = max(0.0, min(2.0, float(self.gain())))
+                    chunk = data[start:start + CHUNK] * level
+                    if not stop.is_set() and time.monotonic() - self.pinged > 8.0:
+                        stop.set()
+                    if stop.is_set():
+                        if not self.fade:
+                            return
+                        ramp = 1.0 - (faded + np.arange(len(chunk))) / fade_total
+                        chunk = chunk * np.clip(ramp, 0.0, 1.0)[:, None]
+                        faded += len(chunk)
+                    stream.write(np.ascontiguousarray(np.clip(chunk, -1.0, 1.0), dtype="float32"))
+                    if stop.is_set() and faded >= fade_total:
+                        return
+        finally:
+            try:
+                stream.stop()
+                stream.close()
+            except Exception:
+                pass
+
+
 # -- which file is which announcement ---------------------------------------------------------------------
 # engine key -> (file base name, tag wanted in the name or None)
 KEY_FILES = {
@@ -196,6 +264,12 @@ KEY_FILES = {
     "deboard_start": ("DeboardingStarted", None),
     "deboard_complete": ("DeboardingComplete", None),
 }
+
+
+def music_file(folder: Path) -> Path | None:
+    """The merged boarding music in the built pack, if there is one."""
+    p = Path(folder) / "BoardingMusic.ogg"
+    return p if p.is_file() else None
 
 
 def resolve(folder: Path, key: str, clock: str = "") -> Path | None:

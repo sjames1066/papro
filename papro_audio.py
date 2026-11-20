@@ -154,6 +154,21 @@ def _crossfade(a: np.ndarray, b: np.ndarray, rate: int, overlap_ms: int) -> np.n
     return np.concatenate([a[:-n], mixed, b[n:]])
 
 
+def merge_tracks(paths: list[Path], out: Path, crossfade_ms: int = 1500) -> None:
+    """Boarding music: every track one after another in a single file, each running into the next. No loudness change."""
+    if not paths:
+        raise AudioError("Nothing to merge.")
+    clips = [_read(Path(p)) for p in paths]
+    rate = clips[0][1]
+    channels = max(d.shape[1] for d, _ in clips)
+    merged = None
+    for data, src_rate in clips:
+        data = _channels(_resample(data, src_rate, rate), channels)
+        merged = data if merged is None else _crossfade(merged, data, rate, crossfade_ms)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    _write(out, _fade(merged, rate, 8), rate)
+
+
 def same_audio(a: Path, b: Path) -> bool:
     """Do two clips sound identical? (Compared as decoded audio: two encodes of the same sound differ in their bytes.)"""
     try:
