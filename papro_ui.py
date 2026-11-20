@@ -1605,6 +1605,12 @@ function buildChecklist(c,host){
       const line=el("div","addline"),i=el("input");i.type="text";i.placeholder="Departure lounge";const add=el("button",null,"Add track");
       add.onclick=async()=>{if(!i.value.trim())return;const r=await studio("music",{...pid(c),name:i.value});if(r.ok)openGroups.add("Boarding music");studioSig="";renderStudio()};
       i.addEventListener("keydown",e=>{if(e.key==="Enter")add.click()});line.append(i,add);d.append(line);
+      const ml=el("div","small");ml.style.cssText="display:flex;align-items:center;gap:12px;margin:12px 2px";
+      const sl=el("input");sl.type="range";sl.min=5;sl.max=100;sl.step=5;sl.value=c.music_level;sl.style.cssText="flex:1;max-width:260px";
+      const lv=el("b",null,c.music_level+"%");
+      sl.oninput=()=>{lv.textContent=sl.value+"%"};
+      sl.onchange=async()=>{toast("Setting the music volume...");const r=await studio("music_level",{...pid(c),level:+sl.value});if(r.ok)toast(r.tracks?"Music volume set on "+r.tracks+(r.tracks===1?" track":" tracks"):"Music volume saved - applies to tracks you add")};
+      ml.append(el("span",null,"Music volume (% of the announcements):"),sl,lv);ml.title="50% is half as loud as the announcements (6 dB quieter). Changing it re-levels the tracks already in this pack.";d.append(ml);
       if(c.music.length){const cr=el("div","chiprow");c.music.forEach(a=>{const b=el("button","ghost",a+" ✕");b.onclick=()=>studio("music",{...pid(c),name:a,remove:true});cr.append(b)});d.append(cr)}
     }
     if(gr.name==="Bolt-ons"){

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import shutil
 import statistics
@@ -864,7 +865,7 @@ def process_slot(root: Path, project: dict, slot: dict, target: float) -> dict:
         raise StudioError("Nothing recorded for that yet.")
     try:
         if slot.get("music"):
-            result = papro_audio.convert_music(raws[0], folder / "pack" / slot["folder"] / slot["file"])
+            result = papro_audio.convert_music(raws[0], folder / "pack" / slot["folder"] / slot["file"], music_target(project, target))
         else:
             result = papro_audio.process_clip(raws[0], folder / "pack" / slot["folder"] / slot["file"], target,
                                              bool(project.get("effect", True)))
@@ -884,6 +885,42 @@ def unprocessed(root: Path, project: dict) -> list[dict]:
     pack = project_dir(root, project["icao"], project["voice"]) / "pack"
     return [sl for sl in slot_list(project)
             if sl["id"] not in project.get("slots", {}) and not (pack / sl["folder"] / sl["file"]).is_file() and raw_takes(raw, sl)]
+
+
+DEFAULT_MUSIC_LEVEL = 50    # boarding music plays at this percent of the announcements' volume (50 % = 6 dB quieter)
+
+
+def music_level(project: dict) -> int:
+    try:
+        return max(5, min(100, int(project.get("music_level", DEFAULT_MUSIC_LEVEL))))
+    except (TypeError, ValueError):
+        return DEFAULT_MUSIC_LEVEL
+
+
+def music_target(project: dict, announcement_target: float) -> float:
+    """The loudness (LUFS) boarding music is set to: the announcements' loudness lowered by the music level (50 % -> -6 dB)."""
+    return announcement_target + 20 * math.log10(music_level(project) / 100)
+
+
+def reprocess_music(root: Path, project: dict, announcement_target: float) -> int:
+    """Set every boarding-music track of this pack to the current music level (from the original take when there is one)."""
+    folder = project_dir(root, project["icao"], project["voice"])
+    count = 0
+    for slot in slot_list(project):
+        if not slot.get("music") or slot["id"] not in project.get("slots", {}):
+            continue
+        dst = folder / "pack" / slot["folder"] / slot["file"]
+        raws = raw_takes(folder / "raw", slot)
+        src = raws[0] if raws else dst
+        if not src.is_file():
+            continue
+        try:
+            project["slots"][slot["id"]] = papro_audio.convert_music(src, dst, music_target(project, announcement_target))
+            count += 1
+        except papro_audio.AudioError:
+            pass
+    save(root, project)
+    return count
 
 
 def reprocess_all(root: Path, project: dict, target: float) -> int:

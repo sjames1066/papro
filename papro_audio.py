@@ -366,11 +366,20 @@ def _is_vorbis_ogg(path: Path) -> bool:
     return head[:4] == b"OggS" and b"\x01vorbis" in head
 
 
-def convert_music(src: Path, dst: Path) -> dict:
-    """Boarding music: no PA sound, no loudness change. An .ogg is copied as it is; anything else is converted."""
+def convert_music(src: Path, dst: Path, target_lufs: float | None = None) -> dict:
+    """Boarding music: no PA sound. With target_lufs the track is set to that loudness (so it sits at a chosen level under the
+    announcements); without it an .ogg is copied as it is and anything else is converted."""
     src, dst = Path(src), Path(dst)
     dst.parent.mkdir(parents=True, exist_ok=True)
     data, rate = _read(src)
+    if target_lufs is not None:
+        now = loudness_lufs(data, rate)
+        if now is not None and now > -70:
+            data = data * float(10 ** ((target_lufs - now) / 20))
+        data = _fade(_limit(data), rate, 8)
+        _write(dst, data, rate)
+        lufs = loudness_lufs(data, rate)
+        return {"seconds": round(len(data) / rate, 1), "lufs_in": None, "lufs_out": None if lufs is None else round(lufs, 1), "music": True}
     if _is_vorbis_ogg(src):
         shutil.copyfile(src, dst)
     else:

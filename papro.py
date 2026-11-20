@@ -2937,7 +2937,7 @@ class UIMixin:
             "donate_url": project.get("donate_url", ""), "accent": project.get("accent", ""),
             "also_icaos": ", ".join(project.get("also_icaos", [])), "local_time": project.get("local_time") is not False,
             "description": project.get("description", ""), "version": project.get("version", "1.0.0"),
-            "effect": bool(project.get("effect", True)), "airports": project["airports"], "aircraft": project.get("aircraft", []), "aircraft_on": bool(project.get("aircraft_on")),
+            "effect": bool(project.get("effect", True)), "music_level": papro_studio.music_level(project), "airports": project["airports"], "aircraft": project.get("aircraft", []), "aircraft_on": bool(project.get("aircraft_on")),
             "app_boost": boost_percent(cfg), "languages": self.language_snapshot(project), "language": project.get("language", ""), "aircraft_presets": papro_studio.AIRCRAFT_PRESETS, "typed_bases": papro_studio.TYPED_BASES, "aircraft_types": papro_studio.AIRCRAFT_TYPES, "extras": project["extras"], "music": project.get("music", []),
             "logo": papro_studio.logo_path(STUDIO_DIR, project).is_file(), "has_script": bool(project.get("scripts")), "origin": bool(project.get("origin")), "in_library": self.project_in_library(cfg, project["icao"], project["voice"]), "upgrades": papro_studio.upgrade_preview(STUDIO_DIR, project), "target_pending": False, "rows": rows, "missing": len(papro_studio.missing(STUDIO_DIR, project)),
             "target": target, "target_count": count, "target_source": label,
@@ -3076,6 +3076,13 @@ class UIMixin:
                     papro_studio.reprocess_all(STUDIO_DIR, project, self.studio_target(cfg, project["icao"])[0])
                 if not project.get("primary_voice"):
                     papro_studio.sync_secondary(STUDIO_DIR, project)
+            elif name == "music_level":   # how loud the boarding music is, as a percent of the announcements (50 = half as loud)
+                try:
+                    project["music_level"] = max(5, min(100, int(data.get("level"))))
+                except (TypeError, ValueError):
+                    return {"error": "The music volume must be a number from 5 to 100."}
+                count = papro_studio.reprocess_music(STUDIO_DIR, project, self.studio_target(cfg, project["icao"])[0])
+                return {"ok": True, "tracks": count}
             elif name == "secondary":   # the secondary language (second set of recordings); "" removes it
                 try:
                     papro_studio.set_secondary(STUDIO_DIR, project, str(data.get("language", "")))
