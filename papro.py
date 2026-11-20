@@ -3487,8 +3487,23 @@ class TrayApp(UIMixin):
         except (AppError, TypeError, ValueError):
             pass
 
+    def studio_seen(self) -> None:
+        """The page says Pack Studio is open (about once a second): PAPro plays nothing for the next few seconds, so it never talks
+        over someone who is recording. Whatever is playing right now is stopped."""
+        now = time.monotonic()
+        was_quiet = now < getattr(self, "studio_quiet_until", 0.0)
+        self.studio_quiet_until = now + 6.0
+        if not was_quiet and getattr(self, "player", None) is not None:
+            try:
+                self.player.clear()
+            except Exception:
+                log.exception("Could not stop the playing PA")
+
     def play_key(self, key: str) -> None:
         """An announcement is due: find it in the pack built for this flight and queue it."""
+        if time.monotonic() < getattr(self, "studio_quiet_until", 0.0):
+            log.info("PA due: %s - not played, Pack Studio is open", key)
+            return
         path = None
         try:
             from papro_play import resolve

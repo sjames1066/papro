@@ -205,6 +205,8 @@ class UIServer:
                         self._send(200, server.page().encode("utf-8"), "text/html; charset=utf-8")
                     elif path == "/api/state":
                         server.last_poll = time.monotonic()
+                        if self.headers.get("X-View") == "studio":   # Pack Studio is on screen: PAPro keeps quiet while someone records
+                            server.backend.studio_seen()
                         self._json(200, server.backend.ui_snapshot())
                     elif path.startswith("/logo/"):
                         data, mime = server.backend.ui_logo(path[6:].split(".")[0].upper())
@@ -1771,7 +1773,7 @@ function renderJob(){
 $("#up-cancel").onclick=()=>$("#m-up").classList.remove("show");
 async function tick(){
   try{
-    const r=await fetch("/api/state",{headers:{"X-Token":TOKEN}}); snap=await r.json();
+    const r=await fetch("/api/state",{headers:{"X-Token":TOKEN,"X-View":(view==="studio"&&!document.hidden)?"studio":""}}); snap=await r.json();
     $("#auto").classList.toggle("on",!!snap.auto); $("#ver").textContent="PAPro v"+(snap.version||"");
     renderHero(); renderKnob(); renderKeep(); renderUpd(); renderJob(); renderStudio(); renderPacks(); if($("#m-manage").classList.contains("show"))renderManage(); renderAliases(); renderWelcome(); renderPrompt();
     if(importWatch){const busy=(snap.packs||[]).some(p=>p.task&&p.task.kind==="install");
