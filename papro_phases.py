@@ -53,6 +53,7 @@ class PhaseEngine:
         self.prev_brake = None
         self.prev_seatbelt = None
         self.flight_clock = None
+        self.joined = False         # the first reading has not been looked at yet (see join())
 
     # -- helpers ---------------------------------------------------------------------------------------
     def _fire(self, key: str) -> None:
@@ -63,6 +64,33 @@ class PhaseEngine:
     @staticmethod
     def _truthy(value):
         return None if value is None else bool(value)
+
+    def join(self, r: dict, phase: str | None = None) -> None:
+        """Called once with the first reading, before feed(): PAPro was opened (or the sim connected) part way through a flight.
+        Everything that would already have been said is marked done without playing, so opening PAPro in the air does not
+        start a welcome / safety / after-takeoff announcement."""
+        self.joined = True
+        ground = bool(r.get("on_ground"))
+        gs = float(r.get("gs") or 0.0)
+        vs = r.get("vs")
+        alt = float(r.get("alt") or 0.0)
+        before = ("welcome", "boarding_complete", "arm_doors", "pre_safety", "safety")
+        takeoff = ("takeoff_seats", "takeoff_dim", "takeoff_secured", "after_takeoff")
+        if not ground:
+            self.done.update(before + takeoff)
+            self.flown = True
+            self.max_alt = alt
+            if alt >= SEATBELT_FALLBACK_ALT_FT or phase in ("Climb", "Cruise", "Descent", "Approach") \
+                    or (vs is not None and float(vs) < -300):
+                self.done.update(("seatbelt_off", "cabin_service"))
+            if vs is not None and float(vs) < -300:
+                self.done.add("descent")   # already on the way down: no "we have started our descent"
+        elif phase in ("Taxi in", "Deboarding"):
+            self.done.update(before + takeoff + ("seatbelt_off", "cabin_service", "descent", "landing_seats", "landing_dim",
+                                                 "landing_secured", "after_landing"))
+            self.flown = self.landed = True
+        elif gs >= SAFETY_SPEED_KT or phase in ("Pushback", "Taxi out"):
+            self.done.update(before)    # already moving: the boarding PAs are over
 
     # -- the sim says ----------------------------------------------------------------------------------
     def landed_event(self, t: float) -> None:

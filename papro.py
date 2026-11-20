@@ -3551,6 +3551,8 @@ class TrayApp(UIMixin):
             from papro_phases import PhaseEngine
 
             engine = self.phases = PhaseEngine(self.play_key)
+        if not engine.joined:   # PAPro opened part way through a flight: don't play what is already behind you
+            engine.join(reading, tracker.phase())
         engine.feed(reading)
         if "deboard_complete" in engine.done:   # flight over: a minute later get ready for the next one
             self._reset_at = getattr(self, "_reset_at", None) or reading["t"] + 60
