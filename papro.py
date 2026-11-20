@@ -1534,6 +1534,16 @@ _PLAYBACK = {"on": False}                      # set from the sim: the loaded ai
 KNOB = {"on": True, "volume": 70}              # the on-screen PA knob, mirrored here for the audio thread
 
 
+def clear_playback() -> None:
+    """Remove the PAs built for an earlier flight, so PAPro plays nothing when this flight has no pack."""
+    try:
+        for path in PLAYBACK_DIR.rglob("*"):
+            if path.is_file():
+                path.unlink(missing_ok=True)
+    except OSError:
+        log.warning("Could not clear the playback folder")
+
+
 def playback_target() -> Path | None:
     return PLAYBACK_DIR if _PLAYBACK["on"] else None
 
@@ -2055,6 +2065,7 @@ def update(cfg: dict, force: bool = False, airline: str | None = None, dest: str
         state["applied"] = False
         state.pop("last", None)
         save_state(state)
+        clear_playback()   # PAs left from an earlier flight (another airline's pack) must not play for this one
         return False, f"{code} to {flight['icao']}: no {code} airline pack installed"
     message = apply_destination(cfg, code, flight["icao"], variant=variant, arrival=flight.get("arrival"),
                                 target_dir=playback_target())
