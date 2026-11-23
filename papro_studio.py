@@ -713,11 +713,11 @@ def slot_list(project: dict) -> list[dict]:
             add("After Landing", "time", stem, label, script, required=True, part=L1)
     for i, word in enumerate(HOURS):
         n = i or 12
-        add("After Landing", "time", f"Hour_{n:02d}", f"Local time - hour {n}", word.capitalize(), required=True, part=L1)
+        add("Time and Numbers", "time", f"Hour_{n:02d}", f"Hour {n}", word.capitalize(), required=True)
     for minute, word in MINUTES.items():
-        add("After Landing", "time", f"Min_{minute:02d}", f"Local time - minutes :{minute:02d}", word.capitalize(), required=True, part=L1)
-    add("After Landing", "time", "AM", "Local time - AM (optional)", "A.M. - said after the minutes, e.g. 'four thirty-five A.M.'", part=L1)
-    add("After Landing", "time", "PM", "Local time - PM (optional)", "P.M. - said after the minutes, e.g. 'four thirty-five P.M.'", part=L1)
+        add("Time and Numbers", "time", f"Min_{minute:02d}", f"Minutes :{minute:02d}", word.capitalize(), required=True)
+    add("Time and Numbers", "time", "AM", "AM (optional)", "A.M. - said after the minutes, e.g. 'four thirty-five A.M.'")
+    add("Time and Numbers", "time", "PM", "PM (optional)", "P.M. - said after the minutes, e.g. 'four thirty-five P.M.'")
     add("After Landing", "main", "Modular_Landing", GENERAL[1][1], GENERAL[1][2], required=True, part=L2)
     add_variations("Modular_Landing", "After Landing", GENERAL[1][1], GENERAL[1][2], L2)
     if project.get("landing_base"):   # the landing PA's second part can say the crew base: recorded parts + the base, in the pack's order
@@ -803,9 +803,10 @@ PHASES = [
     ("Before takeoff", ("CrewTakeSeats[PreFlight]", "CabinDim[PreFlight]", "CabinSecured[PreFlight]")),
     ("Climb & cruise", ("AfterTakeoff", "SeatbeltSignOff", "CabinService", "SeatbeltSignOn")),
     ("Descent & approach", ("DescentStarted", "Modular_DescentStart", "Modular_DescentRest", "CrewTakeSeats[Descent]", "CabinDim[Descent]", "CabinSecured[Descent]")),
-    ("After Landing", ("WelcomeTo", "LocalTime", "Hour_", "Min_", "AM", "PM", "Modular_Landing", "AfterLanding")),
+    ("After Landing", ("WelcomeTo", "LocalTime", "Modular_Landing", "AfterLanding")),
     ("Deboarding", ("DisarmDoors", "DeboardingStarted", "DeboardingComplete")),
     ("Emergency", ("Decompression",)),
+    ("Time and Numbers", ()),   # the clock (hours, minutes, AM / PM); also the numbers said in the crew introduction
 ]
 PHASE_NAMES = [name for name, _ in PHASES]
 BOARDING_LOOP = "Generic Boarding [no destination file]"
