@@ -2882,6 +2882,22 @@ class UIMixin:
                                         for k, p in voices.items()]})
         return {"airlines": airlines, "all_types": papro_studio.AIRCRAFT_TYPES}
 
+    def test_flight(self) -> dict:
+        """The current SimBrief flight, as the Test tab fields: the pack and voice that would play, the destination, the aircraft
+        type, the local arrival time, and the flight number / origin / callsign."""
+        cfg = load_config()
+        try:
+            flight = fetch_flight(cfg)
+        except AppError as exc:
+            return {"error": str(exc)}
+        code = (cfg.get("airline_override") or flight.get("airline") or "").strip().upper()
+        source = load_aliases(cfg).get(code, code)
+        state = load_state()
+        voice = state.get("voice_used", {}).get(f"{code}_{flight['icao']}", "")
+        return {"ok": True, "airline": source, "plan_airline": code, "dest": flight["icao"], "origin": flight.get("origin", ""),
+                "aircraft": flight.get("aircraft", ""), "arrival": flight.get("arrival") or "", "number": flight.get("number", ""),
+                "callsign": flight.get("callsign", ""), "voice": voice}
+
     def test_build(self, data: dict) -> dict:
         """Build the whole set of PAs for one airline / voice / destination in a scratch folder, with the real pipeline."""
         try:
@@ -2905,7 +2921,8 @@ class UIMixin:
                 return {"error": f"'{aircraft}' is not an ICAO aircraft type (use codes like A320, B738 or B38M)."}
         except AppError as exc:
             return {"error": str(exc)}
-        key = hashlib.sha1(f"{icao}|{voice}|{dest}|{arrival}|{aircraft}|{boost_percent(cfg)}|{cfg.get('join_style')}".encode()).hexdigest()[:12]
+        flight_ctx = {k: str(data.get(k, "")).strip().upper() for k in ("origin", "number", "callsign")}   # "Test Current Flight": the rest of the SimBrief plan
+        key = hashlib.sha1(f"{icao}|{voice}|{dest}|{arrival}|{aircraft}|{flight_ctx}|{boost_percent(cfg)}|{cfg.get('join_style')}".encode()).hexdigest()[:12]
         sandbox = TEST_DIR / key
         pack = sandbox / "pack"
         message = ""
@@ -2913,6 +2930,10 @@ class UIMixin:
             shutil.rmtree(sandbox, ignore_errors=True)
             sandbox.mkdir(parents=True)
             _STATE_LOCAL.path = sandbox / "state.json"   # roll variations / bolt-ons here, not in the real state
+            if any(flight_ctx.values()):   # the plan's flight number / origin / callsign, as a real flight has them (crew base, per-flight picks)
+                scratch = load_state()
+                scratch["flight"] = {"airline": icao, "dest": dest, "aircraft": aircraft, **flight_ctx}
+                save_state(scratch)
             _AIRCRAFT_LOCAL.value = aircraft              # the aircraft type to build for ("" = no type: generic PAs)
             try:
                 message = apply_destination(cfg, icao, dest, variant=STANDARD, arrival=arrival, voice=voice, target_dir=pack)
@@ -3178,6 +3199,8 @@ class UIMixin:
             return r if r.get("error") else {"ok": True, **r}
         elif name == "test_build":
             return self.test_build(data)
+        elif name == "test_flight":
+            return self.test_flight()
         elif name == "check_update":   # re-read catalog.json now: the newest PAPro and the pack list
             try:
                 self.catalog = load_catalog(load_config())

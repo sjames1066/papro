@@ -766,6 +766,7 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
       <label class="tlab">Destination<select class="voice" id="t-dest"></select></label>
       <label class="tlab">Aircraft type<input type="text" id="t-ac" list="t-aclist" maxlength="4" placeholder="Any" autocomplete="off" style="width:130px;text-transform:uppercase" title="ICAO aircraft type to build for, e.g. A320. Empty = the normal PAs. Packs can have PAs that only play on some types."><datalist id="t-aclist"></datalist></label>
       <label class="tlab">Local arrival time<input type="text" id="t-time" value="14:35" style="width:90px"><span id="t-spoken"></span></label>
+      <button class="ghost" id="t-flight" title="Fill in everything from your current SimBrief flight (airline, destination, aircraft, arrival time, flight number, origin) and build it" style="padding:14px 18px">Test Current Flight</button>
       <button class="go" id="t-build" title="Build these announcements again, re-rolling the variations (Enter does the same)">Go</button>
     </div>
     <div style="display:flex;align-items:center;gap:16px;margin-top:16px">
@@ -1278,6 +1279,7 @@ async function testInit(){
   $("#t-time").onchange=()=>{const m=$("#t-time").value.trim().match(/^(\d{1,2})[:.]?(\d{2})$/); if(m&&+m[1]<24&&+m[2]<60)$("#t-time").value=m[1].padStart(2,"0")+":"+m[2]; tSpoken(); testStale()};
   $("#t-time").oninput=tSpoken;
   $("#t-build").onclick=()=>testBuild(true);
+  $("#t-flight").onclick=testFlight;
   $("#view-test").onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey&&!e.ctrlKey&&!e.altKey&&["INPUT","SELECT"].includes(e.target.tagName)&&e.target.id!=="t-seek"){e.preventDefault();$("#t-build").click()}};
   $("#t-all").onclick=()=>{ if(tPlaylist&&tAudio){ if(tPaused){tPaused=false;tAudio.play().catch(()=>{})}else{tPaused=true;tAudio.pause()} testMark(); return} testAll()};
   $("#t-skip").onclick=()=>{ if(tIdx<0||!tRows.length)return; tPlaylist=true; tPaused=false; testPlay(tIdx+1)};
@@ -1304,7 +1306,7 @@ function testFillDest(keep){const x=tOpts.find(a=>a.icao===$("#t-air").value),y=
   if(keep&&keep.dest&&[...d.options].some(o=>o.value===keep.dest))d.value=keep.dest;
   if(!y.airports.length){const o=el("option",null,"(no airports recorded)");o.value="";d.appendChild(o);tMsg("This voice has no airport recordings, so there is nothing to build yet.");return}
   testStale()}
-function testStale(){testStop();tKey="";tRows=[];$("#t-list").innerHTML="";tMsg("Choose your options, then press Go to build the announcements.")}
+function testStale(){tCtx={origin:"",number:"",callsign:""};testStop();tKey="";tRows=[];$("#t-list").innerHTML="";tMsg("Choose your options, then press Go to build the announcements.")}
 function testMark(){tBar();tRows.forEach((r,i)=>{r.row.classList.toggle("now",i===tIdx);r.btn.textContent=(i===tIdx&&tAudio)?"■":"▶"});
   $("#t-all").textContent=tPlaylist?(tPaused?"▶  Resume":"❚❚  Pause"):"▶  Test All";
   $("#t-all").classList.toggle("running",tPlaylist);
@@ -1331,9 +1333,20 @@ function testPlay(i){ // play one clip; in playlist mode move on to the next whe
     if(tAudio!==a)return; tUrl=URL.createObjectURL(blob); a.src=tUrl; return a.play()}).catch(()=>{ if(tAudio===a&&!a.src){toast("Could not play "+t.label);testStop()}});
 }
 async function testAll(){ if(tBusy)return; if(!tKey||!tRows.length){tMsg("Press Go first to build the announcements, then Test All.");return} tPlaylist=true; testPlay(0)}
+let tCtx={origin:"",number:"",callsign:""};
+async function testFlight(){
+  if(tBusy)return; tMsg("Reading your SimBrief flight...");
+  const f=await api("test_flight"); if(!f.ok){tMsg(f.error||"Could not read your SimBrief flight.");return}
+  const a=$("#t-air"); if(![...a.options].some(o=>o.value===f.airline)){tMsg("You have no voice with a recorded airport for "+f.airline+" ("+f.plan_airline+" on the plan), so there is nothing to test.");return}
+  a.value=f.airline; testFillVoices({voice:f.voice,dest:f.dest,ac:f.aircraft});
+  const dsel=$("#t-dest"); if(![...dsel.options].some(o=>o.value===f.dest)){const o=el("option",null,f.dest+" (not recorded)");o.value=f.dest;dsel.appendChild(o)} dsel.value=f.dest;
+  $("#t-ac").value=f.aircraft||""; if(f.arrival){const m=f.arrival.match(/^(\d{1,2}):(\d{2})/); $("#t-time").value=m?m[1].padStart(2,"0")+":"+m[2]:f.arrival; tSpoken()}
+  tCtx={origin:f.origin||"",number:f.number||"",callsign:f.callsign||""};
+  await testBuild(true);
+}
 async function testBuild(rebuild){
   if(tBusy||!testAcOk())return; tBusy=true; testStop(); tMsg("Building your announcements..."); $("#t-all").disabled=true;
-  const r=await api("test_build",{icao:$("#t-air").value,voice:$("#t-voice").value,dest:$("#t-dest").value,arrival:$("#t-time").value,aircraft:$("#t-ac").value.trim().toUpperCase(),rebuild:rebuild});
+  const r=await api("test_build",{icao:$("#t-air").value,voice:$("#t-voice").value,dest:$("#t-dest").value,arrival:$("#t-time").value,aircraft:$("#t-ac").value.trim().toUpperCase(),rebuild:rebuild,origin:tCtx.origin,number:tCtx.number,callsign:tCtx.callsign});
   tBusy=false; $("#t-all").disabled=false;
   if(!r.ok){tKey="";tRows=[];tMsg(r.error||"Could not build - PAPro did not answer.");return}
   tKey=r.key; tRows=[]; const L=$("#t-list"); L.innerHTML=""; const groups={};
