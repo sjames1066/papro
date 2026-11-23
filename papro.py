@@ -1628,6 +1628,15 @@ def clock_tag() -> str:
     return "night" if hour < 6 else "morning" if hour < 12 else "afternoon" if hour < 18 else "evening"
 
 
+def voice_setting(voice_dir: Path, key: str):
+    """A value from the voice's voice.json (None if there is none)."""
+    try:
+        data = json.loads((voice_dir / "voice.json").read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return None
+    return data.get(key) if isinstance(data, dict) else None
+
+
 def crew_settings(voice_dir: Path) -> dict | None:
     """The crew introduction a voice was made with (voice.json "crew": the order of the pieces and the flight attendants per
     aircraft type), or None when the voice has none."""
@@ -2025,6 +2034,21 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
         state = load_state()
         state.setdefault("variants", {})[f"{airline}_{dest_icao}"] = chosen
         save_state(state)
+
+    if not only and voice_setting(voice_dir, "descent_city"):   # "We've begun our initial descent into <airport>. Please ensure..."
+        part1 = _find_piece(voice_dir, ["Modular_DescentStart"], (MAIN_FOLDER,))
+        part2 = modular_piece(voice_dir, "DescentRest")
+        names_clips = all_clips.get(AIRPORTS_FOLDER) or {}
+        city = names_clips.get("") or names_clips.get(chosen) or next(iter(names_clips.values()), None)
+        if part1 and part2 and city and papro_audio is not None and papro_audio.have_backend():
+            with tempfile.TemporaryDirectory(dir=DATA_DIR) as descent_work:
+                descent_out = Path(descent_work) / "DescentStarted.ogg"
+                try:
+                    papro_audio.join([part1, city, part2], descent_out, 60, True)
+                    install_file(descent_out, fenix_dir / "DescentStarted.ogg", boost)
+                    log.info("Descent announcement built with %s", dest_icao)
+                except (papro_audio.AudioError, OSError) as exc:
+                    log.warning("Could not build the descent announcement: %s", exc)
 
     summary, custom, notes = [], 0, []
     pause = int(cfg.get("segment_pause_ms", 60))
@@ -3159,7 +3183,7 @@ class UIMixin:
             "also_icaos": ", ".join(project.get("also_icaos", [])), "local_time": project.get("local_time") is not False,
             "description": project.get("description", ""), "version": project.get("version", "1.0.0"),
             "effect": bool(project.get("effect", True)), "music_level": papro_studio.music_level(project), "airports": project["airports"], "aircraft": project.get("aircraft", []), "aircraft_on": bool(project.get("aircraft_on")),
-            "app_boost": boost_percent(cfg), "languages": self.language_snapshot(project), "language": project.get("language", ""), "aircraft_presets": papro_studio.AIRCRAFT_PRESETS, "typed_bases": papro_studio.TYPED_BASES, "aircraft_types": papro_studio.AIRCRAFT_TYPES, "extras": project["extras"], "music": project.get("music", []), "crew": papro_studio.crew_config(project), "service_types": project.get("service_types", []),
+            "app_boost": boost_percent(cfg), "languages": self.language_snapshot(project), "language": project.get("language", ""), "aircraft_presets": papro_studio.AIRCRAFT_PRESETS, "typed_bases": papro_studio.TYPED_BASES, "aircraft_types": papro_studio.AIRCRAFT_TYPES, "extras": project["extras"], "music": project.get("music", []), "crew": papro_studio.crew_config(project), "descent_city": bool(project.get("descent_city")), "service_types": project.get("service_types", []),
             "logo": papro_studio.logo_path(STUDIO_DIR, project).is_file(), "has_script": bool(project.get("scripts")), "origin": bool(project.get("origin")), "in_library": self.project_in_library(cfg, project["icao"], project["voice"]), "upgrades": papro_studio.upgrade_preview(STUDIO_DIR, project), "target_pending": False, "rows": rows, "missing": len(papro_studio.missing(STUDIO_DIR, project)),
             "target": target, "target_count": count, "target_source": label,
             "done": sum(1 for r in rows if r["done"] or r["skipped"]), "total": len(rows)}
@@ -3397,6 +3421,12 @@ class UIMixin:
                             except (TypeError, ValueError):
                                 return {"error": f"The number of flight attendants for {k} must be a number from 1 to {papro_studio.MAX_CREW}."}
                 papro_studio.set_crew(STUDIO_DIR, project, data.get("on"), data.get("order"), fa)
+                papro_studio.sync_secondary(STUDIO_DIR, project)
+            elif name == "descent_city":   # the descent announcement says the destination
+                project["descent_city"] = bool(data.get("on"))
+                if not project["descent_city"]:
+                    project.pop("descent_city")
+                papro_studio.save(STUDIO_DIR, project)
                 papro_studio.sync_secondary(STUDIO_DIR, project)
             elif name == "service":   # a named version of the cabin service (Domestic, International...)
                 if data.get("remove"):

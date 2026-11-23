@@ -492,7 +492,7 @@ def create(root: Path, icao: str, airline: str, voice: str) -> dict:
 
 
 # --------------------------------------------------------------------------- primary / secondary language
-SHARED_FIELDS = ("artist", "accent", "description", "credit_url", "donate_url", "version", "local_time", "also_icaos", "crew", "service_types")
+SHARED_FIELDS = ("artist", "accent", "description", "credit_url", "donate_url", "version", "local_time", "also_icaos", "crew", "service_types", "descent_city")
 
 
 def secondary_of(root: Path, project: dict) -> dict | None:
@@ -617,6 +617,11 @@ def slot_list(project: dict) -> list[dict]:
             for version in project.get("service_types", []):
                 add("Other announcements", "main", f"CabinService~{version}", f"{label} - {version}", script)
                 out[-1]["service"] = version
+    if project.get("descent_city"):   # the descent announcement names the destination: part 1 + the airport's name + part 2
+        add("Descent & approach", "main", "Modular_DescentStart", "Descent started - part 1: before the destination",
+            "We've begun our initial descent into... (the airport name is added next)")
+        add("Descent & approach", "main", "Modular_DescentRest", "Descent started - part 2: after the destination",
+            "...Please ensure all of your carry-on items are properly stowed and fasten your seat belt.")
     for code in project.get("airports", []):
         name = airport_name(code)
         add("Airports", "airports", f"{icao}_{code}", f"{code}: {name}" if name else f"Airport name - {code}",
@@ -668,7 +673,7 @@ PHASES = [
     ("Safety briefing", ("PreSafetyBriefing", "SafetyBriefing")),
     ("Before takeoff", ("CrewTakeSeats[PreFlight]", "CabinDim[PreFlight]", "CabinSecured[PreFlight]")),
     ("Climb & cruise", ("AfterTakeoff", "SeatbeltSignOff", "CabinService", "SeatbeltSignOn")),
-    ("Descent & approach", ("DescentStarted", "CrewTakeSeats[Descent]", "CabinDim[Descent]", "CabinSecured[Descent]")),
+    ("Descent & approach", ("Modular_DescentStart", "Modular_DescentRest", "DescentStarted", "CrewTakeSeats[Descent]", "CabinDim[Descent]", "CabinSecured[Descent]")),
     ("After Landing", ("WelcomeTo", "LocalTime", "Hour_", "Min_", "AM", "PM", "Modular_Landing", "AfterLanding")),
     ("Deboarding", ("DisarmDoors", "DeboardingStarted", "DeboardingComplete")),
     ("Emergency", ("Decompression",)),
@@ -1235,6 +1240,8 @@ def voice_json(project: dict) -> dict:
     if project.get("also_icaos"):
         data["also_icaos"] = list(project["also_icaos"])
     out = {k: v for k, v in data.items() if v}
+    if project.get("descent_city"):
+        out["descent_city"] = True
     crew = crew_config(project)
     if crew["on"]:   # how to build the crew introduction travels with the pack
         out["crew"] = {"order": crew["order"], "fa": crew["fa"]}
@@ -1511,6 +1518,8 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
         m = NAMED_FILE.match(path.name)
         if m and m["name"] not in project.setdefault("service_types", []):
             project["service_types"].append(m["name"])
+    if info.get("descent_city") or (pack / "main" / "Modular_DescentStart.ogg").is_file():
+        project["descent_city"] = True
     crew_raw = dict(info.get("crew") or {}) if isinstance(info.get("crew"), dict) else {}
     try:
         saved_crew = json.loads((src / "studio.json").read_text(encoding="utf-8-sig")).get("crew")

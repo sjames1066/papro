@@ -1638,6 +1638,13 @@ function buildChecklist(c,host){
       sb.onclick=async()=>{if(!si.value.trim())return;const r=await studio("service",{...pid(c),name:si.value});if(r.error)toast(r.error,5000);else openGroups.add("Climb & cruise")};
       si.addEventListener("keydown",e=>{if(e.key==="Enter")sb.click()});sl.append(si,sb);d.append(sl);
     }
+    if(gr.name==="Descent & approach"){
+      const dl=el("label","check");dl.style.cssText="display:flex;align-items:center;gap:8px;margin:4px 0 10px";const dc=el("input");dc.type="checkbox";dc.checked=!!c.descent_city;
+      dl.append(dc,document.createTextNode(" The descent announcement says the destination, e.g. “We've begun our initial descent into Atlanta. Please ensure all of your carry-on items are properly stowed...”"));
+      dc.onchange=async()=>{openGroups.add("Descent & approach");const r=await studio("descent_city",{...pid(c),on:dc.checked});if(r.ok)toast(dc.checked?"Record the two descent parts below (the airport name clip is the one used in the other announcements)":"Descent announcement back to the single clip")};
+      d.append(dl);
+      if(c.descent_city)d.append(el("div","small","Record part 1 and part 2 below. PAPro joins them with the destination's airport name for each flight. Until both parts are recorded, the normal “Descent Started” clip is used."));
+    }
     if(gr.name==="After Landing"){d.append(el("div","small","The hour clips (1-12) are also used to say the number of flight attendants in the crew introduction."))}
     if(gr.name==="Airports"){
       d.append(el("div","small","Add your airports (paste a whole list if you like) and record just each name (for example “London Heathrow”). PAPro mixes that one clip into both the BoardingWelcome and the landing PA. Add a terminal variant like EGLL_T5 if you record one."));
