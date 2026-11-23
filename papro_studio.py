@@ -216,6 +216,32 @@ def remove_crew_name(root: Path, project: dict, name: str) -> None:
     save(root, project)
 
 
+# Named versions of a PA ("Cabin service - Domestic", "Cabin service - International"): the pack creator names them and PAPro asks
+# which one to use when a flight is loaded. They are files called CabinService~Domestic.ogg, so they travel with the pack.
+NAMED_BASES = {"CabinService": "Cabin service"}
+SERVICE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 &'()-]{0,29}$")
+NAMED_FILE = re.compile(r"^(?P<base>CabinService)~(?P<name>(?!v\d+\.)[A-Za-z0-9][A-Za-z0-9 &'()-]{0,29})\.ogg$", re.IGNORECASE)
+
+
+def add_service(root: Path, project: dict, name: str) -> None:
+    name = " ".join(name.split())
+    if not SERVICE_NAME.match(name) or re.fullmatch(r"v\d+", name, re.IGNORECASE) or name.lower() == "standard":
+        raise StudioError("Name the version with letters, digits or spaces, for example Domestic or International.")
+    have = project.setdefault("service_types", [])
+    if name.lower() not in [n.lower() for n in have]:
+        have.append(name)
+    save(root, project)
+
+
+def remove_service(root: Path, project: dict, name: str) -> None:
+    try:
+        delete_slot(root, project, f"main/CabinService~{name}")
+    except StudioError:
+        pass
+    project["service_types"] = [n for n in project.get("service_types", []) if n != name]
+    save(root, project)
+
+
 def typed_stem(base: str, types: list[str], n: int = 1) -> str:
     return f"{base}@{'+'.join(types)}" + (f"~v{n}" if n > 1 else "")
 
@@ -466,7 +492,7 @@ def create(root: Path, icao: str, airline: str, voice: str) -> dict:
 
 
 # --------------------------------------------------------------------------- primary / secondary language
-SHARED_FIELDS = ("artist", "accent", "description", "credit_url", "donate_url", "version", "local_time", "also_icaos", "crew")
+SHARED_FIELDS = ("artist", "accent", "description", "credit_url", "donate_url", "version", "local_time", "also_icaos", "crew", "service_types")
 
 
 def secondary_of(root: Path, project: dict) -> dict | None:
@@ -587,6 +613,10 @@ def slot_list(project: dict) -> list[dict]:
         add("Other announcements", "main", stem, label, script)
         if stem in VARIANT_BASES:
             add_variations(stem, "Other announcements", label, script)
+        if stem == "CabinService":
+            for version in project.get("service_types", []):
+                add("Other announcements", "main", f"CabinService~{version}", f"{label} - {version}", script)
+                out[-1]["service"] = version
     for code in project.get("airports", []):
         name = airport_name(code)
         add("Airports", "airports", f"{icao}_{code}", f"{code}: {name}" if name else f"Airport name - {code}",
@@ -661,6 +691,8 @@ def phase_of(slot: dict) -> tuple[str, int]:
     if slot["group"] in PHASE_NAMES and slot["group"] not in ("BoardingWelcome", "After Landing", "Other announcements"):
         return slot["group"], 0
     stem = slot["stem"]
+    if slot.get("service"):   # a named version of the cabin service sits right under it
+        return "Climb & cruise", 2.5
     base = re.sub(r"~v\d+$", "", stem)
     if slot.get("typed"):   # an aircraft version sits right under the PA it replaces
         base = slot["base"]
@@ -755,7 +787,7 @@ def variants_of(pack: Path, slot: dict, known: set[str] = frozenset()) -> list[s
         return []
     return [p.name for p in sorted(folder.iterdir())
             if p.is_file() and p.suffix.lower() == ".ogg" and p.name != slot["file"] and p.name not in known
-            and base_of(p.stem) == base_of(slot["stem"])
+            and base_of(p.stem) == base_of(slot["stem"]) and not NAMED_FILE.match(p.name)
             and {t.lower() for t in re.findall(r"\[(.*?)\]", slot["stem"])} <= {t.lower() for t in re.findall(r"\[(.*?)\]", p.stem)}
             and not slot["stem"].startswith("BoardingWelcome")]
 
@@ -1462,6 +1494,9 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
                         if isinstance(n, int) and 2 <= n <= 99 and n not in have:
                             have.append(n)
                     have.sort()
+            for name in saved.get("service_types", []):
+                if isinstance(name, str) and SERVICE_NAME.match(name) and name not in project.setdefault("service_types", []):
+                    project["service_types"].append(name)
             project["_silent_saved"] = [i for i in saved.get("silent", []) if isinstance(i, str)]
             for entry in saved.get("typed", []):
                 try:
@@ -1472,6 +1507,10 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
                     project["typed"].append(clean)
     except (OSError, ValueError, AttributeError):
         pass
+    for path in sorted((pack / "main").glob("CabinService~*.ogg")) if (pack / "main").is_dir() else []:   # the clips say which versions exist
+        m = NAMED_FILE.match(path.name)
+        if m and m["name"] not in project.setdefault("service_types", []):
+            project["service_types"].append(m["name"])
     crew_raw = dict(info.get("crew") or {}) if isinstance(info.get("crew"), dict) else {}
     try:
         saved_crew = json.loads((src / "studio.json").read_text(encoding="utf-8-sig")).get("crew")
@@ -1586,7 +1625,7 @@ def install_to_library(root: Path, project: dict, airline_dir: Path) -> Path:
         pass
     if project.get("scripts"):
         (dest / "scripts.json").write_text(json.dumps(project["scripts"], indent=2, ensure_ascii=False), encoding="utf-8")
-    structure = {k: project[k] for k in ("airports", "extras", "variants", "typed", "silent") if project.get(k)}
+    structure = {k: project[k] for k in ("airports", "extras", "variants", "typed", "silent", "service_types") if project.get(k)}
     if crew_config(project)["on"]:
         structure["crew"] = crew_config(project)
     structure_file = dest / "studio.json"   # the parts of the checklist that are not backed by a clip yet (an airport you have not recorded, a skipped "+")

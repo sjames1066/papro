@@ -1372,6 +1372,27 @@ def choose_default(title: str, prompt: str, options: list[str]) -> tuple[str, bo
     return options[0], False
 
 
+def pick_named(airline: str, base_name: str, options: list[str], choose) -> str:
+    """Which named version of a PA (Cabin service: Domestic / International...) to use. The user is asked once for each flight; a
+    second language of the same pack reuses the answer."""
+    flight = load_state().get("flight") or {}
+    key = f"{airline}/{base_name}/{flight.get('number', '')}/{flight.get('origin', '')}/{flight.get('dest', '')}"
+    state = load_state()
+    picks = state.setdefault("named_pick", {})
+    if picks.get(key) in options:
+        return picks[key]
+    label = papro_studio.NAMED_BASES.get(base_name[:-4], base_name[:-4])
+    answer, _ = choose(f"{airline} - {label}", f"This pack has more than one {label.lower()} announcement. Which one would you like for this flight?", options)
+    picked = answer if answer in options else options[0]
+    state = load_state()
+    picks = state.setdefault("named_pick", {})
+    if len(picks) > 20:
+        picks.clear()
+    picks[key] = picked
+    save_state(state)
+    return picked
+
+
 _DIVERSION = threading.local()   # .on while building the landing PA for an airport that is not the planned destination
 
 
@@ -1909,6 +1930,7 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
     if not only and (pristine == lib_dir / MAIN_FOLDER or own_main):
         managed = {name for m in cfg["mappings"] for name in target_names(pristine, m, own_main)}
         sources: dict[str, Path] = {}
+        named: dict[str, dict[str, Path]] = {}   # installed name -> {version name: path}
         typed_files: dict[str, dict[str, Path]] = {}   # installed name -> {file name: path}, for takes made for some aircraft only
         for folder in (lib_dir / MAIN_FOLDER if pristine == lib_dir / MAIN_FOLDER else None, own_main):   # the voice's files win
             if folder is None:
@@ -1916,6 +1938,9 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
             for path in sorted(folder.iterdir()):
                 if path.is_file() and path.suffix.lower() == ".ogg" and typed_info(path.name) and not is_modular(path.name):
                     typed_files.setdefault(typed_info(path.name)[0], {})[path.name] = path   # aircraft-specific takes
+                elif path.is_file() and path.suffix.lower() == ".ogg" and papro_studio.NAMED_FILE.match(path.name):
+                    m = papro_studio.NAMED_FILE.match(path.name)   # CabinService~Domestic.ogg: one of the named versions of a PA
+                    named.setdefault(f"{m['base']}.ogg", {})[m["name"]] = path
                 elif path.is_file() and path.suffix.lower() == ".ogg" and path.name not in managed and not is_modular(path.name) \
                         and not is_variant(path.name):
                     sources[path.name] = path
@@ -1954,6 +1979,15 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
                 stale.unlink()   # older versions of PAPro installed each track separately
             except OSError:
                 pass
+        for base_name, versions in named.items():   # e.g. Domestic / International cabin service: the user picks one for this flight
+            options = dict(versions)
+            if base_name in sources and "Standard" not in options:
+                options = {"Standard": sources[base_name], **options}
+            if len(options) > 1:
+                picked = pick_named(airline, base_name, list(options), choose or CHOOSER or choose_default)
+                sources[base_name] = options[picked]
+            elif options:
+                sources[base_name] = next(iter(options.values()))
         for name, path in sources.items():
             dst = fenix_dir / name
             if sync_needed(path, dst, boost):
@@ -3125,7 +3159,7 @@ class UIMixin:
             "also_icaos": ", ".join(project.get("also_icaos", [])), "local_time": project.get("local_time") is not False,
             "description": project.get("description", ""), "version": project.get("version", "1.0.0"),
             "effect": bool(project.get("effect", True)), "music_level": papro_studio.music_level(project), "airports": project["airports"], "aircraft": project.get("aircraft", []), "aircraft_on": bool(project.get("aircraft_on")),
-            "app_boost": boost_percent(cfg), "languages": self.language_snapshot(project), "language": project.get("language", ""), "aircraft_presets": papro_studio.AIRCRAFT_PRESETS, "typed_bases": papro_studio.TYPED_BASES, "aircraft_types": papro_studio.AIRCRAFT_TYPES, "extras": project["extras"], "music": project.get("music", []), "crew": papro_studio.crew_config(project),
+            "app_boost": boost_percent(cfg), "languages": self.language_snapshot(project), "language": project.get("language", ""), "aircraft_presets": papro_studio.AIRCRAFT_PRESETS, "typed_bases": papro_studio.TYPED_BASES, "aircraft_types": papro_studio.AIRCRAFT_TYPES, "extras": project["extras"], "music": project.get("music", []), "crew": papro_studio.crew_config(project), "service_types": project.get("service_types", []),
             "logo": papro_studio.logo_path(STUDIO_DIR, project).is_file(), "has_script": bool(project.get("scripts")), "origin": bool(project.get("origin")), "in_library": self.project_in_library(cfg, project["icao"], project["voice"]), "upgrades": papro_studio.upgrade_preview(STUDIO_DIR, project), "target_pending": False, "rows": rows, "missing": len(papro_studio.missing(STUDIO_DIR, project)),
             "target": target, "target_count": count, "target_source": label,
             "done": sum(1 for r in rows if r["done"] or r["skipped"]), "total": len(rows)}
@@ -3363,6 +3397,12 @@ class UIMixin:
                             except (TypeError, ValueError):
                                 return {"error": f"The number of flight attendants for {k} must be a number from 1 to {papro_studio.MAX_CREW}."}
                 papro_studio.set_crew(STUDIO_DIR, project, data.get("on"), data.get("order"), fa)
+                papro_studio.sync_secondary(STUDIO_DIR, project)
+            elif name == "service":   # a named version of the cabin service (Domestic, International...)
+                if data.get("remove"):
+                    papro_studio.remove_service(STUDIO_DIR, project, str(data.get("name", "")))
+                else:
+                    papro_studio.add_service(STUDIO_DIR, project, str(data.get("name", "")))
                 papro_studio.sync_secondary(STUDIO_DIR, project)
             elif name == "crew_section":   # add / delete a piece of the introduction (intro part, number, base, names)
                 if data.get("remove"):
