@@ -312,7 +312,7 @@ support links, then work down the checklist: **Record** with your microphone or 
 PAPro gives every clip the cabin-PA sound (optional) and sets it to the loudness of the original Fenix announcements, so
 all packs sound consistent. Your untouched recordings are kept, so you can switch the effect on or off at any time.
 
-- **Use in PAPro now** copies the pack into your library as a voice for that airline so you can try it in the sim.
+- **Save** copies the pack into your library as a voice for that airline so you can try it in the sim.
 - **Export pack zip** writes `<ICAO>_<Voice>.zip` and a `.catalog.json` entry (open the folder that appears) ready to share.
 - Add a **Support link** (Ko-fi, Patreon...) and it is shown beside your voice name in the window.
 
@@ -332,7 +332,7 @@ Optional `time\AM.ogg` and `time\PM.ogg` are said after the minutes in the landi
 
 In the Studio, **SafetyBriefing**, **AfterTakeoff** and **CabinService** have a *Prerecorded / Manual* drop-down. Prerecorded (Fenix's default for these) keeps the plain file name; Manual saves the clip as `SafetyBriefing[Manual].ogg` so the purser announces it instead. Changing it renames an already-recorded clip.
 
-**Pack logo:** the Voice details card has an optional logo upload (png, jpg or webp). It is stored as `logo.png`, included in the exported zip, and when you press *Use in PAPro now* it is copied to `Airlines\<ICAO>\logo.png`, which PAPro shows in the pack list and the window header. `make_pack.py` also adds a `logo.png` found in `--airline-dir`.
+**Pack logo:** the Voice details card has an optional logo upload (png, jpg or webp). It is stored as `logo.png`, included in the exported zip, and when you press *Save* it is copied to `Airlines\<ICAO>\logo.png`, which PAPro shows in the pack list and the window header. `make_pack.py` also adds a `logo.png` found in `--airline-dir`.
 
 **Fenix's old file names:** `CrewSeatsTakeoff/Landing`, `CallCabinSecureTakeoff/Landing`, `CabinDimTakeoff`, `FastenSeatbelt`, `DescentSeatbelts` and `DisembarkStarted` still work in Fenix but predate the new announcement types. Opening a pack that has them shows an *Upgrade to the new Fenix names* banner in the Studio, with a list of every rename before anything changes: CrewTakeSeats, CabinSecured, CabinDim, SeatbeltSignOn, DescentStarted, DeboardingStarted. The takeoff and landing versions of CrewTakeSeats and CabinSecured keep their meaning through flight-phase tags (`[PreFlight]` before takeoff, `[Descent][Approach]` before landing). Tagged copies show on their announcement's row as "Also has: ...".
 

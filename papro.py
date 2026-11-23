@@ -1731,7 +1731,7 @@ def build_crew_intro(voice_dir: Path, airline: str, origin: str, aircraft: str, 
         elif item == "names":
             most = max([int(v) for v in (crew.get("fa") or {}).values() if str(v).isdigit()] or [1])
             if len(names) < most:   # enough names for the biggest crew in the pack, so every aircraft type is covered
-                return _crew_fail(f"{len(names)} crew names are in the installed voice, {most} are needed - if you have recorded more in Pack Studio, press \"Use in PAPro now\" there")
+                return _crew_fail(f"{len(names)} crew names are in the installed voice, {most} are needed - if you have recorded more in Pack Studio, press \"Save\" there")
             files = [names[n] for n in pick.get("names", []) if n in names]
             if not files:
                 return _crew_fail("no crew names")

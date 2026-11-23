@@ -553,6 +553,10 @@ button:disabled{opacity:.45;cursor:default}
 button.primary{background:var(--grad);border-color:transparent;color:#fff;box-shadow:0 6px 18px rgba(206,58,128,.3)}
 button.primary:hover{filter:brightness(1.1)}
 button.ghost{background:transparent}
+button.save{background:transparent;border-color:var(--ok);color:var(--ok)}
+button.save:hover{background:rgba(61,220,151,.14);border-color:var(--ok)}
+button.save.done{background:var(--ok);border-color:var(--ok);color:#06231a}
+button.save.done:hover{filter:brightness(1.08)}
 button.danger:hover{border-color:var(--err);color:var(--err)}
 input[type=text]{font:500 14px 'Inter',sans-serif;color:var(--text);background:var(--bg);border:1px solid var(--line2);
        border-radius:11px;padding:10px 13px;width:100%;outline:none}
@@ -1274,7 +1278,7 @@ async function testInit(){
   const sig=JSON.stringify(list); if(sig===tSig&&tOpts)return; tSig=sig; tOpts=list; tAllTypes=r.all_types||[];
   const keep={air:$("#t-air").value,voice:$("#t-voice").value,dest:$("#t-dest").value,ac:$("#t-ac").value};
   const a=$("#t-air"); a.innerHTML=""; for(const x of tOpts){const o=el("option",null,x.icao+" - "+x.name);o.value=x.icao;a.appendChild(o)}
-  if(!tOpts.length){$("#t-voice").innerHTML="";$("#t-dest").innerHTML="";tMsg("No pack in your library has a recorded airport yet. Import a pack (Download Packs tab) or record one in Pack Studio and use \"Use in PAPro now\".");return}
+  if(!tOpts.length){$("#t-voice").innerHTML="";$("#t-dest").innerHTML="";tMsg("No pack in your library has a recorded airport yet. Import a pack (Download Packs tab) or record one in Pack Studio and press Save.");return}
   a.onchange=()=>testFillVoices(); $("#t-voice").onchange=()=>testFillDest(); $("#t-ac").oninput=()=>$("#t-ac").classList.remove("bad");$("#t-ac").onchange=()=>{$("#t-ac").value=$("#t-ac").value.trim().toUpperCase();if(testAcOk())testStale()}; $("#t-dest").onchange=testStale;
   $("#t-time").onchange=()=>{const m=$("#t-time").value.trim().match(/^(\d{1,2})[:.]?(\d{2})$/); if(m&&+m[1]<24&&+m[2]<60)$("#t-time").value=m[1].padStart(2,"0")+":"+m[2]; tSpoken(); testStale()};
   $("#t-time").oninput=tSpoken;
@@ -1657,6 +1661,7 @@ function crewControls(c,d){
 
 }
 function openDescent(){openGroups.add("Descent & approach");openGroups.add("Descent & approach/Descent Started City-based PA")}
+let savedSig="";
 const LANDING_SUB="After Landing PA",BOARDING_SUB="Boarding Welcome PA";
 function openBoarding(){openGroups.add("Boarding");openGroups.add("Boarding/Boarding Welcome PA")}
 function openLanding(){openGroups.add("After Landing");openGroups.add("After Landing/After Landing PA")}
@@ -1856,7 +1861,7 @@ function renderStudio(){
     const hd=el("h2",null,"Languages");lc.append(hd);
     lc.append(el("div","small","Every announcement is built in the primary language, then (after a short pause) in the secondary language, and the two are joined into one PA. Once both languages are saved to your library you can also say a particular announcement in the other order here."));
     const names=Object.fromEntries(L.available.map(a=>[a.code,a.name]));
-    if(L.available.length<2){const t=el("div","small",c.language?"Save the pack to your library (Use in PAPro now) to set a different order for particular announcements.":"No language is set for this voice yet. Choose one in Voice details below.");t.style.marginTop="10px";lc.append(t)}
+    if(L.available.length<2){const t=el("div","small",c.language?"Save the pack to your library (Save) to set a different order for particular announcements.":"No language is set for this voice yet. Choose one in Voice details below.");t.style.marginTop="10px";lc.append(t)}
     else{
       const en=el("label","check");en.style.margin="12px 0 8px";const cb=el("input");cb.type="checkbox";cb.checked=!!L.enabled;en.append(cb,document.createTextNode(" Announce in several languages"));lc.append(en);
       let order=[...L.order],per={...L.per_pa};
@@ -1961,7 +1966,9 @@ function renderStudio(){
   const dis=el("button","ghost danger",c.in_library?"Remove from packs in progress":"Abandon this pack");dis.title=c.in_library?"Removes this working copy only. The pack in your Airlines library stays.":"Deletes this project's recordings and details. Your Airlines library is not touched.";
   dis.onclick=()=>confirmDiscard(c);
   const fol=el("button","ghost","Open project folder");fol.onclick=()=>api("studio_folder",pid(c));
-  const use=el("button",null,c.origin?"Save changes to my library":"Use in PAPro now");use.onclick=async()=>{const r=await studio("install",pid(c));if(r.ok)toast(r.finished?"Saved to your library":"Added to your library as a voice for "+c.icao)};
+  const saveSig=JSON.stringify([c.icao,c.voice,c.rows.map(r=>r.id+(r.done?1:0)+(r.skipped?"s":"")+(r.seconds||"")),c.crew,c.landing_order,c.landing_off,c.boarding_order,c.boarding_off,c.descent_order,c.descent_city,c.time_period,c.airports,c.extras,c.service_types]);
+  const use=el("button","save"+(savedSig===saveSig?" done":""),"Save");use.title=c.origin?"Save your changes to your library so PAPro and the Test tab use them":"Add this pack to your library as a voice for "+c.icao+" so PAPro and the Test tab use it";
+  use.onclick=async()=>{const r=await studio("install",pid(c));if(r.ok){savedSig=saveSig;use.classList.add("done");toast(r.finished?"Saved to your library":"Added to your library as a voice for "+c.icao)}};
   const ex=el("button","primary","Export pack zip");ex.onclick=async()=>{const r=await studio("export",pid(c));if(r.ok)toast("Exported - release tag: "+(r.tag||"")+" (the folder is open)",9000)};
   bar2.append(dis,fol,use,ex);root.append(bar2);syncPlayer();
 }
