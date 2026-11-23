@@ -1816,7 +1816,7 @@ def landing_pieces(lib_dir: Path, clip: Path, arrival: str | None, want_time: bo
             hour, minute = arrival.split(":")
             twelve = int(hour) % 12 or 12  # PAs use the 12-hour clock: 14:35 -> "two thirty-five"
             needed = [part_file(lib_dir, f"Hour_{twelve:02d}") or part_file(lib_dir, f"Hour_{hour}")]
-            if minute != "00" or part_file(lib_dir, "Min_00"):
+            if minute != "00":   # on the hour: just the hour, then AM / PM ("two P.M.")
                 needed.append(part_file(lib_dir, f"Min_{minute}"))
             if all(needed):
                 meridiem = part_file(lib_dir, "PM" if int(hour) >= 12 else "AM")  # optional "AM" / "PM" clip after the minutes

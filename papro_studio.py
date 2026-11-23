@@ -782,9 +782,11 @@ def slot_list(project: dict) -> list[dict]:
         n = i or 12
         add("Time and Numbers", "time", f"Hour_{n:02d}", f"Hour {n}", word.capitalize(), required=True)
     for minute, word in MINUTES.items():
+        if minute == 0:
+            continue   # on the hour PAPro says just the hour, then AM / PM
         add("Time and Numbers", "time", f"Min_{minute:02d}", f"Minutes :{minute:02d}", word.capitalize(), required=True)
-    add("Time and Numbers", "time", "AM", "AM (optional)", "A.M. - said after the minutes, e.g. 'four thirty-five A.M.'")
-    add("Time and Numbers", "time", "PM", "PM (optional)", "P.M. - said after the minutes, e.g. 'four thirty-five P.M.'")
+    add("Time and Numbers", "time", "AM", "AM (optional)", "A.M. - said after the minutes, e.g. 'four thirty-five A.M.' (on the hour: 'two P.M.')")
+    add("Time and Numbers", "time", "PM", "PM (optional)", "P.M. - said after the minutes, e.g. 'four thirty-five P.M.' (on the hour: 'two P.M.')")
     greet = {stem: (label, script) for stem, label, script in GREETINGS}
     for item in landing_order(project):   # the After Landing PA: its recorded pieces, in the pack's order
         first = len(out)

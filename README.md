@@ -90,7 +90,7 @@ one random file from `extra` added to the end of the welcome PA. It is chosen on
 |-------------------|---------|
 | `LocalTime.ogg` | "where the local time is" |
 | `Hour_01.ogg` ... `Hour_12.ogg` | "four" (12-hour clock: 16:35 is "four thirty-five"; 00:xx and 12:xx both use `Hour_12`) |
-| `Min_00.ogg`, `Min_05.ogg` ... `Min_55.ogg` | "thirty-five" (`Min_00`, e.g. "o'clock", is optional) |
+| `Min_05.ogg` ... `Min_55.ogg` | "thirty-five" (on the hour PAPro says just the hour then AM or PM, e.g. "two P.M."; `Min_00` is no longer used) |
 
 The time is rounded to the nearest 5 minutes. If a time piece is missing, the time is left out and the rest still plays.
 Older packs with `dep` (airport name) and `dest` ("welcome to <airport>") folders still work: `dep` is used when there is no `airports` clip, and `dest` when `WelcomeTo.ogg` is missing. Without `Modular_Welcome` / `Modular_Landing`, the `dep` and `dest` recordings are used whole, exactly as before. (The
