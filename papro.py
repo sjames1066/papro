@@ -2080,6 +2080,8 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
             try:
                 if build_crew_intro(voice_dir, airline, str(flight_now.get("origin", "")), crew_aircraft, crew_out,
                                     crew_state_key(airline, voice_dir, flight_now)):
+                    if target_dir and (fenix_dir / "PreSafetyBriefing.ogg").is_file():   # Test tab: keep the generic one to play beside it
+                        shutil.copyfile(fenix_dir / "PreSafetyBriefing.ogg", fenix_dir / "PreSafetyBriefing_Generic.ogg")
                     install_file(crew_out, fenix_dir / "PreSafetyBriefing.ogg", boost)
                 elif target_dir and _CREW_WHY:
                     crew_note = "generic Pre-safety briefing used: " + _CREW_WHY[0]
@@ -2942,7 +2944,12 @@ class UIMixin:
                 label = self.TEST_LABELS[base + "[PreFlight]"]   # an untagged CabinDim / CabinSecured / CrewTakeSeats is the takeoff one
             elif stem not in self.TEST_LABELS and tags:
                 label += " (" + ", ".join(tags) + ")"
-            group, pos = papro_studio.phase_of({"group": "", "stem": stem, "folder": "main"})   # flight order, like Pack Studio
+            is_generic_copy = stem == "PreSafetyBriefing_Generic"
+            if is_generic_copy:
+                label = "Safety briefing - introduction (generic)"
+            elif stem == "PreSafetyBriefing" and (pack / "PreSafetyBriefing_Generic.ogg").is_file():
+                label = "Safety briefing - introduction (crew introduction)"
+            group, pos = papro_studio.phase_of({"group": "", "stem": "PreSafetyBriefing" if is_generic_copy else stem, "folder": "main"})   # flight order, like Pack Studio
             if group == "":
                 group = "Other"
             if base == "BoardingWelcome" and tags:
