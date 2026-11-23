@@ -1819,7 +1819,11 @@ def landing_pieces(lib_dir: Path, clip: Path, arrival: str | None, want_time: bo
             if minute != "00":   # on the hour: just the hour, then AM / PM ("two P.M.")
                 needed.append(part_file(lib_dir, f"Min_{minute}"))
             if all(needed):
-                meridiem = part_file(lib_dir, "PM" if int(hour) >= 12 else "AM")  # optional "AM" / "PM" clip after the minutes
+                if voice_setting(lib_dir, "time_period"):   # "...in the morning / afternoon / evening" instead of AM / PM
+                    h = int(hour)
+                    meridiem = part_file(lib_dir, "Period_Morning" if h < 12 else "Period_Afternoon" if h < 18 else "Period_Evening")
+                else:
+                    meridiem = part_file(lib_dir, "PM" if int(hour) >= 12 else "AM")  # optional "AM" / "PM" clip after the minutes
                 pieces += [x for x in ((part_file(lib_dir, "LocalTime") if order is None else None), *needed, meridiem) if x]   # "where the local time is" is a recorded part now; only packs without a landing_order keep their old clip
             else:
                 note = f"local time {arrival} skipped (a Hour_{twelve:02d} / Min_{minute} piece is missing)"
@@ -3287,7 +3291,7 @@ class UIMixin:
             "also_icaos": ", ".join(project.get("also_icaos", [])), "local_time": project.get("local_time") is not False,
             "description": project.get("description", ""), "version": project.get("version", "1.0.0"),
             "effect": bool(project.get("effect", True)), "music_level": papro_studio.music_level(project), "airports": project["airports"], "aircraft": project.get("aircraft", []), "aircraft_on": bool(project.get("aircraft_on")),
-            "app_boost": boost_percent(cfg), "languages": self.language_snapshot(project), "language": project.get("language", ""), "aircraft_presets": papro_studio.AIRCRAFT_PRESETS, "typed_bases": papro_studio.TYPED_BASES, "aircraft_types": papro_studio.AIRCRAFT_TYPES, "extras": project["extras"], "music": project.get("music", []), "crew": papro_studio.crew_config(project), "descent_city": bool(project.get("descent_city")), "descent_order": papro_studio.descent_order(project), "landing_order": papro_studio.landing_order(project), "landing_off": bool(project.get("landing_off")), "boarding_order": papro_studio.boarding_order(project), "boarding_off": bool(project.get("boarding_off")), "service_types": project.get("service_types", []),
+            "app_boost": boost_percent(cfg), "languages": self.language_snapshot(project), "language": project.get("language", ""), "aircraft_presets": papro_studio.AIRCRAFT_PRESETS, "typed_bases": papro_studio.TYPED_BASES, "aircraft_types": papro_studio.AIRCRAFT_TYPES, "extras": project["extras"], "music": project.get("music", []), "crew": papro_studio.crew_config(project), "descent_city": bool(project.get("descent_city")), "time_period": bool(project.get("time_period")), "descent_order": papro_studio.descent_order(project), "landing_order": papro_studio.landing_order(project), "landing_off": bool(project.get("landing_off")), "boarding_order": papro_studio.boarding_order(project), "boarding_off": bool(project.get("boarding_off")), "service_types": project.get("service_types", []),
             "logo": papro_studio.logo_path(STUDIO_DIR, project).is_file(), "has_script": bool(project.get("scripts")), "origin": bool(project.get("origin")), "in_library": self.project_in_library(cfg, project["icao"], project["voice"]), "upgrades": papro_studio.upgrade_preview(STUDIO_DIR, project), "target_pending": False, "rows": rows, "missing": len(papro_studio.missing(STUDIO_DIR, project)),
             "target": target, "target_count": count, "target_source": label,
             "done": sum(1 for r in rows if r["done"] or r["skipped"]), "total": len(rows)}
@@ -3525,6 +3529,13 @@ class UIMixin:
                             except (TypeError, ValueError):
                                 return {"error": f"The number of flight attendants for {k} must be a number from 1 to {papro_studio.MAX_CREW}."}
                 papro_studio.set_crew(STUDIO_DIR, project, data.get("on"), data.get("order"), fa)
+                papro_studio.sync_secondary(STUDIO_DIR, project)
+            elif name == "time_period":   # Time and Numbers: "in the morning / afternoon / evening" instead of AM / PM
+                if data.get("on"):
+                    project["time_period"] = True
+                else:
+                    project.pop("time_period", None)
+                papro_studio.save(STUDIO_DIR, project)
                 papro_studio.sync_secondary(STUDIO_DIR, project)
             elif name == "descent_city":   # the descent announcement says the destination
                 project["descent_city"] = bool(data.get("on"))

@@ -1740,6 +1740,12 @@ function buildChecklist(c,host){
       tc.onchange=async()=>{openGroups.add("After Landing");if(tc.checked)openLanding();const r=await studio("landing_custom",{...pid(c),on:tc.checked});if(r.ok)toast(tc.checked?"After Landing customization added below":"After Landing customization removed")};
       d.append(tl);
 }
+    if(gr.name==="Time and Numbers"){
+      const pl=el("label","check");pl.style.cssText="display:flex;align-items:center;gap:8px;margin:4px 0 10px";const pc=el("input");pc.type="checkbox";pc.checked=!!c.time_period;
+      pl.append(pc,document.createTextNode(" Use “in the morning / afternoon / evening” instead of AM / PM"));
+      pc.onchange=async()=>{openGroups.add("Time and Numbers");const r=await studio("time_period",{...pid(c),on:pc.checked});if(r.ok)toast(pc.checked?"Record the three “in the...” clips below":"Back to AM / PM")};
+      d.append(pl);
+      d.append(el("div","small",c.time_period?"The time is said as hour, minutes, then “in the morning” (before noon), “in the afternoon” (noon to 6 pm) or “in the evening” (6 pm on). On the hour it is just the hour then the phrase.":"The time is said as hour, minutes, then AM or PM. On the hour it is just the hour then AM or PM."))}
     if(gr.name==="Time and Numbers"){d.append(el("div","small","The clock used by the landing announcement (“...where the local time is four thirty-five P.M.”). The hour clips (1-12) are also used to say the number of flight attendants in the crew introduction."))}
     if(gr.name==="Airports"){
       d.append(el("div","small","Add your airports (paste a whole list if you like) and record just each name (for example “London Heathrow”). PAPro mixes that one clip into both the BoardingWelcome and the landing PA. Add a terminal variant like EGLL_T5 if you record one."));

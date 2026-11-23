@@ -496,6 +496,7 @@ GREETINGS = [("Welcome_Morning", "Welcome - part 1: good morning", "Ladies and g
              ("WelcomeTo", "Landing - part 1: 'welcome to...' (before the airport name)", "Ladies and gentlemen, welcome to... (the airport name is added next)"),
              ("LocalTime", "Landing - part 1: 'where the local time is...'", "...where the local time is")]
 HOURS = ["twelve", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven"]
+PERIODS = (("Morning", "morning"), ("Afternoon", "afternoon"), ("Evening", "evening"))   # said after the time instead of AM / PM
 MINUTES = {0: "o'clock", 5: "oh five", 10: "ten", 15: "fifteen", 20: "twenty", 25: "twenty-five", 30: "thirty",
            35: "thirty-five", 40: "forty", 45: "forty-five", 50: "fifty", 55: "fifty-five"}
 
@@ -665,7 +666,7 @@ def create(root: Path, icao: str, airline: str, voice: str) -> dict:
 
 
 # --------------------------------------------------------------------------- primary / secondary language
-SHARED_FIELDS = ("artist", "accent", "description", "credit_url", "donate_url", "version", "local_time", "also_icaos", "crew", "service_types", "descent_city", "descent_order", "landing_base", "landing_order", "landing_off", "boarding_order", "boarding_off")
+SHARED_FIELDS = ("artist", "accent", "description", "credit_url", "donate_url", "version", "local_time", "also_icaos", "crew", "service_types", "descent_city", "descent_order", "landing_base", "landing_order", "landing_off", "boarding_order", "boarding_off", "time_period")
 
 
 def secondary_of(root: Path, project: dict) -> dict | None:
@@ -785,8 +786,12 @@ def slot_list(project: dict) -> list[dict]:
         if minute == 0:
             continue   # on the hour PAPro says just the hour, then AM / PM
         add("Time and Numbers", "time", f"Min_{minute:02d}", f"Minutes :{minute:02d}", word.capitalize(), required=True)
-    add("Time and Numbers", "time", "AM", "AM (optional)", "A.M. - said after the minutes, e.g. 'four thirty-five A.M.' (on the hour: 'two P.M.')")
-    add("Time and Numbers", "time", "PM", "PM (optional)", "P.M. - said after the minutes, e.g. 'four thirty-five P.M.' (on the hour: 'two P.M.')")
+    if project.get("time_period"):   # "in the morning / afternoon / evening" instead of AM / PM
+        for stem, word in PERIODS:
+            add("Time and Numbers", "time", f"Period_{stem}", f"In the {word}", f"...in the {word} - said after the time, e.g. 'four thirty-five in the {word}'", required=True)
+    else:
+        add("Time and Numbers", "time", "AM", "AM (optional)", "A.M. - said after the minutes, e.g. 'four thirty-five A.M.' (on the hour: 'two P.M.')")
+        add("Time and Numbers", "time", "PM", "PM (optional)", "P.M. - said after the minutes, e.g. 'four thirty-five P.M.' (on the hour: 'two P.M.')")
     greet = {stem: (label, script) for stem, label, script in GREETINGS}
     for item in landing_order(project):   # the After Landing PA: its recorded pieces, in the pack's order
         first = len(out)
@@ -1470,6 +1475,8 @@ def voice_json(project: dict) -> dict:
     if project.get("also_icaos"):
         data["also_icaos"] = list(project["also_icaos"])
     out = {k: v for k, v in data.items() if v}
+    if project.get("time_period"):
+        out["time_period"] = True
     if project.get("descent_city"):
         out["descent_city"] = True
         out["descent_order"] = descent_order(project)
@@ -1753,6 +1760,8 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
         m = NAMED_FILE.match(path.name)
         if m and m["name"] not in project.setdefault("service_types", []):
             project["service_types"].append(m["name"])
+    if info.get("time_period"):
+        project["time_period"] = True
     if info.get("descent_city") or (pack / "main" / "Modular_DescentStart.ogg").is_file():
         project["descent_city"] = True
         if isinstance(info.get("descent_order"), list):
