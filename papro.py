@@ -1607,6 +1607,67 @@ def clock_tag() -> str:
     return "night" if hour < 6 else "morning" if hour < 12 else "afternoon" if hour < 18 else "evening"
 
 
+def crew_settings(voice_dir: Path) -> dict | None:
+    """The crew introduction a voice was made with (voice.json "crew": the order of the pieces and the flight attendants per
+    aircraft type), or None when the voice has none."""
+    try:
+        data = json.loads((voice_dir / "voice.json").read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return None
+    crew = data.get("crew") if isinstance(data, dict) else None
+    return crew if isinstance(crew, dict) and crew.get("order") else None
+
+
+def build_crew_intro(voice_dir: Path, airline: str, origin: str, aircraft: str, out: Path, state_key: str) -> bool:
+    """Build the pre-safety briefing from pieces: intro parts, the number of flight attendants (the clock's hour clips), a base
+    and the crew's names, in the order the pack set. The aircraft type gives the number; the base is the departure airport if
+    one was recorded, else a random one; each flight attendant gets a different random name. The picks are made once per
+    flight. Returns False (the ordinary PreSafetyBriefing stays) when the pieces are not there."""
+    crew = crew_settings(voice_dir)
+    folder = voice_dir / "crew"
+    if not crew or not folder.is_dir() or papro_audio is None or not papro_audio.have_backend():
+        return False
+    count = int((crew.get("fa") or {}).get(aircraft.upper(), 0) or 0)
+    if not count:
+        return False   # no number for this aircraft type: say the pack's ordinary briefing
+    state = load_state()
+    pick_all = state.setdefault("crew_pick", {})
+    pick = pick_all.get(state_key) or {}
+    bases = {f.stem[5:].upper(): f for f in folder.glob("Base_*.ogg")}
+    names = {f.stem[5:]: f for f in folder.glob("Name_*.ogg")}
+    if not pick or pick.get("n") != count:
+        base = origin.upper() if origin.upper() in bases else (random.choice(sorted(bases)) if bases else "")
+        chosen = random.sample(sorted(names), min(count, len(names))) if names else []
+        pick = {"n": count, "base": base, "names": chosen}
+        pick_all.clear()
+        pick_all[state_key] = pick
+        save_state(state)
+        log.info("Crew introduction: %d crew, base %s, names %s", count, pick["base"] or "-", ", ".join(pick["names"]) or "-")
+    pieces: list[Path] = []
+    for item in crew["order"]:
+        if item.startswith("intro:"):
+            f = folder / f"Intro_{item[6:]}.ogg"
+            if f.is_file():
+                pieces.append(f)
+        elif item == "number":
+            f = part_file(voice_dir, f"Hour_{count:02d}")
+            if not f:
+                return False
+            pieces.append(f)
+        elif item == "base" and pick.get("base") in bases:
+            pieces.append(bases[pick["base"]])
+        elif item == "names":
+            files = [names[n] for n in pick.get("names", []) if n in names]
+            if files:
+                joined = out.with_name("crew_names.ogg")
+                papro_audio.join(files, joined, 220, False)
+                pieces.append(joined)
+    if not any(x.name.startswith("Intro_") for x in pieces):
+        return False
+    papro_audio.join(pieces, out, 60, True)
+    return True
+
+
 def welcome_pieces(lib_dir: Path, clip: Path, tag: str, tail: list[Path] | None = None) -> list[Path] | None:
     """Good morning/afternoon/evening + destination + rest of the welcome aboard (+ fuel tag-on, + a bolt-on), or None
     if a piece is missing."""
@@ -1891,6 +1952,17 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
             if sync_needed(path, dst, boost):
                 install_file(path, dst, boost)
                 synced += 1
+
+    if not only and crew_settings(voice_dir):   # the pre-safety briefing is built for this flight's aircraft (crew number, base, names)
+        flight_now = load_state().get("flight") or {}
+        with tempfile.TemporaryDirectory(dir=DATA_DIR) as crew_work:
+            crew_out = Path(crew_work) / "PreSafetyBriefing.ogg"
+            try:
+                if build_crew_intro(voice_dir, airline, str(flight_now.get("origin", "")), current_aircraft_type(), crew_out,
+                                    f"{airline}/{voice_dir.name}/{flight_now.get('number', '')}/{flight_now.get('origin', '')}/{dest_icao}"):
+                    install_file(crew_out, fenix_dir / "PreSafetyBriefing.ogg", boost)
+            except (papro_audio.AudioError, OSError) as exc:
+                log.warning("Could not build the crew introduction: %s", exc)
 
     all_clips = {m["folder"]: find_clips(voice_dir, m["folder"], source, dest_icao) for m in cfg["mappings"]}
     all_clips[AIRPORTS_FOLDER] = find_clips(voice_dir, AIRPORTS_FOLDER, source, dest_icao)  # just the airport's name
@@ -3046,7 +3118,7 @@ class UIMixin:
             "also_icaos": ", ".join(project.get("also_icaos", [])), "local_time": project.get("local_time") is not False,
             "description": project.get("description", ""), "version": project.get("version", "1.0.0"),
             "effect": bool(project.get("effect", True)), "music_level": papro_studio.music_level(project), "airports": project["airports"], "aircraft": project.get("aircraft", []), "aircraft_on": bool(project.get("aircraft_on")),
-            "app_boost": boost_percent(cfg), "languages": self.language_snapshot(project), "language": project.get("language", ""), "aircraft_presets": papro_studio.AIRCRAFT_PRESETS, "typed_bases": papro_studio.TYPED_BASES, "aircraft_types": papro_studio.AIRCRAFT_TYPES, "extras": project["extras"], "music": project.get("music", []),
+            "app_boost": boost_percent(cfg), "languages": self.language_snapshot(project), "language": project.get("language", ""), "aircraft_presets": papro_studio.AIRCRAFT_PRESETS, "typed_bases": papro_studio.TYPED_BASES, "aircraft_types": papro_studio.AIRCRAFT_TYPES, "extras": project["extras"], "music": project.get("music", []), "crew": papro_studio.crew_config(project),
             "logo": papro_studio.logo_path(STUDIO_DIR, project).is_file(), "has_script": bool(project.get("scripts")), "origin": bool(project.get("origin")), "in_library": self.project_in_library(cfg, project["icao"], project["voice"]), "upgrades": papro_studio.upgrade_preview(STUDIO_DIR, project), "target_pending": False, "rows": rows, "missing": len(papro_studio.missing(STUDIO_DIR, project)),
             "target": target, "target_count": count, "target_source": label,
             "done": sum(1 for r in rows if r["done"] or r["skipped"]), "total": len(rows)}
@@ -3272,6 +3344,37 @@ class UIMixin:
                     if not added:
                         return {"error": "Not an airport code: " + ", ".join(skipped[:8]) + ". Use 4-letter ICAO codes like EGLL, separated by commas, semicolons or spaces."}
                     return {"ok": True, "added": len(added), "skipped": skipped}
+            elif name == "crew":   # the crew introduction (pre-safety briefing built from pieces): on/off, parts, order, crew per type
+                fa = None
+                if "fa" in data:
+                    fa = {}
+                    for k, v in (data["fa"] or {}).items():
+                        k = str(k).upper().strip()
+                        if k:
+                            try:
+                                fa[k] = max(1, min(papro_studio.MAX_CREW, int(v)))
+                            except (TypeError, ValueError):
+                                return {"error": f"The number of flight attendants for {k} must be a number from 1 to {papro_studio.MAX_CREW}."}
+                papro_studio.set_crew(STUDIO_DIR, project, data.get("on"), data.get("intro"), data.get("order"), fa)
+                papro_studio.sync_secondary(STUDIO_DIR, project)
+            elif name == "crew_base":
+                if data.get("remove"):
+                    papro_studio.remove_crew_base(STUDIO_DIR, project, str(data.get("code", "")).upper())
+                else:
+                    added, skipped = papro_studio.add_crew_base(STUDIO_DIR, project, str(data.get("code", ""))[:500])
+                    papro_studio.sync_secondary(STUDIO_DIR, project)
+                    if skipped and not added:
+                        return {"error": "Use 4-letter airport codes like KATL, separated by commas or spaces."}
+                    return {"ok": True, "added": len(added), "skipped": skipped}
+                papro_studio.sync_secondary(STUDIO_DIR, project)
+            elif name == "crew_name":
+                if data.get("remove"):
+                    papro_studio.remove_crew_name(STUDIO_DIR, project, str(data.get("name", "")))
+                else:
+                    papro_studio.add_crew_name(STUDIO_DIR, project, str(data.get("name", "")))
+                papro_studio.sync_secondary(STUDIO_DIR, project)
+            elif name == "crew_random":
+                return {"ok": True, **papro_studio.random_crew_name(project)}
             elif name == "music":
                 (papro_studio.remove_music if data.get("remove") else papro_studio.add_music)(STUDIO_DIR, project, str(data.get("name", "")))
             elif name == "extra":
@@ -3798,6 +3901,7 @@ class TrayApp(UIMixin):
             state.pop("live", None)
             state.pop("extra_used", None)
             state.pop("main_pick", None)
+            state.pop("crew_pick", None)
             save_state(state)
             return
         with self.lock:  # wait for any update in progress

@@ -52,6 +52,131 @@ S601 S61 S76 S92 SB20 SC7 SF34 SH33 SH36 SR22 SU25 SU95 T134 T144 T154 T204 TBM9
 AIRCRAFT_TYPES = sorted(ICAO_TYPES)
 
 
+# --------------------------------------------------------------------------- crew introduction
+# "Our crew of 4 Atlanta-based flight attendants...": the pre-safety briefing built from pieces - recorded intro parts, the
+# number of flight attendants (the hour clips 1-12 of the clock), a base (an airport name) and the crew's names. The order of
+# the pieces is the pack creator's; the number comes from the aircraft type.
+CREW_FOLDER = "crew"
+CREW_NAME = re.compile(r"^[A-Za-z][A-Za-z '.-]{0,23}$")
+MALE_NAMES = ["James", "Michael", "David", "Daniel", "Matthew", "Andrew", "Christopher", "Joshua", "Ryan", "Brandon", "Marcus",
+              "Anthony", "Kevin", "Brian", "Jason", "Eric", "Tyler", "Nathan", "Jacob", "Ethan", "Carlos", "Luis", "Miguel", "Jamal",
+              "Darius", "Terrence", "Raj", "Kenji", "Omar", "Samuel", "Patrick", "Gregory", "Peter", "Adrian", "Victor", "Trevor",
+              "Dominic", "Isaiah", "Leon", "Simon"]
+FEMALE_NAMES = ["Sarah", "Jessica", "Emily", "Ashley", "Amanda", "Megan", "Lauren", "Rachel", "Nicole", "Brittany", "Danielle",
+                "Stephanie", "Jennifer", "Maria", "Sofia", "Isabella", "Priya", "Mei", "Aisha", "Keisha", "Tamara", "Monique",
+                "Hannah", "Olivia", "Grace", "Chloe", "Natalie", "Rebecca", "Katherine", "Alicia", "Gabriela", "Valerie", "Dana",
+                "Renee", "Tiffany", "Jasmine", "Erin", "Paige", "Naomi", "Holly"]
+CREW_DEFAULT_ORDER = ["intro:1", "number", "base", "intro:2", "names"]
+MAX_CREW = 12   # the number is said with the clock's hour clips, which go 1-12
+
+
+def crew_config(project: dict) -> dict:
+    """The crew introduction settings with every field present and tidy."""
+    raw = project.get("crew") if isinstance(project.get("crew"), dict) else {}
+    intro = max(1, min(8, int(raw.get("intro", 2) or 2)))
+    wanted = [i for i in raw.get("order", []) if isinstance(i, str)]
+    items = [f"intro:{n}" for n in range(1, intro + 1)] + ["number", "base", "names"]
+    order = [i for i in wanted if i in items]
+    order += [i for i in (CREW_DEFAULT_ORDER if not wanted else items) if i in items and i not in order]
+    fa = {}
+    for k, v in (raw.get("fa") or {}).items():
+        try:
+            n = int(v)
+        except (TypeError, ValueError):
+            continue
+        if re.fullmatch(r"[A-Z0-9]{2,4}", str(k).upper()) and 1 <= n <= MAX_CREW:
+            fa[str(k).upper()] = n
+    bases = sorted({str(b).upper() for b in raw.get("bases", []) if AIRPORT.match(str(b).upper())})
+    names = []
+    for n in raw.get("names", []):
+        n = str(n).strip()
+        if CREW_NAME.match(n) and n.lower() not in [x.lower() for x in names]:
+            names.append(n)
+    return {"on": bool(raw.get("on")), "intro": intro, "order": order, "fa": fa, "bases": bases, "names": sorted(names, key=str.lower)}
+
+
+def crew_stem(kind: str, value) -> str:
+    return f"Intro_{value}" if kind == "intro" else f"Base_{value}" if kind == "base" else f"Name_{re.sub(r'[^A-Za-z0-9]+', '_', str(value)).strip('_')}"
+
+
+def random_crew_name(project: dict) -> dict:
+    """A name to record, keeping the crew about half men and half women: whichever is behind gets the next one."""
+    import random
+
+    have = [n.lower() for n in crew_config(project)["names"]]
+    men = sum(1 for n in have if n in {x.lower() for x in MALE_NAMES})
+    women = sum(1 for n in have if n in {x.lower() for x in FEMALE_NAMES})
+    gender = "male" if men < women else "female" if women < men else random.choice(["male", "female"])
+    pool = [n for n in (MALE_NAMES if gender == "male" else FEMALE_NAMES) if n.lower() not in have]
+    if not pool:
+        pool = [n for n in MALE_NAMES + FEMALE_NAMES if n.lower() not in have]
+        gender = "male" if pool and pool[0] in MALE_NAMES else "female"
+    return {"name": random.choice(pool) if pool else "", "gender": gender}
+
+
+def set_crew(root: Path, project: dict, on=None, intro=None, order=None, fa=None) -> dict:
+    crew = crew_config(project)
+    if on is not None:
+        crew["on"] = bool(on)
+    if intro is not None:
+        crew["intro"] = max(1, min(8, int(intro)))
+    if order is not None:
+        crew["order"] = [str(i) for i in order]
+    if fa is not None:
+        crew["fa"] = fa
+    project["crew"] = crew_config({"crew": crew})
+    project["crew"]["bases"], project["crew"]["names"] = crew["bases"], crew["names"]
+    save(root, project)
+    return project["crew"]
+
+
+def add_crew_base(root: Path, project: dict, text: str) -> tuple[list[str], list[str]]:
+    added, skipped = [], []
+    crew = crew_config(project)
+    for raw in re.split(r"[,;\s]+", text.upper()):
+        code = raw.strip(".")
+        if not code:
+            continue
+        if not re.fullmatch(r"[A-Z0-9]{4}", code):
+            skipped.append(code)
+        elif code not in crew["bases"] and code not in added:
+            added.append(code)
+    if added:
+        project["crew"] = {**crew, "bases": sorted(crew["bases"] + added)}
+        save(root, project)
+    return added, skipped
+
+
+def remove_crew_base(root: Path, project: dict, code: str) -> None:
+    try:
+        delete_slot(root, project, f"{CREW_FOLDER}/{crew_stem('base', code)}")
+    except StudioError:
+        pass
+    crew = crew_config(project)
+    project["crew"] = {**crew, "bases": [b for b in crew["bases"] if b != code]}
+    save(root, project)
+
+
+def add_crew_name(root: Path, project: dict, name: str) -> None:
+    name = " ".join(name.split())
+    if not CREW_NAME.match(name):
+        raise StudioError("Use a first name made of letters (for example Sarah).")
+    crew = crew_config(project)
+    if name.lower() not in [n.lower() for n in crew["names"]]:
+        project["crew"] = {**crew, "names": crew["names"] + [name]}
+    save(root, project)
+
+
+def remove_crew_name(root: Path, project: dict, name: str) -> None:
+    try:
+        delete_slot(root, project, f"{CREW_FOLDER}/{crew_stem('name', name)}")
+    except StudioError:
+        pass
+    crew = crew_config(project)
+    project["crew"] = {**crew, "names": [n for n in crew["names"] if n != name]}
+    save(root, project)
+
+
 def typed_stem(base: str, types: list[str], n: int = 1) -> str:
     return f"{base}@{'+'.join(types)}" + (f"~v{n}" if n > 1 else "")
 
@@ -302,7 +427,7 @@ def create(root: Path, icao: str, airline: str, voice: str) -> dict:
 
 
 # --------------------------------------------------------------------------- primary / secondary language
-SHARED_FIELDS = ("artist", "accent", "description", "credit_url", "donate_url", "version", "local_time", "also_icaos")
+SHARED_FIELDS = ("artist", "accent", "description", "credit_url", "donate_url", "version", "local_time", "also_icaos", "crew")
 
 
 def secondary_of(root: Path, project: dict) -> dict | None:
@@ -434,6 +559,19 @@ def slot_list(project: dict) -> list[dict]:
         add("Boarding music", "main", f"BoardingMusic~{name}", f"Track: {name}",
             "Upload a track you have the rights to use. It is shown in the cabin crew panel under this name; no PA sound is applied.")
         out[-1]["music"] = True
+    crew = crew_config(project)
+    if crew["on"]:
+        script1 = {1: "Our crew of... (said before the number)", 2: "...-based flight attendants are excited to take care of you. We extend a special welcome to our members. We appreciate you continuing to trust us with your travel."}
+        for n in range(1, crew["intro"] + 1):
+            add("Crew introduction", CREW_FOLDER, crew_stem("intro", n), f"Intro part {n}", script1.get(n, "Another part of the crew introduction."))
+        for code in crew["bases"]:
+            nm = airport_name(code)
+            add("Crew introduction", CREW_FOLDER, crew_stem("base", code), f"Base: {code}" + (f" - {nm}" if nm else ""),
+                f"Say the base name, e.g. '{nm or 'Atlanta'}' (it is heard between the pieces of the introduction).")
+            out[-1]["crew"] = "base"
+        for name in crew["names"]:
+            add("Crew introduction", CREW_FOLDER, crew_stem("name", name), f"Crew name: {name}", f"Say just the name: '{name}'.")
+            out[-1]["crew"] = "name"
     for entry in project.get("typed", []):   # custom takes for particular aircraft types
         stem = typed_stem(entry["base"], entry["types"], entry.get("n", 1))
         shown = "all aircraft" if entry["types"] == ["ALL"] else ", ".join(entry["types"])
@@ -453,6 +591,7 @@ PHASES = [
     ("Boarding", ("Welcome_", "Modular_Welcome", "BoardingWelcome", "Fuel_Tag")),
     ("Boarding music", ()), ("Bolt-ons", ()),
     ("Boarding complete & doors", ("BoardingComplete", "ArmDoors")),
+    ("Crew introduction", ()),
     ("Safety briefing", ("PreSafetyBriefing", "SafetyBriefing")),
     ("Before takeoff", ("CrewTakeSeats[PreFlight]", "CabinDim[PreFlight]", "CabinSecured[PreFlight]")),
     ("Climb & cruise", ("AfterTakeoff", "SeatbeltSignOff", "CabinService", "SeatbeltSignOn")),
@@ -604,6 +743,8 @@ def status(root: Path, project: dict) -> list[dict]:
     def order(r):
         if r["group"] in alphabetical:
             return r["label"].lower()
+        if r["group"] == "Crew introduction":   # the intro parts, then the bases, then the names
+            return ({"base": 1, "name": 2}.get(r.get("crew"), 0), r["label"].lower())
         if r["group"] == "Airports":   # by airport, welcome aboard before landing
             return r["stem"].split("_", 1)[-1]
         return 0
@@ -1018,6 +1159,9 @@ def voice_json(project: dict) -> dict:
     if project.get("also_icaos"):
         data["also_icaos"] = list(project["also_icaos"])
     out = {k: v for k, v in data.items() if v}
+    crew = crew_config(project)
+    if crew["on"]:   # how to build the crew introduction travels with the pack
+        out["crew"] = {"order": crew["order"], "fa": crew["fa"]}
     if project.get("local_time") is False:
         out["local_time"] = False
     return out
@@ -1149,7 +1293,7 @@ def export(root: Path, project: dict, out_dir: Path, languages: dict | None = No
     return {"zip": str(zip_path), "entry": str(entry_path), "size": entry["size"], "tag": tag}
 
 
-IMPORT_FOLDERS = ("main", "time", "parts", "extra", "airports", "aircraft", "dep", "dest", "fuel")
+IMPORT_FOLDERS = ("main", "time", "parts", "extra", "airports", "aircraft", "dep", "dest", "fuel", CREW_FOLDER)
 
 
 def _import_logo(root: Path, project: dict, src: Path) -> None:
@@ -1284,6 +1428,23 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
                     project["typed"].append(clean)
     except (OSError, ValueError, AttributeError):
         pass
+    crew_raw = dict(info.get("crew") or {}) if isinstance(info.get("crew"), dict) else {}
+    try:
+        saved_crew = json.loads((src / "studio.json").read_text(encoding="utf-8-sig")).get("crew")
+        if isinstance(saved_crew, dict):
+            crew_raw = {**saved_crew, **{k: v for k, v in crew_raw.items() if k in ("order", "fa")}}
+    except (OSError, ValueError, AttributeError):
+        pass
+    crew_dir = pack / CREW_FOLDER
+    if crew_dir.is_dir() and any(crew_dir.glob("*.ogg")):   # the clips themselves say which bases and names there are
+        crew_raw["on"] = True
+        stems = [p.stem for p in crew_dir.glob("*.ogg")]
+        crew_raw["bases"] = sorted({*crew_raw.get("bases", []), *(x[5:] for x in stems if re.fullmatch(r"Base_[A-Z0-9]{4}", x))})
+        crew_raw["names"] = sorted({*crew_raw.get("names", []), *(x[5:].replace("_", " ") for x in stems if x.startswith("Name_"))})
+        parts = [int(x[6:]) for x in stems if re.fullmatch(r"Intro_\d+", x)]
+        crew_raw["intro"] = max([crew_raw.get("intro", 2), *parts])
+    if crew_raw:
+        project["crew"] = crew_config({"crew": crew_raw})
     for slot in slot_list(project):
         if (pack / slot["folder"] / slot["file"]).is_file():
             project["slots"][slot["id"]] = {"imported": True}
@@ -1379,6 +1540,8 @@ def install_to_library(root: Path, project: dict, airline_dir: Path) -> Path:
     if project.get("scripts"):
         (dest / "scripts.json").write_text(json.dumps(project["scripts"], indent=2, ensure_ascii=False), encoding="utf-8")
     structure = {k: project[k] for k in ("airports", "extras", "variants", "typed", "silent") if project.get(k)}
+    if crew_config(project)["on"]:
+        structure["crew"] = crew_config(project)
     structure_file = dest / "studio.json"   # the parts of the checklist that are not backed by a clip yet (an airport you have not recorded, a skipped "+")
     if structure:
         structure_file.write_text(json.dumps(structure, indent=2), encoding="utf-8")

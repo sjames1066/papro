@@ -6,3 +6,4 @@
 - A flight filed in SimBrief while you are airborne is ignored until you are parked with the engines off; PAPro then fetches the new plan.
 - Boarding music: all tracks are merged into one BoardingMusic.ogg. Non-Fenix aircraft loop it from the start of boarding until boarding is complete and repeat the boarding PA every 3-7 minutes.
 - Build EXE.bat now bundles airport_coords.json.
+- **Crew introduction (Pack Studio).** The pre-safety briefing can be built from pieces: intro parts, the number of flight attendants (set per aircraft type and said with the clock's hour clips), a base (the departure airport if recorded, else random) and random crew names, in an order you choose. Includes a Random name button (50/50 male/female) and a new *Crew introduction settings* card.

@@ -9,6 +9,7 @@ FCAC is now **PAPro**. Fenix A320 still gets its PAs by file swap; other aircraf
 - **Prefiling the next flight.** A SimBrief plan filed while you are airborne is ignored. PAPro fetches it once you are parked with the engines off.
 - **Boarding music.** All tracks are merged into a single `BoardingMusic.ogg` (1.5 s crossfades). Non-Fenix aircraft loop it from the start of boarding until boarding is complete, and the boarding PA repeats every 3–7 minutes. Fenix gets the merged file; whether Fenix loops it is Fenix's own behaviour (unverified).
 - Build EXE now bundles `airport_coords.json`.
+- **Crew introduction (Pack Studio).** The pre-safety briefing can be built from pieces: intro parts, the number of flight attendants (set per aircraft type and said with the clock's hour clips), a base (the departure airport if recorded, else random) and random crew names, in an order you choose. Includes a Random name button (50/50 male/female) and a new *Crew introduction settings* card.
 
 ## 1.1.1
 - **EFBx.** The flight plan is read from EFBx (`localhost:35810/efbx/simbrief`) first, falling back to SimBrief.

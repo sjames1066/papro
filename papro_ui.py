@@ -1560,8 +1560,8 @@ function slotRow(c,r){
   if(r.silent){const us=el("button","ghost","Unskip");us.title="Remove the silent clip and put this back on the checklist";us.onclick=()=>studio("skip",{...pid(c),slot:r.id,skip:false});act.prepend(us)}
   if(r.skipped){const un=el("button","ghost","Unskip");un.title="Put this back on the checklist";un.onclick=()=>studio("skip",{...pid(c),slot:r.id,skip:false});const ns=el("button","ghost","No sound");ns.title="Skipped: the default pack's clip plays. Press to play nothing instead (a 1 second silent clip is added)";ns.onclick=()=>studio("skip",{...pid(c),slot:r.id,skip:true,mode:"silent"});act.append(un,ns)}
   else if(!r.done&&!r.music){const sk=el("button","ghost","Skip ▾");sk.title="Not recording this one";sk.onclick=e=>{e.stopPropagation();skipMenu(sk,c,r)};act.append(sk)}
-  const isAc=r.folder==="aircraft",isAp=r.folder==="airports"||isAc,apCode=r.folder==="airports"?r.id.slice(("airports/"+c.icao+"_").length):r.label;
-  if(r.done||isAp){const p=el("button","pp","▶");p.dataset.id=r.id;p.title="Play";p.onclick=()=>togglePlay(c,r.id);const sp2=el("button","stp","⏹");sp2.dataset.id=r.id;sp2.title="Stop";sp2.style.display="none";sp2.onclick=stopPlay;const x=el("button","danger","✕");x.title=isAp?(isAc?"Remove this aircraft":"Remove this airport")+(r.done?" and its recording":""):"Remove";let armT=null;x.onclick=()=>{if(!x.classList.contains("arm")){x.classList.add("arm");x.textContent="Delete?";x.title="Click again to delete";armT=setTimeout(()=>{x.classList.remove("arm");x.textContent="✕";x.title="Remove"},3500);return}clearTimeout(armT);isAp?studio(isAc?"aircraft":"airport",{...pid(c),code:apCode,remove:true}):studio("delete",{...pid(c),slot:r.id})};if(r.done)act.append(p,sp2);if(!(r.typed||r.variant_of))act.append(x)}
+  const isAc=r.folder==="aircraft",isCrew=r.crew==="base"||r.crew==="name",isAp=r.folder==="airports"||isAc||isCrew,apCode=r.folder==="airports"?r.id.slice(("airports/"+c.icao+"_").length):r.label;
+  if(r.done||isAp){const p=el("button","pp","▶");p.dataset.id=r.id;p.title="Play";p.onclick=()=>togglePlay(c,r.id);const sp2=el("button","stp","⏹");sp2.dataset.id=r.id;sp2.title="Stop";sp2.style.display="none";sp2.onclick=stopPlay;const x=el("button","danger","✕");x.title=isAp?(isCrew?"Remove this from the crew introduction":isAc?"Remove this aircraft":"Remove this airport")+(r.done?" and its recording":""):"Remove";let armT=null;x.onclick=()=>{if(!x.classList.contains("arm")){x.classList.add("arm");x.textContent="Delete?";x.title="Click again to delete";armT=setTimeout(()=>{x.classList.remove("arm");x.textContent="✕";x.title="Remove"},3500);return}clearTimeout(armT);isCrew?(r.crew==="base"?studio("crew_base",{...pid(c),code:r.stem.slice(5),remove:true}):studio("crew_name",{...pid(c),name:r.label.replace("Crew name: ",""),remove:true})):isAp?studio(isAc?"aircraft":"airport",{...pid(c),code:apCode,remove:true}):studio("delete",{...pid(c),slot:r.id})};if(r.done)act.append(p,sp2);if(!(r.typed||r.variant_of))act.append(x)}
   if(!r.typed&&!r.variant_of&&Object.keys(c.typed_bases||{}).includes(r.stem)){const at=el("button","sq ghost");at.title="+ aircraft version";at.setAttribute("aria-label","+ aircraft version");
     at.innerHTML='<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg>';
     at.onclick=async()=>{const x=await studio("typed_add",{...pid(c),base:r.stem,types:["ALL"]});if(x.ok){openGroups.add(r.group);toast("Added below - choose which aircraft types it is for");studioSig="";renderStudio()}};act.append(at)}
@@ -1579,10 +1579,35 @@ function buildChecklist(c,host){
   const bar=el("div","ptrack");const fill=el("i");fill.style.width=Math.round(100*c.done/c.total)+"%";bar.append(fill);pr.append(bar);host.append(pr);
   const groups=[];c.rows.forEach(r=>{let g=groups.find(x=>x.name===r.group);if(!g){g={name:r.group,rows:[]};groups.push(g)}g.rows.push(r)});
   ["Airports","Boarding music","Bolt-ons"].forEach(n=>{if(!groups.find(x=>x.name===n))groups.push({name:n,rows:[]})});
-  const order=["Airports","Boarding","Boarding music","Bolt-ons","Boarding complete & doors","Safety briefing","Before takeoff","Climb & cruise","Descent & approach","After Landing","Deboarding","Emergency"];groups.sort((a,b)=>order.indexOf(a.name)-order.indexOf(b.name));
+  const order=["Airports","Boarding","Boarding music","Bolt-ons","Boarding complete & doors","Crew introduction","Safety briefing","Before takeoff","Climb & cruise","Descent & approach","After Landing","Deboarding","Emergency"];groups.sort((a,b)=>order.indexOf(a.name)-order.indexOf(b.name));
   groups.forEach(gr=>{
     const d=el("details","grp");d.open=openGroups.has(gr.name);d.ontoggle=()=>{d.open?openGroups.add(gr.name):openGroups.delete(gr.name)};
     const sm=el("summary",null,gr.name);sm.append(el("span",null,gr.rows.filter(r=>r.done||r.skipped).length+"/"+gr.rows.length));d.append(sm);
+    if(gr.name==="Crew introduction"){
+      const cr=c.crew||{order:[],intro:2,fa:{}};let order=[...cr.order];
+      d.append(el("div","small","The pre-safety briefing is built for each flight from these pieces. Record the intro parts, then add the bases (airports) and crew names. The number of flight attendants comes from the aircraft type (set under Crew introduction settings) and is said with the hour clips (1-12) from After Landing. A flight from a recorded base uses that base; otherwise one is picked at random, and each flight attendant gets a different random name. If the aircraft type has no number set, the normal Pre-safety briefing is used."));
+      const ol=el("div");ol.style.cssText="display:flex;flex-direction:column;gap:6px;max-width:420px;margin:10px 0";
+      const lab=k=>k.startsWith("intro:")?"Intro part "+k.slice(6):k==="number"?"Number of flight attendants":k==="base"?"Base":"Crew names";
+      const drawOrder=()=>{ol.textContent="";order.forEach((k,i)=>{const row=el("div");row.style.cssText="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--line);border-radius:10px";
+        const t=el("b",null,(i+1)+". "+lab(k));t.style.flex="1";row.append(t);
+        const up=el("button","ghost","↑"),dn=el("button","ghost","↓");up.style.padding=dn.style.padding="2px 9px";up.disabled=i===0;dn.disabled=i===order.length-1;
+        const save=async()=>{drawOrder();await api("studio_crew",{...pid(c),order});cr.order=[...order]};
+        up.onclick=()=>{[order[i-1],order[i]]=[order[i],order[i-1]];save()};dn.onclick=()=>{[order[i+1],order[i]]=[order[i],order[i+1]];save()};row.append(up,dn);ol.append(row)})};
+      drawOrder();const ot=el("div","small","Order the pieces are said in");ot.style.margin="10px 0 4px";d.append(ot,ol);
+      const ctl=el("div","row");ctl.style.cssText="justify-content:flex-start;gap:8px;margin-bottom:10px";
+      const ai=el("button","ghost","+ Intro part");ai.title="Add another recorded part to the introduction";ai.onclick=async()=>{openGroups.add("Crew introduction");await studio("crew",{...pid(c),intro:(cr.intro||2)+1})};ctl.append(ai);
+      if((cr.intro||2)>1){const ri=el("button","ghost","Remove last intro part");ri.onclick=async()=>{openGroups.add("Crew introduction");await studio("crew",{...pid(c),intro:(cr.intro||2)-1})};ctl.append(ri)}
+      d.append(ctl);
+      const bl=el("div","addline"),bi=el("input");bi.type="text";bi.placeholder="Base airport, e.g. KATL (several: KATL, KJFK)";bi.style.textTransform="uppercase";const bb=el("button",null,"Add base");
+      bb.onclick=async()=>{if(!bi.value.trim())return;const r=await studio("crew_base",{...pid(c),code:bi.value});if(r.ok)openGroups.add("Crew introduction")};
+      bi.addEventListener("keydown",e=>{if(e.key==="Enter")bb.click()});bl.append(bi,bb);d.append(bl);
+      const nl=el("div","addline");nl.style.marginTop="8px";const ni=el("input");ni.type="text";ni.placeholder="Crew first name, e.g. Sarah";const nb=el("button",null,"Add name"),nr=el("button","ghost","Random name");
+      nr.title="Suggest a name to record. It keeps the crew about half men and half women.";
+      nr.onclick=async()=>{const r=await api("studio_crew_random",pid(c));if(r.name){ni.value=r.name;toast(r.name+" ("+r.gender+") - press Add name, then record it")}};
+      nb.onclick=async()=>{if(!ni.value.trim())return;const r=await studio("crew_name",{...pid(c),name:ni.value});if(r.error)toast(r.error,5000);else openGroups.add("Crew introduction")};
+      ni.addEventListener("keydown",e=>{if(e.key==="Enter")nb.click()});nl.append(ni,nr,nb);d.append(nl);
+    }
+    if(gr.name==="After Landing"){d.append(el("div","small","The hour clips (1-12) are also used to say the number of flight attendants in the crew introduction."))}
     if(gr.name==="Airports"){
       d.append(el("div","small","Add your airports (paste a whole list if you like) and record just each name (for example “London Heathrow”). PAPro mixes that one clip into both the BoardingWelcome and the landing PA. Add a terminal variant like EGLL_T5 if you record one."));
       const line=el("div","addline"),i=el("textarea");i.rows=2;i.placeholder="EGLL, EGKK, EGCC  (paste a list: commas, semicolons, spaces or new lines)";i.style.textTransform="uppercase";i.style.resize="vertical";const add=el("button",null,"Add airports");
@@ -1685,6 +1710,28 @@ function renderStudio(){
         tab.append(el("span","small",pa.label),sel)});
       dt.append(tab);lc.append(dt)}
     root.append(lc);
+  }
+  { // crew introduction settings: switch it on, and how many flight attendants each aircraft type has
+    const cc=el("section","card");cc.style.marginTop="16px";const cr=c.crew||{on:false,fa:{}};
+    cc.append(el("h2",null,"Crew introduction settings"));
+    cc.append(el("div","small","For airlines whose pre-safety briefing names the crew, e.g. “Our crew of four Atlanta-based flight attendants...”. Turning it on adds a Crew introduction section to the checklist above."));
+    const on=el("label","check");on.style.cssText="display:flex;align-items:center;gap:8px;margin:12px 0";const oc=el("input");oc.type="checkbox";oc.checked=!!cr.on;on.append(oc,document.createTextNode(" This pack has a crew introduction"));
+    oc.onchange=async()=>{const r=await studio("crew",{...pid(c),on:oc.checked});if(r.ok)toast(oc.checked?"Crew introduction added to the checklist":"Crew introduction removed")};cc.append(on);
+    if(cr.on){
+      cc.append(el("div","small","Flight attendants per aircraft type (the number is said in the introduction):"));
+      const fa={...cr.fa};const list=el("div");list.style.cssText="display:flex;flex-direction:column;gap:6px;margin:8px 0;max-width:360px";
+      const saveFa=async()=>{const r=await api("studio_crew",{...pid(c),fa});if(r.ok){cr.fa={...fa}}else if(r.error)toast(r.error,5000)};
+      const draw=()=>{list.textContent="";Object.keys(fa).sort().forEach(t=>{const row=el("div");row.style.cssText="display:flex;align-items:center;gap:8px";
+        const nm=el("b",null,t);nm.style.cssText="width:70px";const n=el("input");n.type="number";n.min=1;n.max=12;n.value=fa[t];n.style.width="70px";n.onchange=()=>{fa[t]=Math.max(1,Math.min(12,+n.value||1));n.value=fa[t];saveFa()};
+        const x=el("button","ghost","✕");x.onclick=()=>{delete fa[t];draw();saveFa()};row.append(nm,n,el("span","small","flight attendants"),x);list.append(row)})};
+      draw();cc.append(list);
+      const add=el("div","addline"),ti=el("input");ti.type="text";ti.placeholder="Aircraft type, e.g. A320";ti.setAttribute("list","crewtypes");ti.style.textTransform="uppercase";
+      const dl=el("datalist");dl.id="crewtypes";(c.aircraft_types||[]).forEach(t=>{const o=el("option");o.value=t;dl.append(o)});
+      const ni=el("input");ni.type="number";ni.min=1;ni.max=12;ni.value=4;ni.style.width="70px";const ab=el("button",null,"Add");
+      ab.onclick=()=>{const t=ti.value.trim().toUpperCase();if(!t)return;fa[t]=Math.max(1,Math.min(12,+ni.value||4));ti.value="";draw();saveFa()};
+      add.append(ti,dl,ni,ab);cc.append(add);
+    }
+    root.append(cc);
   }
   const card=el("section","card");card.append(el("h2",null,"Voice details"));
   const g=el("div","sd-grid");
