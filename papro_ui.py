@@ -1327,7 +1327,7 @@ function testPlay(i){ // play one clip; in playlist mode move on to the next whe
   a.onended=()=>{ if(tAudio!==a)return; if(tPlaylist) testPlay(i+1); else testStop()};
   a.onerror=()=>{ if(tAudio!==a)return; toast("Could not play "+t.label); if(tPlaylist) testPlay(i+1); else testStop()};
   a.ontimeupdate=a.ondurationchange=a.onloadedmetadata=()=>{if(tAudio===a)tBar()};
-  fetch("/test/audio?t="+TOKEN+"&key="+tKey+"&file="+encodeURIComponent(t.file)).then(r=>{if(!r.ok)throw 0;return r.blob()}).then(blob=>{
+  fetch("/test/audio?t="+TOKEN+"&key="+tKey+"&file="+encodeURIComponent(t.file)+"&n="+Date.now(),{cache:"no-store"}).then(r=>{if(!r.ok)throw 0;return r.blob()}).then(blob=>{
     if(tAudio!==a)return; tUrl=URL.createObjectURL(blob); a.src=tUrl; return a.play()}).catch(()=>{ if(tAudio===a&&!a.src){toast("Could not play "+t.label);testStop()}});
 }
 async function testAll(){ if(tBusy)return; if(!tKey||!tRows.length){tMsg("Press Go first to build the announcements, then Test All.");return} tPlaylist=true; testPlay(0)}
