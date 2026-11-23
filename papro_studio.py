@@ -723,8 +723,6 @@ def slot_list(project: dict) -> list[dict]:
         first = len(out)
         if item == "welcome":
             add("After Landing", "time", "WelcomeTo", "Welcome to... (before the airport name)", greet["WelcomeTo"][1], required=True, part=LANDING_PART)
-        elif item == "time":
-            add("After Landing", "time", "LocalTime", "...where the local time is (before the time)", greet["LocalTime"][1], required=True, part=LANDING_PART)
         elif item.startswith("part:"):
             n = int(item[5:])
             label = f"After Landing - part {n}"

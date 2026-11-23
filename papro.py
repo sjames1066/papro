@@ -1796,7 +1796,7 @@ def landing_pieces(lib_dir: Path, clip: Path, arrival: str | None, want_time: bo
                 needed.append(part_file(lib_dir, f"Min_{minute}"))
             if all(needed):
                 meridiem = part_file(lib_dir, "PM" if int(hour) >= 12 else "AM")  # optional "AM" / "PM" clip after the minutes
-                pieces += [x for x in (part_file(lib_dir, "LocalTime"), *needed, meridiem) if x]
+                pieces += [x for x in ((part_file(lib_dir, "LocalTime") if order is None else None), *needed, meridiem) if x]   # "where the local time is" is a recorded part now; only packs without a landing_order keep their old clip
             else:
                 note = f"local time {arrival} skipped (a Hour_{twelve:02d} / Min_{minute} piece is missing)"
     return (pieces or None), note

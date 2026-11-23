@@ -1682,9 +1682,9 @@ function landingControls(c,d){
   pieceControls(c,d,{order:c.landing_order||["welcome","airport","time","part:1"],specials:{
       welcome:{label:"Welcome to... (recorded, before the airport name)",add:"+ Welcome to",title:"Say “welcome to” before the airport name"},
       airport:{label:"Airport name (from the Airports section)",add:"+ Airport name",title:"Say the airport's name"},
-      time:{label:"Local time (hours and minutes from Time and Numbers)",add:"+ Local time",title:"Say the local time"},
+      time:{label:"Local time (the hour and minute clips from Time and Numbers)",add:"+ Local time",title:"Say the local time"},
       base:{label:"Crew base (the base chosen for this flight in the Crew introduction)",add:"+ Crew base",title:"Say the crew base (record bases under Safety briefing > Crew introduction)"}},
-    intro:"PAPro builds the landing announcement for each flight from these pieces, in this order (drag to reorder, ✕ to delete a piece, the buttons add more). For example: Welcome to, Airport name, Local time, Part 1, then “On behalf of this”, Crew base, “-based crew, thank you for choosing...”. If a recorded part or the crew base is missing, the generic After Landing PA is used.",
+    intro:"PAPro builds the landing announcement for each flight from these pieces, in this order (drag to reorder, ✕ to delete a piece, the buttons add more). For example: Welcome to, Airport name, Part 1 (“...where the local time is”), Local time, Part 2, then Part 3 (“On behalf of this”), Crew base, Part 4 (“-based crew, thank you for choosing...”). If a recorded part or the crew base is missing, the generic After Landing PA is used.",
     secAction:"landing_section",orderAction:"studio_landing_order",open:openLanding,save:v=>{c.landing_order=v}});
 }
 function buildChecklist(c,host){
