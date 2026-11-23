@@ -246,6 +246,59 @@ def remove_service(root: Path, project: dict, name: str) -> None:
     save(root, project)
 
 
+# --------------------------------------------------------------------------- city-based descent announcement
+# "We've begun our initial descent into <city>. Please ensure...": recorded parts and the destination's airport name (the clip
+# from the Airports section), in an order the pack creator sets.
+DESCENT_DEFAULT_ORDER = ["part:1", "city", "part:2"]
+DESCENT_ITEM = re.compile(r"^(part:[1-9]\d?|city)$")
+
+
+def descent_order(project: dict) -> list[str]:
+    raw = project.get("descent_order")
+    if raw is None:
+        return list(DESCENT_DEFAULT_ORDER)
+    out = []
+    for i in raw:
+        if isinstance(i, str) and DESCENT_ITEM.match(i) and i not in out:
+            out.append(i)
+    return out
+
+
+def descent_stem(n: int) -> str:
+    return "Modular_DescentStart" if n == 1 else "Modular_DescentRest" if n == 2 else f"Modular_DescentPart{n}"
+
+
+def set_descent_order(root: Path, project: dict, order) -> None:
+    project["descent_order"] = [i for i in order if isinstance(i, str) and DESCENT_ITEM.match(i)]
+    save(root, project)
+
+
+def add_descent_section(root: Path, project: dict, item: str) -> None:
+    order = descent_order(project)
+    if item == "part":
+        used = [int(i[5:]) for i in order if i.startswith("part:")]
+        n = next((k for k in range(1, 20) if k not in used), None)
+        if n is None:
+            raise StudioError("That is enough parts.")
+        item = f"part:{n}"
+    if not DESCENT_ITEM.match(item):
+        raise StudioError("Unknown part of the descent announcement.")
+    if item not in order:
+        order.append(item)
+    project["descent_order"] = order
+    save(root, project)
+
+
+def remove_descent_section(root: Path, project: dict, item: str) -> None:
+    if item.startswith("part:"):
+        try:
+            delete_slot(root, project, f"main/{descent_stem(int(item[5:]))}")
+        except (StudioError, ValueError):
+            pass
+    project["descent_order"] = [i for i in descent_order(project) if i != item]
+    save(root, project)
+
+
 def typed_stem(base: str, types: list[str], n: int = 1) -> str:
     return f"{base}@{'+'.join(types)}" + (f"~v{n}" if n > 1 else "")
 
@@ -496,7 +549,7 @@ def create(root: Path, icao: str, airline: str, voice: str) -> dict:
 
 
 # --------------------------------------------------------------------------- primary / secondary language
-SHARED_FIELDS = ("artist", "accent", "description", "credit_url", "donate_url", "version", "local_time", "also_icaos", "crew", "service_types", "descent_city")
+SHARED_FIELDS = ("artist", "accent", "description", "credit_url", "donate_url", "version", "local_time", "also_icaos", "crew", "service_types", "descent_city", "descent_order")
 
 
 def secondary_of(root: Path, project: dict) -> dict | None:
@@ -621,11 +674,19 @@ def slot_list(project: dict) -> list[dict]:
             for version in project.get("service_types", []):
                 add("Other announcements", "main", f"CabinService~{version}", f"{label} - {version}", script)
                 out[-1]["service"] = version
-    if project.get("descent_city"):   # the descent announcement names the destination: part 1 + the airport's name + part 2
-        add("Descent & approach", "main", "Modular_DescentStart", "Descent Started - part 1: before the city",
-            "We've begun our initial descent into... (the airport name is added next)", part=DESCENT_PART)
-        add("Descent & approach", "main", "Modular_DescentRest", "Descent Started - part 2: after the city",
-            "...Please ensure all of your carry-on items are properly stowed and fasten your seat belt.", part=DESCENT_PART)
+    if project.get("descent_city"):   # the plain clip is now the generic one, used when the city-based PA is not complete
+        for sl in out:
+            if sl["stem"] == "DescentStarted":
+                sl["label"] = "Descent Started (Generic)"
+                sl["descent_generic"] = True
+    if project.get("descent_city"):   # the descent announcement names the destination: parts + the airport's name, in the pack's order
+        texts = {1: "We've begun our initial descent into... (the airport name is added next)",
+                 2: "...Please ensure all of your carry-on items are properly stowed and fasten your seat belt."}
+        for item in descent_order(project):
+            if item.startswith("part:"):
+                n = int(item[5:])
+                add("Descent & approach", "main", descent_stem(n), f"Descent Started - part {n}", texts.get(n, "Another part of the descent announcement."), part=DESCENT_PART)
+                out[-1]["descent_item"] = item
     for code in project.get("airports", []):
         name = airport_name(code)
         add("Airports", "airports", f"{icao}_{code}", f"{code}: {name}" if name else f"Airport name - {code}",
@@ -695,6 +756,8 @@ SAFETY_TYPED = ("PreSafetyBriefing", "SafetyBriefing")   # aircraft versions of 
 
 def phase_of(slot: dict) -> tuple[str, int]:
     """(phase name, position inside it) for a slot, from its file-name base."""
+    if slot.get("descent_item"):
+        return "Descent & approach", 1.5
     if slot.get("crew"):   # the crew introduction comes first in the Safety briefing
         return "Safety briefing", -1
     if slot.get("typed") and slot.get("base") in SAFETY_TYPED:   # introduction, its aircraft versions, demonstration, its aircraft versions
@@ -733,10 +796,10 @@ def arrange(slots: list[dict]) -> list[dict]:
         elif name == "After Landing" and sl["stem"] == "AfterLanding":
             sl["part"] = LANDING_FALLBACK
         sl["group"], sl["_pos"] = name, pos
-    if any(sl["stem"] == "Modular_DescentStart" for sl in slots):   # the city-based descent PA is a sub-section of Descent & approach
+    if any(sl.get("descent_item") or sl.get("descent_generic") for sl in slots):   # the city-based descent PA is a sub-section of Descent & approach
         for sl in slots:
             if sl["group"] == "Descent & approach":
-                sl["part"] = DESCENT_PART if sl["stem"] in ("DescentStarted", "Modular_DescentStart", "Modular_DescentRest") else OTHER_DESCENT_PART
+                sl["part"] = DESCENT_PART if sl["stem"] == "DescentStarted" or sl.get("descent_item") else OTHER_DESCENT_PART
     if any(sl.get("crew") for sl in slots):   # with the crew introduction in it, the Safety briefing has two sub-sections
         for sl in slots:
             if sl["group"] == "Safety briefing" and not sl.get("crew"):
@@ -833,6 +896,7 @@ def status(root: Path, project: dict) -> list[dict]:
         rows.append({**slot, "music": bool(slot.get("music")), "skipped": bool(not have and slot["id"] in project.get("skipped", [])), "silent": bool(have and slot["id"] in project.get("silent", [])), "done": have, "seconds": info.get("seconds") if have else None,
                      "lufs": info.get("lufs_out") if have else None, "imported": bool(have and info.get("imported")), "variants": variants})
     crew_order = crew_config(project)["order"]
+    descent_pos = {item: i for i, item in enumerate(descent_order(project))}
     alphabetical = {"Boarding music", "Bolt-ons"}  # the clock stays in clock order; everything else is in flight order
     first = {}
     for i, r in enumerate(rows):
@@ -840,6 +904,10 @@ def status(root: Path, project: dict) -> list[dict]:
     def order(r):
         if r["group"] in alphabetical:
             return r["label"].lower()
+        if r.get("descent_item"):
+            return -100 + descent_pos[r["descent_item"]]
+        if r["stem"] == "DescentStarted" and project.get("descent_city"):
+            return -200
         if r.get("crew"):   # in the Safety briefing, first the intro parts (in their order), then the bases, then the names
             return -100 + crew_order.index(r["crew_item"]) if r["crew"] == "intro" else -50 if r["crew"] == "base" else -40
         if r["group"] == "Airports":   # by airport, welcome aboard before landing
@@ -1258,6 +1326,7 @@ def voice_json(project: dict) -> dict:
     out = {k: v for k, v in data.items() if v}
     if project.get("descent_city"):
         out["descent_city"] = True
+        out["descent_order"] = descent_order(project)
     crew = crew_config(project)
     if crew["on"]:   # how to build the crew introduction travels with the pack
         out["crew"] = {"order": crew["order"], "fa": crew["fa"]}
@@ -1536,6 +1605,14 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
             project["service_types"].append(m["name"])
     if info.get("descent_city") or (pack / "main" / "Modular_DescentStart.ogg").is_file():
         project["descent_city"] = True
+        if isinstance(info.get("descent_order"), list):
+            project["descent_order"] = info["descent_order"]
+        extra = sorted(int(p.stem[len("Modular_DescentPart"):]) for p in (pack / "main").glob("Modular_DescentPart*.ogg") if p.stem[len("Modular_DescentPart"):].isdigit())
+        order = descent_order(project)
+        for n in extra:
+            if f"part:{n}" not in order:
+                order.append(f"part:{n}")
+        project["descent_order"] = order
     crew_raw = dict(info.get("crew") or {}) if isinstance(info.get("crew"), dict) else {}
     try:
         saved_crew = json.loads((src / "studio.json").read_text(encoding="utf-8-sig")).get("crew")
@@ -1650,7 +1727,7 @@ def install_to_library(root: Path, project: dict, airline_dir: Path) -> Path:
         pass
     if project.get("scripts"):
         (dest / "scripts.json").write_text(json.dumps(project["scripts"], indent=2, ensure_ascii=False), encoding="utf-8")
-    structure = {k: project[k] for k in ("airports", "extras", "variants", "typed", "silent", "service_types") if project.get(k)}
+    structure = {k: project[k] for k in ("airports", "extras", "variants", "typed", "silent", "service_types", "descent_order") if project.get(k)}
     if crew_config(project)["on"]:
         structure["crew"] = crew_config(project)
     structure_file = dest / "studio.json"   # the parts of the checklist that are not backed by a clip yet (an airport you have not recorded, a skipped "+")

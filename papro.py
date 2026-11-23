@@ -2036,15 +2036,28 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
         save_state(state)
 
     if not only and voice_setting(voice_dir, "descent_city"):   # "We've begun our initial descent into <airport>. Please ensure..."
-        part1 = _find_piece(voice_dir, ["Modular_DescentStart"], (MAIN_FOLDER,))
-        part2 = modular_piece(voice_dir, "DescentRest")
+        order = voice_setting(voice_dir, "descent_order") or ["part:1", "city", "part:2"]
         names_clips = all_clips.get(AIRPORTS_FOLDER) or {}
         city = names_clips.get("") or names_clips.get(chosen) or next(iter(names_clips.values()), None)
-        if part1 and part2 and city and papro_audio is not None and papro_audio.have_backend():
+        pieces: list[Path] = []
+        for item in order:   # every piece must be there; if not, the ordinary Descent Started clip stays
+            if item == "city":
+                found = city
+            elif str(item).startswith("part:") and str(item)[5:].isdigit():
+                n = int(item[5:])
+                found = modular_piece(voice_dir, "DescentRest") if n == 2 else _find_piece(
+                    voice_dir, ["Modular_DescentStart" if n == 1 else f"Modular_DescentPart{n}"], (MAIN_FOLDER,))
+            else:
+                continue
+            if not found:
+                pieces = []
+                break
+            pieces.append(found)
+        if pieces and papro_audio is not None and papro_audio.have_backend():
             with tempfile.TemporaryDirectory(dir=DATA_DIR) as descent_work:
                 descent_out = Path(descent_work) / "DescentStarted.ogg"
                 try:
-                    papro_audio.join([part1, city, part2], descent_out, 60, True)
+                    papro_audio.join(pieces, descent_out, 60, True)
                     install_file(descent_out, fenix_dir / "DescentStarted.ogg", boost)
                     log.info("Descent announcement built with %s", dest_icao)
                 except (papro_audio.AudioError, OSError) as exc:
@@ -3183,7 +3196,7 @@ class UIMixin:
             "also_icaos": ", ".join(project.get("also_icaos", [])), "local_time": project.get("local_time") is not False,
             "description": project.get("description", ""), "version": project.get("version", "1.0.0"),
             "effect": bool(project.get("effect", True)), "music_level": papro_studio.music_level(project), "airports": project["airports"], "aircraft": project.get("aircraft", []), "aircraft_on": bool(project.get("aircraft_on")),
-            "app_boost": boost_percent(cfg), "languages": self.language_snapshot(project), "language": project.get("language", ""), "aircraft_presets": papro_studio.AIRCRAFT_PRESETS, "typed_bases": papro_studio.TYPED_BASES, "aircraft_types": papro_studio.AIRCRAFT_TYPES, "extras": project["extras"], "music": project.get("music", []), "crew": papro_studio.crew_config(project), "descent_city": bool(project.get("descent_city")), "service_types": project.get("service_types", []),
+            "app_boost": boost_percent(cfg), "languages": self.language_snapshot(project), "language": project.get("language", ""), "aircraft_presets": papro_studio.AIRCRAFT_PRESETS, "typed_bases": papro_studio.TYPED_BASES, "aircraft_types": papro_studio.AIRCRAFT_TYPES, "extras": project["extras"], "music": project.get("music", []), "crew": papro_studio.crew_config(project), "descent_city": bool(project.get("descent_city")), "descent_order": papro_studio.descent_order(project), "service_types": project.get("service_types", []),
             "logo": papro_studio.logo_path(STUDIO_DIR, project).is_file(), "has_script": bool(project.get("scripts")), "origin": bool(project.get("origin")), "in_library": self.project_in_library(cfg, project["icao"], project["voice"]), "upgrades": papro_studio.upgrade_preview(STUDIO_DIR, project), "target_pending": False, "rows": rows, "missing": len(papro_studio.missing(STUDIO_DIR, project)),
             "target": target, "target_count": count, "target_source": label,
             "done": sum(1 for r in rows if r["done"] or r["skipped"]), "total": len(rows)}
@@ -3427,6 +3440,15 @@ class UIMixin:
                 if not project["descent_city"]:
                     project.pop("descent_city")
                 papro_studio.save(STUDIO_DIR, project)
+                papro_studio.sync_secondary(STUDIO_DIR, project)
+            elif name == "descent_section":   # add / delete a piece of the city-based descent announcement
+                if data.get("remove"):
+                    papro_studio.remove_descent_section(STUDIO_DIR, project, str(data.get("item", "")))
+                else:
+                    papro_studio.add_descent_section(STUDIO_DIR, project, str(data.get("item", "")))
+                papro_studio.sync_secondary(STUDIO_DIR, project)
+            elif name == "descent_order":
+                papro_studio.set_descent_order(STUDIO_DIR, project, data.get("order") or [])
                 papro_studio.sync_secondary(STUDIO_DIR, project)
             elif name == "service":   # a named version of the cabin service (Domestic, International...)
                 if data.get("remove"):
