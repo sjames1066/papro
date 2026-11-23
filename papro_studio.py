@@ -471,7 +471,7 @@ GENERAL = [  # (file name, label, what to say). The file names are Fenix's annou
     ("BoardingComplete", "Boarding is complete", "The purser announces that boarding has completed."),
     ("ArmDoors", "Doors to automatic (arm doors)", "Cabin crew, arm doors and cross-check."),
     ("DisarmDoors", "Doors to manual (disarm doors)", "Cabin crew, disarm doors and cross-check."),
-    ("PreSafetyBriefing", "Safety briefing - introduction", "The opening of the safety briefing, before the demonstration."),
+    ("PreSafetyBriefing", "Safety briefing - introduction (generic)", "The opening of the safety briefing, before the demonstration."),
     ("SafetyBriefing", "Safety briefing - demonstration", "The safety demonstration."),
     ("CrewTakeSeats[PreFlight]", "Before takeoff - crew, take your seats", "Cabin crew, take your seats for takeoff. (Tagged [PreFlight]: used before takeoff.)"),
     ("CrewTakeSeats[Descent][Approach]", "Before landing - crew, take your seats", "Cabin crew, take your seats for landing. (Tagged [Descent][Approach]: used before landing.)"),
