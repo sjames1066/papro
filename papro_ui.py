@@ -1696,7 +1696,7 @@ let newPackOpen=false;
 function renderStudio(){
   if(view!=="studio"||!snap)return;
   const root=$("#view-studio"), s=snap.studio||{projects:[],current:null}, sig=JSON.stringify(s);
-  if(sig===studioSig||recState||root.contains(document.activeElement)&&["INPUT","TEXTAREA"].includes(document.activeElement.tagName))return;
+  if(sig===studioSig||recState||root.contains(document.activeElement)&&["INPUT","TEXTAREA"].includes(document.activeElement.tagName)&&!["checkbox","radio"].includes(document.activeElement.type))return;
   studioSig=sig; root.textContent="";
   const c=s.current;
   if(!c){
