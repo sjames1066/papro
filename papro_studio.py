@@ -304,7 +304,7 @@ def remove_descent_section(root: Path, project: dict, item: str) -> None:
 # clip, the airport's name (from the Airports section), the local time (from Time and Numbers) and the crew base (from the crew
 # introduction), in an order the pack creator sets.
 LANDING_PART = "After Landing PA"
-LANDING_DEFAULT_ORDER = ["welcome", "airport", "time", "part:1"]
+LANDING_DEFAULT_ORDER = ["part:1", "airport", "time", "part:2"]
 LANDING_ITEM = re.compile(r"^(part:[1-9]\d?|welcome|airport|time|base)$")
 
 
@@ -1399,7 +1399,7 @@ def voice_json(project: dict) -> dict:
     if project.get("descent_city"):
         out["descent_city"] = True
         out["descent_order"] = descent_order(project)
-    if project.get("landing_order") is not None and not project.get("landing_base"):
+    if True:   # always written, so the pack builds its After Landing PA the way Pack Studio shows it
         out["landing_order"] = landing_order(project)
     crew = crew_config(project)
     if crew["on"]:   # how to build the crew introduction travels with the pack

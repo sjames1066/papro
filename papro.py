@@ -2120,7 +2120,7 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
             # the refuelling variant. Modular landing: the dest clip is "welcome to <destination>".
             names_only = all_clips[AIRPORTS_FOLDER] or all_clips["dep"]   # the airport's name: airports folder, else old dep clips
             lead = part_file(voice_dir, "WelcomeTo")                       # "Ladies and gentlemen, welcome to"
-            landing_from_name = folder == "dest" and bool(all_clips[AIRPORTS_FOLDER]) and bool(lead)
+            landing_from_name = folder == "dest" and bool(all_clips[AIRPORTS_FOLDER]) and (bool(lead) or bool(land_order))
             if welcome_mode and folder in ("dep", "fuel"):
                 clips = names_only
             elif landing_from_name:
