@@ -1098,12 +1098,37 @@ def library_version(cfg: dict, icao: str) -> str:
     return max(found, key=_version_tuple) if found else ""
 
 
+def files_in_use(folder: Path) -> bool:
+    """Is the sim (Fenix) holding any sound file in this folder open right now? Windows refuses to open a file for writing
+    while another program is playing it."""
+    try:
+        for path in folder.rglob("*.ogg"):
+            try:
+                with open(path, "r+b"):
+                    pass
+            except PermissionError:
+                return True
+            except OSError:
+                continue
+    except OSError:
+        pass
+    return False
+
+
+def check_not_in_use(cfg: dict, icao: str) -> None:
+    folder = airline_packs_dir(cfg) / icao
+    if folder.is_dir() and files_in_use(folder):
+        raise AppError(f"The {icao} announcements are being played by the sim right now - try again when the announcement has finished.")
+
+
 def remove_voice(cfg: dict, icao: str, key: str) -> str:
     """Take one voice out of an airline: its folder is moved to the PAPro backups folder, not deleted."""
     icao = check_airline_code(icao)
     folder = airline_folder(cfg, icao) / VOICES_FOLDER / key
     if not key or key == DEFAULT_VOICE or Path(key).name != key or not folder.is_dir():
         raise AppError("That voice cannot be removed here.")
+    if len(list_voices(airline_folder(cfg, icao))) <= 1:   # the last voice takes the whole pack with it
+        check_not_in_use(cfg, icao)
     try:
         BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
         shutil.move(str(folder), str(BACKUPS_DIR / f"{icao}-voice-{key}-{time.strftime('%Y%m%d-%H%M%S')}"))
@@ -1135,6 +1160,7 @@ def _remove_library_folder(lib_dir: Path, icao: str) -> None:
 def uninstall_pack(cfg: dict, icao: str) -> str:
     """Remove what install_pack added (your own recordings stay) and restore any pack that was there before."""
     icao = check_airline_code(icao)
+    check_not_in_use(cfg, icao)
     state = load_state()
     record = state.get("installed", {}).get(icao)
     if not record:  # recordings you made or copied in yourself: set the folder aside (in backups) rather than deleting it
