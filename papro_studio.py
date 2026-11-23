@@ -727,8 +727,8 @@ def slot_list(project: dict) -> list[dict]:
             add("After Landing", "time", "LocalTime", "...where the local time is (before the time)", greet["LocalTime"][1], required=True, part=LANDING_PART)
         elif item.startswith("part:"):
             n = int(item[5:])
-            label = "After Landing - part 1 (after the local time)" if n == 1 else f"After Landing - part {n}"
-            script = GENERAL[1][2] if n == 1 else "Another part of the landing announcement."
+            label = f"After Landing - part {n}"
+            script = "A part of the landing announcement, e.g. cabin crew seats, seatbelt sign, belongings, thank you... Arrange the parts as you like in the order list above." if n == 1 else "Another part of the landing announcement."
             add("After Landing", "main", landing_stem(n), label, script, required=n == 1, part=LANDING_PART)
             if n == 1:
                 add_variations("Modular_Landing", "After Landing", label, script, LANDING_PART)
