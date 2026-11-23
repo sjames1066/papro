@@ -1643,7 +1643,8 @@ function crewControls(c,d){
 
 }
 function openDescent(){openGroups.add("Descent & approach");openGroups.add("Descent & approach/Descent Started City-based PA")}
-const LANDING_SUB="After Landing PA";
+const LANDING_SUB="After Landing PA",BOARDING_SUB="Boarding Welcome PA";
+function openBoarding(){openGroups.add("Boarding");openGroups.add("Boarding/Boarding Welcome PA")}
 function openLanding(){openGroups.add("After Landing");openGroups.add("After Landing/After Landing PA")}
 // a PA built from recorded parts plus one special piece (the city / the crew base), in an order the pack creator sets
 function pieceControls(c,d,o){
@@ -1679,6 +1680,13 @@ function descentControls(c,d){
     intro:"PAPro builds the descent announcement for each flight from these pieces, in this order (drag to reorder, ✕ to delete a piece, the buttons add more). The city is the destination's airport name from the Airports section. Until every piece is recorded, the Generic clip is used.",
     secAction:"descent_section",orderAction:"studio_descent_order",open:openDescent,save:v=>{c.descent_order=v}});
 }
+function boardingControls(c,d){
+  pieceControls(c,d,{order:c.boarding_order||["greeting","airport","part:1"],specials:{
+      greeting:{label:"Greeting (good morning / afternoon / evening / night, recorded below)",add:"+ Greeting",title:"Say the time-of-day greeting"},
+      airport:{label:"Airport name (from the Airports section)",add:"+ Airport name",title:"Say the destination's name"}},
+    intro:"PAPro builds the welcome aboard for each flight from these pieces, in this order (drag to reorder, ✕ to delete a piece, the buttons add more). For example: Greeting (“Ladies and gentlemen, good morning, welcome on board this flight to”), Airport name, Part 1 (“We'll be flying for...”). If a recorded part is missing, the generic welcome is used.",
+    secAction:"boarding_section",orderAction:"studio_boarding_order",open:openBoarding,save:v=>{c.boarding_order=v}});
+}
 function landingControls(c,d){
   pieceControls(c,d,{order:c.landing_order||["part:1","airport","time","part:2"],specials:{
       welcome:{label:"Welcome to... (older recording, before the airport name)"},
@@ -1700,6 +1708,12 @@ function buildChecklist(c,host){
   groups.forEach(gr=>{
     const d=el("details","grp");d.open=openGroups.has(gr.name);d.ontoggle=()=>{d.open?openGroups.add(gr.name):openGroups.delete(gr.name)};
     const sm=el("summary",null,gr.name);sm.append(el("span",null,gr.rows.filter(r=>r.done||r.skipped).length+"/"+gr.rows.length));d.append(sm);
+    if(gr.name==="Boarding"){
+      const bl=el("label","check");bl.style.cssText="display:flex;align-items:center;gap:8px;margin:4px 0 10px";const bc=el("input");bc.type="checkbox";bc.checked=!c.boarding_off;
+      bl.append(bc,document.createTextNode(" Add customization (greeting, airport name and your own parts)"));
+      bc.onchange=async()=>{openGroups.add("Boarding");if(bc.checked)openBoarding();const r=await studio("boarding_custom",{...pid(c),on:bc.checked});if(r.ok)toast(bc.checked?"Boarding customization added below":"Boarding customization removed")};
+      d.append(bl);
+    }
     if(gr.name==="Safety briefing"){
       const cl=el("label","check");cl.style.cssText="display:flex;align-items:center;gap:8px;margin:4px 0 10px";const cc=el("input");cc.type="checkbox";cc.checked=!!(c.crew&&c.crew.on);
       cl.append(cc,document.createTextNode(" Add crew introduction (number of flight attendants, base and crew names)"));
@@ -1762,12 +1776,14 @@ function buildChecklist(c,host){
     }
     const crewHere=gr.name==="Safety briefing"&&c.crew&&c.crew.on;
     const landHere=gr.name==="After Landing"&&!c.landing_off;
-    if(gr.rows.some(r=>r.part)||crewHere||landHere){
+    const boardHere=gr.name==="Boarding"&&!c.boarding_off;
+    if(gr.rows.some(r=>r.part)||crewHere||landHere||boardHere){
       const parts=[];if(crewHere)parts.push({name:"Crew introduction",rows:[]});
       gr.rows.forEach(r=>{let p=parts.find(x=>x.name===r.part);if(!p){p={name:r.part,rows:[]};parts.push(p)}p.rows.push(r)});
       if(landHere&&!parts.find(x=>x.name===LANDING_SUB))parts.unshift({name:LANDING_SUB,rows:[]});
+      if(boardHere&&!parts.find(x=>x.name===BOARDING_SUB))parts.unshift({name:BOARDING_SUB,rows:[]});
       parts.forEach(pt=>{const key=gr.name+"/"+pt.name,sd=el("details","grp sub");sd.open=openGroups.has(key);sd.ontoggle=()=>{sd.open?openGroups.add(key):openGroups.delete(key)};
-        const ss=el("summary",null,pt.name);ss.append(el("span",null,pt.rows.filter(r=>r.done||r.skipped).length+"/"+pt.rows.length));sd.append(ss);if(crewHere&&pt.name==="Crew introduction")crewControls(c,sd);if(pt.name==="Descent Started City-based PA")descentControls(c,sd);if(pt.name==="After Landing PA")landingControls(c,sd);
+        const ss=el("summary",null,pt.name);ss.append(el("span",null,pt.rows.filter(r=>r.done||r.skipped).length+"/"+pt.rows.length));sd.append(ss);if(crewHere&&pt.name==="Crew introduction")crewControls(c,sd);if(pt.name==="Descent Started City-based PA")descentControls(c,sd);if(pt.name==="After Landing PA")landingControls(c,sd);if(pt.name==="Boarding Welcome PA")boardingControls(c,sd);
         if(crewHere&&pt.name==="Crew introduction"){
           pt.rows.filter(r=>r.crew==="intro").forEach(r=>sd.append(slotRow(c,r)));
           const sub=(title,rows,adder,count)=>{const k="Safety briefing/Crew introduction/"+title,dd=el("details","grp sub");dd.open=openGroups.has(k);dd.ontoggle=()=>{dd.open?openGroups.add(k):openGroups.delete(k)};

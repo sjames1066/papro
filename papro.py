@@ -1733,17 +1733,30 @@ def build_crew_intro(voice_dir: Path, airline: str, origin: str, aircraft: str, 
     return True
 
 
-def welcome_pieces(lib_dir: Path, clip: Path, tag: str, tail: list[Path] | None = None) -> list[Path] | None:
-    """Good morning/afternoon/evening + destination + rest of the welcome aboard (+ fuel tag-on, + a bolt-on), or None
-    if a piece is missing."""
+def welcome_pieces(lib_dir: Path, clip: Path, tag: str, tail: list[Path] | None = None, order: list | None = None) -> list[Path] | None:
+    """The welcome aboard from pieces, in the order the pack sets (default: good morning/afternoon/evening + destination + the rest of
+    the welcome aboard), then the fuel tag-on and a bolt-on; None if a piece is missing."""
     name = f"Welcome_{tag.capitalize()}"
     if not part_file(lib_dir, name) and tag == "night":
         name = "Welcome_Evening"
     base_file = part_file(lib_dir, name)
     greeting = take_choice(f"{lib_dir.parent.name}/{lib_dir.name}/{name}", base_file,
                            [lib_dir / PARTS_FOLDER, lib_dir / LEGACY_PARTS], name) if base_file else None
-    pieces = [greeting, clip, modular_piece(lib_dir, "Welcome")]
-    return [*pieces, *(tail or [])] if all(pieces) else None
+    pieces = []
+    for item in order or ["greeting", "airport", "part:1"]:
+        if item == "greeting":
+            found = greeting
+        elif item == "airport":
+            found = clip
+        elif str(item).startswith("part:") and str(item)[5:].isdigit():
+            n = int(item[5:])
+            found = modular_piece(lib_dir, "Welcome") if n == 1 else _find_piece(lib_dir, [f"Modular_WelcomePart{n}"], (MAIN_FOLDER,))
+        else:
+            continue
+        if not found:
+            return None
+        pieces.append(found)
+    return [*pieces, *(tail or [])] if pieces else None
 
 
 def round_clock(arrival: str) -> str:
@@ -2107,6 +2120,7 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
                     log.warning("Could not build the descent announcement: %s", exc)
 
     summary, custom, notes = [], 0, []
+    board_order = voice_setting(voice_dir, "boarding_order") or None   # how the pack builds its welcome aboard (None: the usual order)
     land_order = voice_setting(voice_dir, "landing_order") or None   # how the pack builds its After Landing PA (None: the usual order)
     pause = int(cfg.get("segment_pause_ms", 60))
     flow = cfg.get("join_style", "flow") != "pauses"
@@ -2115,7 +2129,7 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
             if only and mapping["folder"] not in only:
                 continue
             folder = mapping["folder"]
-            welcome_mode = bool(modular_piece(voice_dir, "Welcome"))
+            welcome_mode = bool(board_order) or bool(modular_piece(voice_dir, "Welcome"))
             # Modular welcome: the dep clip is only the destination name, and the same clip (+ the fuel tag-on) builds
             # the refuelling variant. Modular landing: the dest clip is "welcome to <destination>".
             names_only = all_clips[AIRPORTS_FOLDER] or all_clips["dep"]   # the airport's name: airports folder, else old dep clips
@@ -2150,7 +2164,7 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
                         tags = pack_tags(name) & set(TIME_OF_DAY)
                         tag = next(iter(tags)) if tags else (clock_tag() if folder == "fuel" else None)
                         tail = ([fuel_tag(voice_dir)] if folder == "fuel" else []) + [extra]
-                        pieces = welcome_pieces(voice_dir, clip, tag, [t for t in tail if t]) if tag else None
+                        pieces = welcome_pieces(voice_dir, clip, tag, [t for t in tail if t], board_order) if tag else None
                 if pieces:
                     out = Path(work) / name
                     if papro_audio is None or not papro_audio.have_backend():
@@ -3249,7 +3263,7 @@ class UIMixin:
             "also_icaos": ", ".join(project.get("also_icaos", [])), "local_time": project.get("local_time") is not False,
             "description": project.get("description", ""), "version": project.get("version", "1.0.0"),
             "effect": bool(project.get("effect", True)), "music_level": papro_studio.music_level(project), "airports": project["airports"], "aircraft": project.get("aircraft", []), "aircraft_on": bool(project.get("aircraft_on")),
-            "app_boost": boost_percent(cfg), "languages": self.language_snapshot(project), "language": project.get("language", ""), "aircraft_presets": papro_studio.AIRCRAFT_PRESETS, "typed_bases": papro_studio.TYPED_BASES, "aircraft_types": papro_studio.AIRCRAFT_TYPES, "extras": project["extras"], "music": project.get("music", []), "crew": papro_studio.crew_config(project), "descent_city": bool(project.get("descent_city")), "descent_order": papro_studio.descent_order(project), "landing_order": papro_studio.landing_order(project), "landing_off": bool(project.get("landing_off")), "service_types": project.get("service_types", []),
+            "app_boost": boost_percent(cfg), "languages": self.language_snapshot(project), "language": project.get("language", ""), "aircraft_presets": papro_studio.AIRCRAFT_PRESETS, "typed_bases": papro_studio.TYPED_BASES, "aircraft_types": papro_studio.AIRCRAFT_TYPES, "extras": project["extras"], "music": project.get("music", []), "crew": papro_studio.crew_config(project), "descent_city": bool(project.get("descent_city")), "descent_order": papro_studio.descent_order(project), "landing_order": papro_studio.landing_order(project), "landing_off": bool(project.get("landing_off")), "boarding_order": papro_studio.boarding_order(project), "boarding_off": bool(project.get("boarding_off")), "service_types": project.get("service_types", []),
             "logo": papro_studio.logo_path(STUDIO_DIR, project).is_file(), "has_script": bool(project.get("scripts")), "origin": bool(project.get("origin")), "in_library": self.project_in_library(cfg, project["icao"], project["voice"]), "upgrades": papro_studio.upgrade_preview(STUDIO_DIR, project), "target_pending": False, "rows": rows, "missing": len(papro_studio.missing(STUDIO_DIR, project)),
             "target": target, "target_count": count, "target_source": label,
             "done": sum(1 for r in rows if r["done"] or r["skipped"]), "total": len(rows)}
@@ -3493,6 +3507,22 @@ class UIMixin:
                 if not project["descent_city"]:
                     project.pop("descent_city")
                 papro_studio.save(STUDIO_DIR, project)
+                papro_studio.sync_secondary(STUDIO_DIR, project)
+            elif name == "boarding_custom":   # the Boarding "Add customization" box
+                if data.get("on"):
+                    project.pop("boarding_off", None)
+                else:
+                    project["boarding_off"] = True
+                papro_studio.save(STUDIO_DIR, project)
+                papro_studio.sync_secondary(STUDIO_DIR, project)
+            elif name == "boarding_section":
+                if data.get("remove"):
+                    papro_studio.remove_boarding_section(STUDIO_DIR, project, str(data.get("item", "")))
+                else:
+                    papro_studio.add_boarding_section(STUDIO_DIR, project, str(data.get("item", "")))
+                papro_studio.sync_secondary(STUDIO_DIR, project)
+            elif name == "boarding_order":
+                papro_studio.set_boarding_order(STUDIO_DIR, project, data.get("order") or [])
                 papro_studio.sync_secondary(STUDIO_DIR, project)
             elif name == "landing_custom":   # the After Landing "Add customization" box
                 if data.get("on"):
