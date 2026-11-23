@@ -57,6 +57,8 @@ AIRCRAFT_TYPES = sorted(ICAO_TYPES)
 # number of flight attendants (the hour clips 1-12 of the clock), a base (an airport name) and the crew's names. The order of
 # the pieces is the pack creator's; the number comes from the aircraft type.
 CREW_FOLDER = "crew"
+CREW_PART = "Crew introduction"   # a sub-section of Safety briefing
+SAFETY_PART = "Pre-safety briefing & safety demonstration"
 CREW_NAME = re.compile(r"^[A-Za-z][A-Za-z '.-]{0,23}$")
 MALE_NAMES = ["James", "Michael", "David", "Daniel", "Matthew", "Andrew", "Christopher", "Joshua", "Ryan", "Brandon", "Marcus",
               "Anthony", "Kevin", "Brian", "Jason", "Eric", "Tyler", "Nathan", "Jacob", "Ethan", "Carlos", "Luis", "Miguel", "Jamal",
@@ -637,19 +639,22 @@ def slot_list(project: dict) -> list[dict]:
     if crew["on"]:
         script1 = {1: "Our crew of... (said before the number)", 2: "...-based flight attendants are excited to take care of you. We extend a special welcome to our members. We appreciate you continuing to trust us with your travel."}
         for n in crew_intros(crew):
-            add("Crew introduction", CREW_FOLDER, crew_stem("intro", n), f"Intro part {n}", script1.get(n, "Another part of the crew introduction."))
+            add("Safety briefing", CREW_FOLDER, crew_stem("intro", n), f"Intro part {n}", script1.get(n, "Another part of the crew introduction."))
             out[-1]["crew"] = "intro"
             out[-1]["crew_item"] = f"intro:{n}"
+            out[-1]["part"] = CREW_PART
         if "base" in crew["order"]:
             for code in crew["bases"]:
                 nm = airport_name(code)
-                add("Crew introduction", CREW_FOLDER, crew_stem("base", code), f"Base: {code}" + (f" - {nm}" if nm else ""),
+                add("Safety briefing", CREW_FOLDER, crew_stem("base", code), f"Base: {code}" + (f" - {nm}" if nm else ""),
                     f"Say the base name, e.g. '{nm or 'Atlanta'}' (it is heard between the pieces of the introduction).")
                 out[-1]["crew"] = "base"
+                out[-1]["part"] = CREW_PART
         if "names" in crew["order"]:
             for name in crew["names"]:
-                add("Crew introduction", CREW_FOLDER, crew_stem("name", name), f"Crew name: {name}", f"Say just the name: '{name}'.")
+                add("Safety briefing", CREW_FOLDER, crew_stem("name", name), f"Crew name: {name}", f"Say just the name: '{name}'.")
                 out[-1]["crew"] = "name"
+                out[-1]["part"] = CREW_PART
     for entry in project.get("typed", []):   # custom takes for particular aircraft types
         stem = typed_stem(entry["base"], entry["types"], entry.get("n", 1))
         shown = "all aircraft" if entry["types"] == ["ALL"] else ", ".join(entry["types"])
@@ -669,7 +674,6 @@ PHASES = [
     ("Boarding", ("Welcome_", "Modular_Welcome", "BoardingWelcome", "Fuel_Tag")),
     ("Boarding music", ()), ("Bolt-ons", ()),
     ("Boarding complete & doors", ("BoardingComplete", "ArmDoors")),
-    ("Crew introduction", ()),
     ("Safety briefing", ("PreSafetyBriefing", "SafetyBriefing")),
     ("Before takeoff", ("CrewTakeSeats[PreFlight]", "CabinDim[PreFlight]", "CabinSecured[PreFlight]")),
     ("Climb & cruise", ("AfterTakeoff", "SeatbeltSignOff", "CabinService", "SeatbeltSignOn")),
@@ -689,6 +693,8 @@ SAFETY_TYPED = ("PreSafetyBriefing", "SafetyBriefing")   # aircraft versions of 
 
 def phase_of(slot: dict) -> tuple[str, int]:
     """(phase name, position inside it) for a slot, from its file-name base."""
+    if slot.get("crew"):   # the crew introduction comes first in the Safety briefing
+        return "Safety briefing", -1
     if slot.get("typed") and slot.get("base") in SAFETY_TYPED:   # introduction, its aircraft versions, demonstration, its aircraft versions
         return "Safety briefing", 0.5 if slot["base"] == "PreSafetyBriefing" else 1.5
     if slot["group"] == "Safety briefing" and slot["stem"] in SAFETY_TYPED:
@@ -725,6 +731,10 @@ def arrange(slots: list[dict]) -> list[dict]:
         elif name == "After Landing" and sl["stem"] == "AfterLanding":
             sl["part"] = LANDING_FALLBACK
         sl["group"], sl["_pos"] = name, pos
+    if any(sl.get("crew") for sl in slots):   # with the crew introduction in it, the Safety briefing has two sub-sections
+        for sl in slots:
+            if sl["group"] == "Safety briefing" and not sl.get("crew"):
+                sl["part"] = SAFETY_PART
     order = {name: i for i, name in enumerate(PHASE_NAMES)}
     slots.sort(key=lambda sl: (order.get(sl["group"], 98), sl["_pos"]))   # stable: equal positions (hours, minutes...) keep their order
     for sl in slots:
@@ -824,8 +834,8 @@ def status(root: Path, project: dict) -> list[dict]:
     def order(r):
         if r["group"] in alphabetical:
             return r["label"].lower()
-        if r["group"] == "Crew introduction":   # the intro parts, then the bases, then the names
-            return ({"base": 1, "name": 2}.get(r.get("crew"), 0), r["label"].lower() if r.get("crew") != "intro" else crew_order.index(r["crew_item"]))
+        if r.get("crew"):   # in the Safety briefing, first the intro parts (in their order), then the bases, then the names
+            return -100 + crew_order.index(r["crew_item"]) if r["crew"] == "intro" else -50 if r["crew"] == "base" else -40
         if r["group"] == "Airports":   # by airport, welcome aboard before landing
             return r["stem"].split("_", 1)[-1]
         return 0
