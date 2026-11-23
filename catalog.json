@@ -1,10 +1,10 @@
 {
   "app": {
-    "version": "1.0.7",
+    "version": "1.1.2",
     "url": "https://github.com/sjames1066/fcac",
     "notes": "Paste a list of airports in Pack Studio; installer and folder build",
-    "installer": "https://github.com/sjames1066/fcac/releases/download/v1.0.7/FCAC-Setup-1.0.7.exe",
-    "sha256": "7e3a15899f646ea2bd3255b0defeb08f44ad83f36f768d6fc348061c927428b8"
+    "installer": "https://github.com/sjames1066/papro/releases/download/v1.1.2/PAPro-Setup-1.1.2.exe",
+    "sha256": "cf4d901d0efcee57821c43c709698230e4a2e600a4e0fa5dad8a0322d9e4a249"
   },
   "packs": [
     {
