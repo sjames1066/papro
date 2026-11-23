@@ -1345,6 +1345,7 @@ async function testBuild(rebuild){
       b.onclick=()=>{ if(tIdx===idx&&tAudio){testStop();return} tPlaylist=false; testPlay(idx)};
       row.append(b,el("span","tn",t.label),el("span","tf",t.file)); c.appendChild(row)}
     L.appendChild(c)}
+  if(r.message){const m=el("div","small",r.message);m.style.cssText="margin:0 0 12px";L.prepend(m)}
   testMark();
 }
 $("#tab-main").onclick=()=>setView("main"); $("#tab-studio").onclick=()=>setView("studio"); $("#tab-dl").onclick=()=>setView("dl"); $("#tab-test").onclick=()=>setView("test");

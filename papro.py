@@ -1676,6 +1676,16 @@ def landing_base_clip(voice_dir: Path, airline: str) -> Path | None:
     return crew_base_pick(voice_dir, str(flight.get("origin", "")), crew_state_key(airline, voice_dir, flight))
 
 
+_CREW_WHY: list[str] = []
+
+
+def _crew_fail(why: str) -> bool:
+    """Why the crew introduction was not built (the ordinary briefing is used); shown in the Test tab."""
+    _CREW_WHY[:] = [why]
+    log.info("Crew introduction not built: %s", why)
+    return False
+
+
 def build_crew_intro(voice_dir: Path, airline: str, origin: str, aircraft: str, out: Path, state_key: str) -> bool:
     """Build the pre-safety briefing from pieces: intro parts, the number of flight attendants (the clock's hour clips), a base
     and the crew's names, in the order the pack set. The aircraft type gives the number; the base is the departure airport if
@@ -1683,11 +1693,12 @@ def build_crew_intro(voice_dir: Path, airline: str, origin: str, aircraft: str, 
     flight. Returns False (the ordinary PreSafetyBriefing stays) when the pieces are not there."""
     crew = crew_settings(voice_dir)
     folder = voice_dir / "crew"
+    _CREW_WHY.clear()
     if not crew or not folder.is_dir() or papro_audio is None or not papro_audio.have_backend():
-        return False
+        return _crew_fail("the crew folder is missing from the installed voice")
     count = int((crew.get("fa") or {}).get(aircraft.upper(), 0) or 0)
     if not count and ("number" in crew["order"] or "names" in crew["order"]):
-        return False   # no number for this aircraft type: say the pack's ordinary briefing
+        return _crew_fail(f"no number of flight attendants is set for aircraft type {aircraft or '(none)'}")   # no number for this aircraft type: say the pack's ordinary briefing
     state = load_state()
     pick_all = state.setdefault("crew_pick", {})
     pick = pick_all.get(state_key) or {}
@@ -1706,24 +1717,24 @@ def build_crew_intro(voice_dir: Path, airline: str, origin: str, aircraft: str, 
         if item.startswith("intro:"):
             f = folder / f"Intro_{item[6:]}.ogg"
             if not f.is_file():
-                return False
+                return _crew_fail(f"intro part {item[6:]} is not recorded")
             pieces.append(f)
         elif item == "number":
             f = part_file(voice_dir, f"Hour_{count:02d}")
             if not f:
-                return False
+                return _crew_fail(f"the hour clip for {count} is missing")
             pieces.append(f)
         elif item == "base":
             if pick.get("base") not in bases:
-                return False
+                return _crew_fail("no crew base is recorded")
             pieces.append(bases[pick["base"]])
         elif item == "names":
             most = max([int(v) for v in (crew.get("fa") or {}).values() if str(v).isdigit()] or [1])
             if len(names) < most:   # enough names for the biggest crew in the pack, so every aircraft type is covered
-                return False
+                return _crew_fail(f"{len(names)} crew names are in the installed voice, {most} are needed - if you have recorded more in Pack Studio, press \"Use in PAPro now\" there")
             files = [names[n] for n in pick.get("names", []) if n in names]
             if not files:
-                return False
+                return _crew_fail("no crew names")
             joined = out.with_name("crew_names.ogg")
             papro_audio.join(files, joined, 220, False)
             pieces.append(joined)
@@ -2059,6 +2070,7 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
                 install_file(path, dst, boost)
                 synced += 1
 
+    crew_note = ""
     if not only and crew_settings(voice_dir):   # the pre-safety briefing is built for this flight's aircraft (crew number, base, names)
         flight_now = load_state().get("flight") or {}
         crew_aircraft = current_aircraft_type()
@@ -2069,6 +2081,8 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
                 if build_crew_intro(voice_dir, airline, str(flight_now.get("origin", "")), crew_aircraft, crew_out,
                                     crew_state_key(airline, voice_dir, flight_now)):
                     install_file(crew_out, fenix_dir / "PreSafetyBriefing.ogg", boost)
+                elif target_dir and _CREW_WHY:
+                    crew_note = "generic Pre-safety briefing used: " + _CREW_WHY[0]
             except (papro_audio.AudioError, OSError) as exc:
                 log.warning("Could not build the crew introduction: %s", exc)
 
@@ -2121,7 +2135,7 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
                 except (papro_audio.AudioError, OSError) as exc:
                     log.warning("Could not build the descent announcement: %s", exc)
 
-    summary, custom, notes = [], 0, []
+    summary, custom, notes = [], 0, ([crew_note] if crew_note else [])
     board_order = voice_setting(voice_dir, "boarding_order") or None   # how the pack builds its welcome aboard (None: the usual order)
     land_order = voice_setting(voice_dir, "landing_order") or None   # how the pack builds its After Landing PA (None: the usual order)
     pause = int(cfg.get("segment_pause_ms", 60))
