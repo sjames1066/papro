@@ -1641,10 +1641,10 @@ function buildChecklist(c,host){
     }
     if(gr.name==="Descent & approach"){
       const dl=el("label","check");dl.style.cssText="display:flex;align-items:center;gap:8px;margin:4px 0 10px";const dc=el("input");dc.type="checkbox";dc.checked=!!c.descent_city;
-      dl.append(dc,document.createTextNode(" The descent announcement says the destination, e.g. “We've begun our initial descent into Atlanta. Please ensure all of your carry-on items are properly stowed...”"));
-      dc.onchange=async()=>{openGroups.add("Descent & approach");const r=await studio("descent_city",{...pid(c),on:dc.checked});if(r.ok)toast(dc.checked?"Record the two descent parts below (the airport name clip is the one used in the other announcements)":"Descent announcement back to the single clip")};
+      dl.append(dc,document.createTextNode(" Add destination name in Descent PA"));
+      dc.onchange=async()=>{openGroups.add("Descent & approach");if(dc.checked)openGroups.add("Descent & approach/Descent Started City-based PA");const r=await studio("descent_city",{...pid(c),on:dc.checked});if(r.ok)toast(dc.checked?"Record the two descent parts below (the airport name clip is the one used in the other announcements)":"Descent announcement back to the single clip")};
       d.append(dl);
-      if(c.descent_city)d.append(el("div","small","Record part 1 and part 2 below. PAPro joins them with the destination's airport name for each flight. Until both parts are recorded, the normal “Descent Started” clip is used."));
+      d.append(el("div","small","Adds a “Descent Started City-based PA” sub-section, for a PA like “We've begun our initial descent into Atlanta. Please ensure all of your carry-on items are properly stowed and fasten your seat belt.” Until both parts are recorded, the normal Descent Started clip is used."));
     }
     if(gr.name==="After Landing"){d.append(el("div","small","The hour clips (1-12) are also used to say the number of flight attendants in the crew introduction."))}
     if(gr.name==="Airports"){
@@ -1686,7 +1686,7 @@ function buildChecklist(c,host){
       const parts=[];if(crewHere)parts.push({name:"Crew introduction",rows:[]});
       gr.rows.forEach(r=>{let p=parts.find(x=>x.name===r.part);if(!p){p={name:r.part,rows:[]};parts.push(p)}p.rows.push(r)});
       parts.forEach(pt=>{const key=gr.name+"/"+pt.name,sd=el("details","grp sub");sd.open=openGroups.has(key);sd.ontoggle=()=>{sd.open?openGroups.add(key):openGroups.delete(key)};
-        const ss=el("summary",null,pt.name);ss.append(el("span",null,pt.rows.filter(r=>r.done||r.skipped).length+"/"+pt.rows.length));sd.append(ss);if(crewHere&&pt.name==="Crew introduction")crewControls(c,sd);pt.rows.forEach(r=>sd.append(slotRow(c,r)));d.append(sd)});
+        const ss=el("summary",null,pt.name);ss.append(el("span",null,pt.rows.filter(r=>r.done||r.skipped).length+"/"+pt.rows.length));sd.append(ss);if(crewHere&&pt.name==="Crew introduction")crewControls(c,sd);pt.rows.forEach(r=>sd.append(slotRow(c,r)));if(pt.name==="Descent Started City-based PA"){const cn=el("div","small","City name - taken from the Airports section: PAPro says the destination\u2019s airport name clip between part 1 and part 2.");cn.style.cssText="margin:8px 4px 4px";sd.append(cn)}d.append(sd)});
     }else gr.rows.forEach(r=>d.append(slotRow(c,r)));
     host.append(d);
   });

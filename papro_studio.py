@@ -57,6 +57,8 @@ AIRCRAFT_TYPES = sorted(ICAO_TYPES)
 # number of flight attendants (the hour clips 1-12 of the clock), a base (an airport name) and the crew's names. The order of
 # the pieces is the pack creator's; the number comes from the aircraft type.
 CREW_FOLDER = "crew"
+DESCENT_PART = "Descent Started City-based PA"
+OTHER_DESCENT_PART = "Descent & approach"
 CREW_PART = "Crew introduction"   # a sub-section of Safety briefing
 SAFETY_PART = "Pre-safety briefing & safety demonstration"
 CREW_NAME = re.compile(r"^[A-Za-z][A-Za-z '.-]{0,23}$")
@@ -620,10 +622,10 @@ def slot_list(project: dict) -> list[dict]:
                 add("Other announcements", "main", f"CabinService~{version}", f"{label} - {version}", script)
                 out[-1]["service"] = version
     if project.get("descent_city"):   # the descent announcement names the destination: part 1 + the airport's name + part 2
-        add("Descent & approach", "main", "Modular_DescentStart", "Descent started - part 1: before the destination",
-            "We've begun our initial descent into... (the airport name is added next)")
-        add("Descent & approach", "main", "Modular_DescentRest", "Descent started - part 2: after the destination",
-            "...Please ensure all of your carry-on items are properly stowed and fasten your seat belt.")
+        add("Descent & approach", "main", "Modular_DescentStart", "Descent Started - part 1: before the city",
+            "We've begun our initial descent into... (the airport name is added next)", part=DESCENT_PART)
+        add("Descent & approach", "main", "Modular_DescentRest", "Descent Started - part 2: after the city",
+            "...Please ensure all of your carry-on items are properly stowed and fasten your seat belt.", part=DESCENT_PART)
     for code in project.get("airports", []):
         name = airport_name(code)
         add("Airports", "airports", f"{icao}_{code}", f"{code}: {name}" if name else f"Airport name - {code}",
@@ -677,7 +679,7 @@ PHASES = [
     ("Safety briefing", ("PreSafetyBriefing", "SafetyBriefing")),
     ("Before takeoff", ("CrewTakeSeats[PreFlight]", "CabinDim[PreFlight]", "CabinSecured[PreFlight]")),
     ("Climb & cruise", ("AfterTakeoff", "SeatbeltSignOff", "CabinService", "SeatbeltSignOn")),
-    ("Descent & approach", ("Modular_DescentStart", "Modular_DescentRest", "DescentStarted", "CrewTakeSeats[Descent]", "CabinDim[Descent]", "CabinSecured[Descent]")),
+    ("Descent & approach", ("DescentStarted", "Modular_DescentStart", "Modular_DescentRest", "CrewTakeSeats[Descent]", "CabinDim[Descent]", "CabinSecured[Descent]")),
     ("After Landing", ("WelcomeTo", "LocalTime", "Hour_", "Min_", "AM", "PM", "Modular_Landing", "AfterLanding")),
     ("Deboarding", ("DisarmDoors", "DeboardingStarted", "DeboardingComplete")),
     ("Emergency", ("Decompression",)),
@@ -731,6 +733,10 @@ def arrange(slots: list[dict]) -> list[dict]:
         elif name == "After Landing" and sl["stem"] == "AfterLanding":
             sl["part"] = LANDING_FALLBACK
         sl["group"], sl["_pos"] = name, pos
+    if any(sl["stem"] == "Modular_DescentStart" for sl in slots):   # the city-based descent PA is a sub-section of Descent & approach
+        for sl in slots:
+            if sl["group"] == "Descent & approach":
+                sl["part"] = DESCENT_PART if sl["stem"] in ("DescentStarted", "Modular_DescentStart", "Modular_DescentRest") else OTHER_DESCENT_PART
     if any(sl.get("crew") for sl in slots):   # with the crew introduction in it, the Safety briefing has two sub-sections
         for sl in slots:
             if sl["group"] == "Safety briefing" and not sl.get("crew"):
