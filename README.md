@@ -33,8 +33,11 @@ Name each recording `<AIRLINE>_<destination ICAO>.ogg`. The destination is the I
 
 **Several options for one airport?** Add a suffix: `BAW_EGLL.ogg`, `BAW_EGLL_T5.ogg`, `BAW_EGLL_GEN.ogg`, `BAW_UUDD_ALT.ogg`
 (upper or lower case, it doesn't matter). When a flight's destination has more than one, PAPro pops up a small window
-asking which you prefer (the plain file is listed as "Standard"). Tick **Remember my choice for this airport** to stop
-being asked; **Forget remembered terminal choices** in the tray menu clears that. If `dep` has a `_T5` file but `dest`
+asking which you prefer (the plain file is listed as "Standard") - every time, nothing is remembered between flights.
+The landing announcement is built for the airport nearest to where you touch down: your choice for the planned airport is
+used if you landed there; if you diverted to an airport with several options, the plain / `_GEN` file is used (you are
+asked only if there is neither). A flight filed in SimBrief while you are airborne is ignored until you are parked with the
+engines off. If `dep` has a `_T5` file but `dest`
 doesn't, `dest` uses its plain file (or the original) for that flight. Closing the window picks the first option.
 From the command line: `--once --airline BAW --dest EGLL --variant T5`.
 

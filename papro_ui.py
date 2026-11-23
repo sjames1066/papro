@@ -750,7 +750,6 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
 
   <footer>
     <button class="ghost" id="aliases-btn">Airline aliases</button>
-    <button class="ghost" id="forget">Forget terminal choices</button>
   </footer>
   </div>
   <div id="view-dl" style="display:none">
@@ -784,7 +783,6 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
 <div class="modal" id="m-choice"><div class="dialog">
   <h3 id="c-title"></h3><p id="c-text"></p>
   <div class="opts" id="c-opts"></div>
-  <label class="check"><input type="checkbox" id="c-remember"> Remember my choice for this airport</label>
   <div class="row"><button class="primary" id="c-ok">Use this one</button></div>
 </div></div>
 
@@ -1189,13 +1187,13 @@ function renderPrompt(){
   if(!p){m.classList.remove("show");promptId=null;return}
   if(promptId===p.id) return;
   promptId=p.id; selected=p.options[0];
-  $("#c-title").textContent=p.title; $("#c-text").textContent=p.text; $("#c-remember").checked=false;
+  $("#c-title").textContent=p.title; $("#c-text").textContent=p.text;
   const o=$("#c-opts"); o.replaceChildren();
   p.options.forEach(name=>{const d=el("div","opt"+(name===selected?" sel":""),name);
     d.onclick=()=>{selected=name;[...o.children].forEach(x=>x.classList.toggle("sel",x===d))}; o.append(d)});
   m.classList.add("show");
 }
-$("#c-ok").onclick=async()=>{await api("answer",{id:promptId,choice:selected,remember:$("#c-remember").checked});$("#m-choice").classList.remove("show");promptId="done:"+promptId};
+$("#c-ok").onclick=async()=>{await api("answer",{id:promptId,choice:selected});$("#m-choice").classList.remove("show");promptId="done:"+promptId};
 
 function openName(){ $("#n-input").value=snap.username||""; $("#m-name").classList.add("show"); setTimeout(()=>$("#n-input").focus(),50) }
 let cfg={close:"no",autostart:"off",min:"no",time:"yes",extra:"25"};
@@ -1256,7 +1254,6 @@ $("#n-ok").onclick=async()=>{const v=$("#n-input").value.trim(); if(!v)return; $
 $("#n-input").addEventListener("keydown",e=>{if(e.key==="Enter")$("#n-ok").click()});
 $("#auto").onclick=()=>api("auto",{on:!snap.auto});
 $("#refresh").onclick=async()=>{await api("refresh");toast("Refreshing pack list")};
-$("#forget").onclick=async()=>{await api("forget");toast("Remembered choices cleared")};
 document.querySelectorAll("[data-open]").forEach(b=>b.onclick=()=>api("open",{what:b.dataset.open}));
 
 // ---------------------------------------------------------------- Pack Studio

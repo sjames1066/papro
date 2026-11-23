@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import filecmp
 import hashlib
+import math
 import json
 import logging
 import os
@@ -1345,25 +1346,25 @@ def choose_default(title: str, prompt: str, options: list[str]) -> tuple[str, bo
     return options[0], False
 
 
+_DIVERSION = threading.local()   # .on while building the landing PA for an airport that is not the planned destination
+
+
 def pick_variant(airline: str, dest_icao: str, options: list[str], choose) -> str:
-    """Return the variant label to use: a remembered choice, or the user's answer to a prompt."""
-    key = f"{airline}_{dest_icao}"
-    state = load_state()
-    remembered = state.get("choices", {}).get(key)
-    if remembered is not None and remembered in options:
-        return remembered
+    """Return the variant label to use. The user is always asked when an airport has more than one recording. The one
+    exception is a diversion (landed somewhere else than planned): the generic recording is used if there is one -
+    the plain file, else _Gen - and only when there is none is the user asked."""
+    if getattr(_DIVERSION, "on", False):
+        for generic in ("", "GEN"):
+            if generic in options:
+                log.info("Diversion to %s: using the generic recording", dest_icao)
+                return generic
     names = {variant_name(label): label for label in options}
-    answer, remember = choose(
+    answer, _ = choose(
         f"{airline} to {dest_icao}",
         f"There is more than one recording for {dest_icao}. Which would you like?",
         list(names),
     )
-    label = names.get(answer, options[0])
-    if remember:
-        state = load_state()
-        state.setdefault("choices", {})[key] = label
-        save_state(state)
-    return label
+    return names.get(answer, options[0])
 
 
 TIME_OF_DAY = ("morning", "afternoon", "evening", "night")   # Fenix tags: night 00-06, morning 06-12, afternoon 12-18, evening 18-24
@@ -2013,13 +2014,53 @@ def callsign_airline(cfg: dict, code: str, callsign: str) -> str | None:
     return other
 
 
-def rebuild_landing(cfg: dict, arrival: str | None) -> str:
+_COORDS = None
+
+
+def airport_coords() -> dict:
+    global _COORDS
+    if _COORDS is None:
+        _COORDS = {}
+        for base in (getattr(sys, "_MEIPASS", None), Path(__file__).parent):
+            f = Path(base) / "airport_coords.json" if base else None
+            if f and f.is_file():
+                try:
+                    _COORDS = json.loads(f.read_text(encoding="utf-8"))
+                    break
+                except (OSError, ValueError):
+                    pass
+    return _COORDS
+
+
+NEAREST_MAX_KM = 30.0   # touched down further than this from every known airport: keep the planned one
+
+
+def nearest_airport(lat: float, lon: float, max_km: float = NEAREST_MAX_KM) -> str | None:
+    """ICAO of the closest airport in the built-in list (airport_coords.json), or None if none is within max_km."""
+    best, best_d = None, max_km
+    cos = math.cos(math.radians(lat))
+    for icao, (a, o) in airport_coords().items():
+        if abs(a - lat) > 0.6:
+            continue
+        d = 111.2 * math.hypot(a - lat, (o - lon) * cos)
+        if d < best_d:
+            best, best_d = icao, d
+    return best
+
+
+def rebuild_landing(cfg: dict, arrival: str | None, position: tuple[float, float] | None = None) -> str:
     """You have landed and slowed down: rebuild the landing PA with the local time the sim reported (HH:MM)."""
     state = load_state()
     flight = state.get("flight") or {}
     airline, dest = flight.get("airline"), flight.get("dest")
     if not airline or not dest:
         raise AppError("No flight is set up, so there is no landing PA to build.")
+    planned = dest
+    near = nearest_airport(*position) if position else None
+    diverted = bool(near and near != dest)
+    if diverted:
+        log.info("Touched down at %s, not the planned %s - building the landing PA for %s", near, dest, near)
+        dest = near
     if not local_time_on(cfg, airline):
         return f"Landed at {dest}"
     if not arrival:
@@ -2027,9 +2068,16 @@ def rebuild_landing(cfg: dict, arrival: str | None) -> str:
     if not airline_has_pack(cfg, airline):
         return f"Landed at {dest} - no {airline} airline pack installed"
     stored = state.get("variants", {}).get(f"{airline}_{dest}")
-    message = apply_destination(cfg, airline, dest, choose=choose_default, variant=stored, arrival=arrival, only={"dest"},
-                                voice=state.get("voice_used", {}).get(f"{airline}_{dest}") or None,
-                                target_dir=playback_target())
+    if diverted:
+        stored = None   # the choice made for the planned airport means nothing here
+    _DIVERSION.on = diverted
+    try:
+        message = apply_destination(cfg, airline, dest, choose=CHOOSER or choose_default, variant=stored, arrival=arrival, only={"dest"},
+                                    voice=state.get("voice_used", {}).get(f"{airline}_{planned}") or None,
+                                    target_dir=playback_target())
+    finally:
+        _DIVERSION.on = False
+    stored = load_state().get("variants", {}).get(f"{airline}_{dest}")
     other = None if _PLAYBACK["on"] else callsign_airline(cfg, airline, flight.get("callsign", ""))
     if other:
         try:
@@ -2038,7 +2086,7 @@ def rebuild_landing(cfg: dict, arrival: str | None) -> str:
         except AppError:
             log.exception("Could not rebuild the %s landing PA", other)
     state = load_state()
-    state["live"] = f"{airline}_{dest}"  # the next SimBrief check must not undo this
+    state["live"] = f"{airline}_{planned}"  # the next SimBrief check must not undo this
     save_state(state)
     return f"Landed - {message}"
 
@@ -2840,12 +2888,10 @@ class UIMixin:
             self.window_closed()
         elif name == "refresh":
             self.refresh_catalog()
-        elif name == "forget":
-            self.forget_choices()
         elif name == "answer":
             prompt = self.prompt
             if prompt and prompt["id"] == data.get("id") and data.get("choice") in prompt["options"]:
-                prompt["answer"] = (data["choice"], bool(data.get("remember")))
+                prompt["answer"] = (data["choice"], False)
                 prompt["event"].set()
         elif name.startswith("studio_"):
             return self.studio_action(name[7:], data)
@@ -3426,14 +3472,6 @@ class TrayApp(UIMixin):
         ]
         return rows or [item("No packs installed", None, enabled=False)]
 
-    def forget_choices(self) -> None:
-        state = load_state()
-        count = len(state.pop("choices", {}))
-        state.pop("last", None)  # so the next update asks again
-        save_state(state)
-        self.set_status(f"Forgot {count} remembered choice(s)", notify=True)
-        self.wake.set()
-
     def restore_items(self):
         """Airlines PAPro has saved original announcements for (or that have a 'main' folder of their own)."""
         item = self.pystray.MenuItem
@@ -3642,6 +3680,7 @@ class TrayApp(UIMixin):
         if not engine.joined:   # PAPro opened part way through a flight: don't play what is already behind you
             engine.join(reading, tracker.phase())
         engine.feed(reading)
+        self.track_flight_lock(reading)
         self.boarding_music(engine, tracker)
         if "deboard_complete" in engine.done:   # flight over: a minute later get ready for the next one
             self._reset_at = getattr(self, "_reset_at", None) or reading["t"] + 60
@@ -3649,6 +3688,41 @@ class TrayApp(UIMixin):
                 engine.reset()
                 self.held_keys = []
                 self._reset_at = None
+
+    def track_flight_lock(self, reading: dict) -> None:
+        """While a flight is under way (airborne, landing, taxiing in) PAPro changes nothing for a new SimBrief plan - pilots often
+        file the next flight in the air. The lock is released once the aircraft is parked with the engines shut down, and PAPro
+        then fetches the new plan. Also remembers where the aircraft touched down (for the nearest-airport landing PA)."""
+        self.last_telemetry = time.time()
+        ground = bool(reading.get("on_ground"))
+        if not ground:
+            if not getattr(self, "flight_locked", False):
+                log.info("In the air: SimBrief changes are ignored until you are parked with the engines off")
+            self.flight_locked = True
+            self.was_airborne = True
+            return
+        if getattr(self, "was_airborne", False):   # the first reading on the ground after flying: the touchdown point
+            self.was_airborne = False
+            lat, lon = reading.get("lat"), reading.get("lon")
+            if lat is not None and lon is not None:
+                self.touchdown_pos = (float(lat), float(lon))
+        if not getattr(self, "flight_locked", False):
+            return
+        engines = reading.get("eng_running")
+        brake = reading.get("parking_brake")
+        stopped = float(reading.get("gs") or 0.0) < 1.0 and (engines is False or (engines is None and brake is True))
+        if stopped:
+            self.flight_locked = False
+            log.info("Parked with the engines off - looking for the next SimBrief flight plan")
+            state = load_state()
+            state.pop("live", None)
+            state.pop("last", None)
+            save_state(state)
+            self.wake.set()
+
+    def flight_in_progress(self) -> bool:
+        """True while the sim is feeding data and the flight has not ended with a parked, engines-off aircraft."""
+        return bool(getattr(self, "flight_locked", False)) and time.time() - getattr(self, "last_telemetry", 0.0) < 20.0
 
     def boarding_music(self, engine, tracker) -> None:
         """Non-Fenix aircraft: the boarding music plays on repeat from when boarding starts until boarding is complete, and the
@@ -3702,7 +3776,7 @@ class TrayApp(UIMixin):
             return
         with self.lock:  # wait for any update in progress
             try:
-                self.set_status(rebuild_landing(load_config(), clock), notify=True)
+                self.set_status(rebuild_landing(load_config(), clock, getattr(self, "touchdown_pos", None)), notify=True)
             except AppError as exc:
                 self.set_status(str(exc), notify=True)
             except Exception as exc:
@@ -3849,6 +3923,8 @@ class TrayApp(UIMixin):
     def poll_once(self, force: bool = False) -> None:
         if not self.lock.acquire(blocking=False):
             return
+        if not force and self.flight_in_progress() and load_state().get("last"):
+            return   # in the air / taxiing in: a newly filed flight waits until the aircraft is parked with the engines off
         try:
             cfg = load_config()
             changed, message = update(cfg, force=force)
