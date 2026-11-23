@@ -1628,7 +1628,7 @@ def build_crew_intro(voice_dir: Path, airline: str, origin: str, aircraft: str, 
     if not crew or not folder.is_dir() or papro_audio is None or not papro_audio.have_backend():
         return False
     count = int((crew.get("fa") or {}).get(aircraft.upper(), 0) or 0)
-    if not count:
+    if not count and ("number" in crew["order"] or "names" in crew["order"]):
         return False   # no number for this aircraft type: say the pack's ordinary briefing
     state = load_state()
     pick_all = state.setdefault("crew_pick", {})
@@ -1644,25 +1644,29 @@ def build_crew_intro(voice_dir: Path, airline: str, origin: str, aircraft: str, 
         save_state(state)
         log.info("Crew introduction: %d crew, base %s, names %s", count, pick["base"] or "-", ", ".join(pick["names"]) or "-")
     pieces: list[Path] = []
-    for item in crew["order"]:
+    for item in crew["order"]:   # every piece of the introduction must be there; if not, the ordinary briefing is used
         if item.startswith("intro:"):
             f = folder / f"Intro_{item[6:]}.ogg"
-            if f.is_file():
-                pieces.append(f)
+            if not f.is_file():
+                return False
+            pieces.append(f)
         elif item == "number":
             f = part_file(voice_dir, f"Hour_{count:02d}")
             if not f:
                 return False
             pieces.append(f)
-        elif item == "base" and pick.get("base") in bases:
+        elif item == "base":
+            if pick.get("base") not in bases:
+                return False
             pieces.append(bases[pick["base"]])
         elif item == "names":
             files = [names[n] for n in pick.get("names", []) if n in names]
-            if files:
-                joined = out.with_name("crew_names.ogg")
-                papro_audio.join(files, joined, 220, False)
-                pieces.append(joined)
-    if not any(x.name.startswith("Intro_") for x in pieces):
+            if not files:
+                return False
+            joined = out.with_name("crew_names.ogg")
+            papro_audio.join(files, joined, 220, False)
+            pieces.append(joined)
+    if not pieces:
         return False
     papro_audio.join(pieces, out, 60, True)
     return True
@@ -3355,7 +3359,13 @@ class UIMixin:
                                 fa[k] = max(1, min(papro_studio.MAX_CREW, int(v)))
                             except (TypeError, ValueError):
                                 return {"error": f"The number of flight attendants for {k} must be a number from 1 to {papro_studio.MAX_CREW}."}
-                papro_studio.set_crew(STUDIO_DIR, project, data.get("on"), data.get("intro"), data.get("order"), fa)
+                papro_studio.set_crew(STUDIO_DIR, project, data.get("on"), data.get("order"), fa)
+                papro_studio.sync_secondary(STUDIO_DIR, project)
+            elif name == "crew_section":   # add / delete a piece of the introduction (intro part, number, base, names)
+                if data.get("remove"):
+                    papro_studio.remove_crew_section(STUDIO_DIR, project, str(data.get("item", "")))
+                else:
+                    papro_studio.add_crew_section(STUDIO_DIR, project, str(data.get("item", "")))
                 papro_studio.sync_secondary(STUDIO_DIR, project)
             elif name == "crew_base":
                 if data.get("remove"):

@@ -70,14 +70,21 @@ CREW_DEFAULT_ORDER = ["intro:1", "number", "base", "intro:2", "names"]
 MAX_CREW = 12   # the number is said with the clock's hour clips, which go 1-12
 
 
+CREW_ITEM = re.compile(r"^(intro:[1-9]\d?|number|base|names)$")
+
+
 def crew_config(project: dict) -> dict:
-    """The crew introduction settings with every field present and tidy."""
+    """The crew introduction settings with every field present and tidy. "order" is the list of pieces the introduction is built
+    from, in the order they are said: intro:N (a recorded part), number, base, names. A piece that is not in the list is not
+    part of the introduction."""
     raw = project.get("crew") if isinstance(project.get("crew"), dict) else {}
-    intro = max(1, min(8, int(raw.get("intro", 2) or 2)))
-    wanted = [i for i in raw.get("order", []) if isinstance(i, str)]
-    items = [f"intro:{n}" for n in range(1, intro + 1)] + ["number", "base", "names"]
-    order = [i for i in wanted if i in items]
-    order += [i for i in (CREW_DEFAULT_ORDER if not wanted else items) if i in items and i not in order]
+    if "order" in raw:
+        order = []
+        for i in raw.get("order") or []:
+            if isinstance(i, str) and CREW_ITEM.match(i) and i not in order:
+                order.append(i)
+    else:
+        order = list(CREW_DEFAULT_ORDER)
     fa = {}
     for k, v in (raw.get("fa") or {}).items():
         try:
@@ -92,7 +99,11 @@ def crew_config(project: dict) -> dict:
         n = str(n).strip()
         if CREW_NAME.match(n) and n.lower() not in [x.lower() for x in names]:
             names.append(n)
-    return {"on": bool(raw.get("on")), "intro": intro, "order": order, "fa": fa, "bases": bases, "names": sorted(names, key=str.lower)}
+    return {"on": bool(raw.get("on")), "order": order, "fa": fa, "bases": bases, "names": sorted(names, key=str.lower)}
+
+
+def crew_intros(crew: dict) -> list[int]:
+    return [int(i[6:]) for i in crew["order"] if i.startswith("intro:")]
 
 
 def crew_stem(kind: str, value) -> str:
@@ -114,20 +125,48 @@ def random_crew_name(project: dict) -> dict:
     return {"name": random.choice(pool) if pool else "", "gender": gender}
 
 
-def set_crew(root: Path, project: dict, on=None, intro=None, order=None, fa=None) -> dict:
+def set_crew(root: Path, project: dict, on=None, order=None, fa=None) -> dict:
     crew = crew_config(project)
     if on is not None:
         crew["on"] = bool(on)
-    if intro is not None:
-        crew["intro"] = max(1, min(8, int(intro)))
     if order is not None:
         crew["order"] = [str(i) for i in order]
     if fa is not None:
         crew["fa"] = fa
     project["crew"] = crew_config({"crew": crew})
-    project["crew"]["bases"], project["crew"]["names"] = crew["bases"], crew["names"]
     save(root, project)
     return project["crew"]
+
+
+def add_crew_section(root: Path, project: dict, item: str) -> str:
+    """Put a piece (intro, number, base, names) on the end of the introduction. "intro" adds the next free intro part."""
+    crew = crew_config(project)
+    if item == "intro":
+        used = crew_intros(crew)
+        n = next((k for k in range(1, 20) if k not in used), None)
+        if n is None:
+            raise StudioError("That is enough intro parts.")
+        item = f"intro:{n}"
+    if not CREW_ITEM.match(item):
+        raise StudioError("Unknown part of the crew introduction.")
+    if item not in crew["order"]:
+        crew["order"].append(item)
+    project["crew"] = crew_config({"crew": crew})
+    save(root, project)
+    return item
+
+
+def remove_crew_section(root: Path, project: dict, item: str) -> None:
+    """Take a piece out of the introduction. An intro part's recording goes with it; bases and names stay recorded, ready to be put back."""
+    crew = crew_config(project)
+    if item.startswith("intro:"):
+        try:
+            delete_slot(root, project, f"{CREW_FOLDER}/{crew_stem('intro', item[6:])}")
+        except StudioError:
+            pass
+    crew["order"] = [i for i in crew["order"] if i != item]
+    project["crew"] = crew_config({"crew": crew})
+    save(root, project)
 
 
 def add_crew_base(root: Path, project: dict, text: str) -> tuple[list[str], list[str]]:
@@ -562,16 +601,20 @@ def slot_list(project: dict) -> list[dict]:
     crew = crew_config(project)
     if crew["on"]:
         script1 = {1: "Our crew of... (said before the number)", 2: "...-based flight attendants are excited to take care of you. We extend a special welcome to our members. We appreciate you continuing to trust us with your travel."}
-        for n in range(1, crew["intro"] + 1):
+        for n in crew_intros(crew):
             add("Crew introduction", CREW_FOLDER, crew_stem("intro", n), f"Intro part {n}", script1.get(n, "Another part of the crew introduction."))
-        for code in crew["bases"]:
-            nm = airport_name(code)
-            add("Crew introduction", CREW_FOLDER, crew_stem("base", code), f"Base: {code}" + (f" - {nm}" if nm else ""),
-                f"Say the base name, e.g. '{nm or 'Atlanta'}' (it is heard between the pieces of the introduction).")
-            out[-1]["crew"] = "base"
-        for name in crew["names"]:
-            add("Crew introduction", CREW_FOLDER, crew_stem("name", name), f"Crew name: {name}", f"Say just the name: '{name}'.")
-            out[-1]["crew"] = "name"
+            out[-1]["crew"] = "intro"
+            out[-1]["crew_item"] = f"intro:{n}"
+        if "base" in crew["order"]:
+            for code in crew["bases"]:
+                nm = airport_name(code)
+                add("Crew introduction", CREW_FOLDER, crew_stem("base", code), f"Base: {code}" + (f" - {nm}" if nm else ""),
+                    f"Say the base name, e.g. '{nm or 'Atlanta'}' (it is heard between the pieces of the introduction).")
+                out[-1]["crew"] = "base"
+        if "names" in crew["order"]:
+            for name in crew["names"]:
+                add("Crew introduction", CREW_FOLDER, crew_stem("name", name), f"Crew name: {name}", f"Say just the name: '{name}'.")
+                out[-1]["crew"] = "name"
     for entry in project.get("typed", []):   # custom takes for particular aircraft types
         stem = typed_stem(entry["base"], entry["types"], entry.get("n", 1))
         shown = "all aircraft" if entry["types"] == ["ALL"] else ", ".join(entry["types"])
@@ -736,6 +779,7 @@ def status(root: Path, project: dict) -> list[dict]:
                 "custom": slot["id"] in project.get("scripts", {})}
         rows.append({**slot, "music": bool(slot.get("music")), "skipped": bool(not have and slot["id"] in project.get("skipped", [])), "silent": bool(have and slot["id"] in project.get("silent", [])), "done": have, "seconds": info.get("seconds") if have else None,
                      "lufs": info.get("lufs_out") if have else None, "imported": bool(have and info.get("imported")), "variants": variants})
+    crew_order = crew_config(project)["order"]
     alphabetical = {"Boarding music", "Bolt-ons"}  # the clock stays in clock order; everything else is in flight order
     first = {}
     for i, r in enumerate(rows):
@@ -744,7 +788,7 @@ def status(root: Path, project: dict) -> list[dict]:
         if r["group"] in alphabetical:
             return r["label"].lower()
         if r["group"] == "Crew introduction":   # the intro parts, then the bases, then the names
-            return ({"base": 1, "name": 2}.get(r.get("crew"), 0), r["label"].lower())
+            return ({"base": 1, "name": 2}.get(r.get("crew"), 0), r["label"].lower() if r.get("crew") != "intro" else crew_order.index(r["crew_item"]))
         if r["group"] == "Airports":   # by airport, welcome aboard before landing
             return r["stem"].split("_", 1)[-1]
         return 0
@@ -1441,8 +1485,11 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
         stems = [p.stem for p in crew_dir.glob("*.ogg")]
         crew_raw["bases"] = sorted({*crew_raw.get("bases", []), *(x[5:] for x in stems if re.fullmatch(r"Base_[A-Z0-9]{4}", x))})
         crew_raw["names"] = sorted({*crew_raw.get("names", []), *(x[5:].replace("_", " ") for x in stems if x.startswith("Name_"))})
-        parts = [int(x[6:]) for x in stems if re.fullmatch(r"Intro_\d+", x)]
-        crew_raw["intro"] = max([crew_raw.get("intro", 2), *parts])
+        order = [i for i in (crew_raw.get("order") or CREW_DEFAULT_ORDER) if isinstance(i, str)]
+        for n in sorted(int(x[6:]) for x in stems if re.fullmatch(r"Intro_\d+", x)):
+            if f"intro:{n}" not in order:
+                order.append(f"intro:{n}")
+        crew_raw["order"] = order
     if crew_raw:
         project["crew"] = crew_config({"crew": crew_raw})
     for slot in slot_list(project):
