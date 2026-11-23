@@ -1590,7 +1590,8 @@ function buildChecklist(c,host){
       const intros=c.rows.filter(r=>r.crew==="intro"),bases=c.rows.filter(r=>r.crew==="base"),names=c.rows.filter(r=>r.crew==="name");
       const miss=[];if(!intros.length)miss.push("an intro part");intros.filter(r=>!r.done).forEach(r=>miss.push(r.label));
       if(order.includes("base")&&!bases.some(r=>r.done))miss.push("at least one base");
-      if(order.includes("names")&&!names.some(r=>r.done))miss.push("at least one crew name");
+      const most=Math.max(1,...Object.values(cr.fa||{}).map(Number));const nDone=names.filter(r=>r.done).length;
+      if(order.includes("names")&&nDone<most)miss.push((most-nDone)+" more crew name"+(most-nDone>1?"s":"")+" (at least "+most+" recorded, the largest crew in Crew introduction settings)");
       const warn=el("div","small",miss.length?"Not complete yet - until it is, the normal Pre-safety briefing is used. Still to do: "+miss.join(", ")+".":"Complete - this introduction replaces the normal Pre-safety briefing on aircraft types that have a number set.");
       warn.style.cssText="margin:8px 0;color:"+(miss.length?"var(--warn,#d9822b)":"var(--ok,#3aa76d)");d.append(warn);
       const lab=k=>k.startsWith("intro:")?"Intro part "+k.slice(6):k==="number"?"Number of flight attendants":k==="base"?"Base":"Crew names";

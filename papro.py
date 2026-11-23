@@ -1660,6 +1660,9 @@ def build_crew_intro(voice_dir: Path, airline: str, origin: str, aircraft: str, 
                 return False
             pieces.append(bases[pick["base"]])
         elif item == "names":
+            most = max([int(v) for v in (crew.get("fa") or {}).values() if str(v).isdigit()] or [1])
+            if len(names) < most:   # enough names for the biggest crew in the pack, so every aircraft type is covered
+                return False
             files = [names[n] for n in pick.get("names", []) if n in names]
             if not files:
                 return False
