@@ -1604,7 +1604,6 @@ function crewNameAdd(c,d){
 }
 function openCrew(sub){openGroups.add("Safety briefing");openGroups.add("Safety briefing/Crew introduction");if(sub)openGroups.add("Safety briefing/Crew introduction/"+sub)}
 function crewControls(c,d){
-  faEditor(c,d);
       const cr=c.crew||{order:[],fa:{}};let order=[...cr.order];
       d.append(el("div","small","The pre-safety briefing is built for each flight from these pieces, in the order below (drag to reorder, ✕ to delete a piece, the buttons add more). The number of flight attendants comes from the aircraft type (set above) and is said with the hour clips (1-12) from After Landing. A flight from a recorded base uses that base, otherwise one is picked at random, and each flight attendant gets a different random name."));
       const intros=c.rows.filter(r=>r.crew==="intro"),bases=c.rows.filter(r=>r.crew==="base"),names=c.rows.filter(r=>r.crew==="name");
@@ -1768,9 +1767,10 @@ function buildChecklist(c,host){
         const ss=el("summary",null,pt.name);ss.append(el("span",null,pt.rows.filter(r=>r.done||r.skipped).length+"/"+pt.rows.length));sd.append(ss);if(crewHere&&pt.name==="Crew introduction")crewControls(c,sd);if(pt.name==="Descent Started City-based PA")descentControls(c,sd);if(pt.name==="After Landing with crew base")landingControls(c,sd);
         if(crewHere&&pt.name==="Crew introduction"){
           pt.rows.filter(r=>r.crew==="intro").forEach(r=>sd.append(slotRow(c,r)));
-          const sub=(title,rows,adder)=>{const k="Safety briefing/Crew introduction/"+title,dd=el("details","grp sub");dd.open=openGroups.has(k);dd.ontoggle=()=>{dd.open?openGroups.add(k):openGroups.delete(k)};
-            const sm=el("summary",null,title);sm.append(el("span",null,rows.filter(r=>r.done||r.skipped).length+"/"+rows.length));dd.append(sm);adder(dd);rows.forEach(r=>dd.append(slotRow(c,r)));sd.append(dd)};
+          const sub=(title,rows,adder,count)=>{const k="Safety briefing/Crew introduction/"+title,dd=el("details","grp sub");dd.open=openGroups.has(k);dd.ontoggle=()=>{dd.open?openGroups.add(k):openGroups.delete(k)};
+            const sm=el("summary",null,title);sm.append(el("span",null,count!=null?String(count):rows.filter(r=>r.done||r.skipped).length+"/"+rows.length));dd.append(sm);adder(dd);rows.forEach(r=>dd.append(slotRow(c,r)));sd.append(dd)};
           const ord=(c.crew&&c.crew.order)||[];
+          sub("Aircraft types",[],dd=>faEditor(c,dd),Object.keys((c.crew&&c.crew.fa)||{}).length);
           if(ord.includes("base"))sub("Bases",pt.rows.filter(r=>r.crew==="base"),dd=>crewBaseAdd(c,dd));
           if(ord.includes("names"))sub("Crew names",pt.rows.filter(r=>r.crew==="name"),dd=>crewNameAdd(c,dd));
         }else pt.rows.forEach(r=>sd.append(slotRow(c,r)));d.append(sd)});
