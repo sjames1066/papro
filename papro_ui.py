@@ -492,7 +492,8 @@ header p{margin:0;color:var(--muted);font-size:12.5px}
 .switch.on .track::after{left:41px;background:#fff}
 .card{background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,.015));border:1px solid var(--line);
       border-radius:18px;padding:20px 22px;backdrop-filter:blur(6px)}
-.card.tight{margin-top:8px!important;margin-bottom:8px!important}
+.card.tight{margin-top:8px!important;margin-bottom:8px!important;padding:10px 18px}
+.card.tight h2.fold{margin:0!important;font-size:16px}.card.tight h2.fold[data-open="1"]{margin-bottom:12px!important}
 .label{font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);margin:0 0 12px}
 .herorow{display:flex;gap:16px;align-items:stretch;margin-bottom:26px}.herorow .hero{flex:1;min-width:0;margin-bottom:0}
 .knobbox{flex:none;width:182px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:14px 10px;background:linear-gradient(#1b1c21,#111216);border-color:#2b2d35}
