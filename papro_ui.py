@@ -1588,11 +1588,25 @@ function faEditor(c,d){
   ab.onclick=()=>{const t=ti.value.trim().toUpperCase();if(!t)return;fa[t]=Math.max(1,Math.min(12,+ni.value||4));ti.value="";draw();saveFa()};
   add.append(ti,dl,ni,ab);d.append(add);
 }
-function openCrew(){openGroups.add("Safety briefing");openGroups.add("Safety briefing/Crew introduction")}
+function crewBaseAdd(c,d){
+
+        const bl=el("div","addline"),bi=el("input");bi.type="text";bi.placeholder="Base airport, e.g. KATL (several: KATL, KJFK)";bi.style.textTransform="uppercase";const bb=el("button",null,"Add base");
+        bb.onclick=async()=>{if(!bi.value.trim())return;const r=await studio("crew_base",{...pid(c),code:bi.value});if(r.error)toast(r.error,5000);else openCrew("Bases")};
+        bi.addEventListener("keydown",e=>{if(e.key==="Enter")bb.click()});bl.append(bi,bb);d.append(bl)
+}
+function crewNameAdd(c,d){
+
+        const nl=el("div","addline");nl.style.marginTop="8px";const ni=el("input");ni.type="text";ni.placeholder="Crew first name, e.g. Sarah";const nb=el("button",null,"Add name"),nr=el("button","ghost","Random name");
+        nr.title="Suggest a name to record. It keeps the crew about half men and half women.";
+        nr.onclick=async()=>{const r=await api("studio_crew_random",pid(c));if(r.name){ni.value=r.name;toast(r.name+" ("+r.gender+") - press Add name, then record it")}};
+        nb.onclick=async()=>{if(!ni.value.trim())return;const r=await studio("crew_name",{...pid(c),name:ni.value});if(r.error)toast(r.error,5000);else openCrew("Crew names")};
+        ni.addEventListener("keydown",e=>{if(e.key==="Enter")nb.click()});nl.append(ni,nr,nb);d.append(nl)
+}
+function openCrew(sub){openGroups.add("Safety briefing");openGroups.add("Safety briefing/Crew introduction");if(sub)openGroups.add("Safety briefing/Crew introduction/"+sub)}
 function crewControls(c,d){
   faEditor(c,d);
       const cr=c.crew||{order:[],fa:{}};let order=[...cr.order];
-      d.append(el("div","small","The pre-safety briefing is built for each flight from these pieces, in the order below (drag to reorder, ✕ to delete a piece, the buttons add more). The number of flight attendants comes from the aircraft type (Crew introduction settings, below Voice details) and is said with the hour clips (1-12) from After Landing. A flight from a recorded base uses that base, otherwise one is picked at random, and each flight attendant gets a different random name."));
+      d.append(el("div","small","The pre-safety briefing is built for each flight from these pieces, in the order below (drag to reorder, ✕ to delete a piece, the buttons add more). The number of flight attendants comes from the aircraft type (set above) and is said with the hour clips (1-12) from After Landing. A flight from a recorded base uses that base, otherwise one is picked at random, and each flight attendant gets a different random name."));
       const intros=c.rows.filter(r=>r.crew==="intro"),bases=c.rows.filter(r=>r.crew==="base"),names=c.rows.filter(r=>r.crew==="name");
       const miss=[];if(!intros.length)miss.push("an intro part");intros.filter(r=>!r.done).forEach(r=>miss.push(r.label));
       if(order.includes("base")&&!bases.some(r=>r.done))miss.push("at least one base");
@@ -1626,16 +1640,7 @@ function crewControls(c,d){
       if(!order.includes("base"))addBtn("+ Base","base","Say a base");
       if(!order.includes("names"))addBtn("+ Crew names","names","Say the crew's names");
       d.append(ctl);
-      if(order.includes("base")){
-        const bl=el("div","addline"),bi=el("input");bi.type="text";bi.placeholder="Base airport, e.g. KATL (several: KATL, KJFK)";bi.style.textTransform="uppercase";const bb=el("button",null,"Add base");
-        bb.onclick=async()=>{if(!bi.value.trim())return;const r=await studio("crew_base",{...pid(c),code:bi.value});if(r.error)toast(r.error,5000);else openCrew()};
-        bi.addEventListener("keydown",e=>{if(e.key==="Enter")bb.click()});bl.append(bi,bb);d.append(bl)}
-      if(order.includes("names")){
-        const nl=el("div","addline");nl.style.marginTop="8px";const ni=el("input");ni.type="text";ni.placeholder="Crew first name, e.g. Sarah";const nb=el("button",null,"Add name"),nr=el("button","ghost","Random name");
-        nr.title="Suggest a name to record. It keeps the crew about half men and half women.";
-        nr.onclick=async()=>{const r=await api("studio_crew_random",pid(c));if(r.name){ni.value=r.name;toast(r.name+" ("+r.gender+") - press Add name, then record it")}};
-        nb.onclick=async()=>{if(!ni.value.trim())return;const r=await studio("crew_name",{...pid(c),name:ni.value});if(r.error)toast(r.error,5000);else openCrew()};
-        ni.addEventListener("keydown",e=>{if(e.key==="Enter")nb.click()});nl.append(ni,nr,nb);d.append(nl)}
+
 }
 function openDescent(){openGroups.add("Descent & approach");openGroups.add("Descent & approach/Descent Started City-based PA")}
 function openLanding(){openGroups.add("After Landing");openGroups.add("After Landing/After Landing with crew base")}
@@ -1760,7 +1765,15 @@ function buildChecklist(c,host){
       gr.rows.forEach(r=>{let p=parts.find(x=>x.name===r.part);if(!p){p={name:r.part,rows:[]};parts.push(p)}p.rows.push(r)});
       if(landHere&&!parts.find(x=>x.name==="After Landing with crew base"))parts.push({name:"After Landing with crew base",rows:[]});
       parts.forEach(pt=>{const key=gr.name+"/"+pt.name,sd=el("details","grp sub");sd.open=openGroups.has(key);sd.ontoggle=()=>{sd.open?openGroups.add(key):openGroups.delete(key)};
-        const ss=el("summary",null,pt.name);ss.append(el("span",null,pt.rows.filter(r=>r.done||r.skipped).length+"/"+pt.rows.length));sd.append(ss);if(crewHere&&pt.name==="Crew introduction")crewControls(c,sd);if(pt.name==="Descent Started City-based PA")descentControls(c,sd);if(pt.name==="After Landing with crew base")landingControls(c,sd);pt.rows.forEach(r=>sd.append(slotRow(c,r)));d.append(sd)});
+        const ss=el("summary",null,pt.name);ss.append(el("span",null,pt.rows.filter(r=>r.done||r.skipped).length+"/"+pt.rows.length));sd.append(ss);if(crewHere&&pt.name==="Crew introduction")crewControls(c,sd);if(pt.name==="Descent Started City-based PA")descentControls(c,sd);if(pt.name==="After Landing with crew base")landingControls(c,sd);
+        if(crewHere&&pt.name==="Crew introduction"){
+          pt.rows.filter(r=>r.crew==="intro").forEach(r=>sd.append(slotRow(c,r)));
+          const sub=(title,rows,adder)=>{const k="Safety briefing/Crew introduction/"+title,dd=el("details","grp sub");dd.open=openGroups.has(k);dd.ontoggle=()=>{dd.open?openGroups.add(k):openGroups.delete(k)};
+            const sm=el("summary",null,title);sm.append(el("span",null,rows.filter(r=>r.done||r.skipped).length+"/"+rows.length));dd.append(sm);adder(dd);rows.forEach(r=>dd.append(slotRow(c,r)));sd.append(dd)};
+          const ord=(c.crew&&c.crew.order)||[];
+          if(ord.includes("base"))sub("Bases",pt.rows.filter(r=>r.crew==="base"),dd=>crewBaseAdd(c,dd));
+          if(ord.includes("names"))sub("Crew names",pt.rows.filter(r=>r.crew==="name"),dd=>crewNameAdd(c,dd));
+        }else pt.rows.forEach(r=>sd.append(slotRow(c,r)));d.append(sd)});
     }else gr.rows.forEach(r=>d.append(slotRow(c,r)));
     host.append(d);
   });
