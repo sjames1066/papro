@@ -299,16 +299,17 @@ def remove_descent_section(root: Path, project: dict, item: str) -> None:
     save(root, project)
 
 
-# --------------------------------------------------------------------------- landing PA with the crew base
-# "On behalf of this <base>-based crew, thank you for choosing Delta...": recorded parts and the flight's crew base (the same base
-# as in the crew introduction), in an order the pack creator sets. It replaces the generic "part 2" of the landing PA.
-LANDING_PART = "After Landing with crew base"
-LANDING_DEFAULT_ORDER = ["part:1", "base", "part:2"]
-LANDING_ITEM = re.compile(r"^(part:[1-9]\d?|base)$")
+# --------------------------------------------------------------------------- the After Landing PA, built from pieces
+# "Welcome to <airport>, where the local time is <time>. <rest>": recorded parts (the first is the old Modular_Landing), the welcome-to
+# clip, the airport's name (from the Airports section), the local time (from Time and Numbers) and the crew base (from the crew
+# introduction), in an order the pack creator sets.
+LANDING_PART = "After Landing PA"
+LANDING_DEFAULT_ORDER = ["welcome", "airport", "time", "part:1"]
+LANDING_ITEM = re.compile(r"^(part:[1-9]\d?|welcome|airport|time|base)$")
 
 
 def landing_order(project: dict) -> list[str]:
-    raw = project.get("landing_order")
+    raw = None if project.get("landing_base") else project.get("landing_order")   # landing_base: an earlier test version of this setting
     if raw is None:
         return list(LANDING_DEFAULT_ORDER)
     out = []
@@ -319,10 +320,11 @@ def landing_order(project: dict) -> list[str]:
 
 
 def landing_stem(n: int) -> str:
-    return f"Modular_LandingPart{n}"
+    return "Modular_Landing" if n == 1 else f"Modular_LandingPart{n}"
 
 
 def set_landing_order(root: Path, project: dict, order) -> None:
+    project.pop("landing_base", None)
     project["landing_order"] = [i for i in order if isinstance(i, str) and LANDING_ITEM.match(i)]
     save(root, project)
 
@@ -339,16 +341,18 @@ def add_landing_section(root: Path, project: dict, item: str) -> None:
         raise StudioError("Unknown part of the landing announcement.")
     if item not in order:
         order.append(item)
+    project.pop("landing_base", None)
     project["landing_order"] = order
     save(root, project)
 
 
 def remove_landing_section(root: Path, project: dict, item: str) -> None:
-    if item.startswith("part:"):
+    if item.startswith("part:") and item != "part:1":
         try:
             delete_slot(root, project, f"main/{landing_stem(int(item[5:]))}")
         except (StudioError, ValueError):
             pass
+    project.pop("landing_base", None)
     project["landing_order"] = [i for i in landing_order(project) if i != item]
     save(root, project)
 
@@ -701,16 +705,12 @@ def slot_list(project: dict) -> list[dict]:
             out[-1].update({"variant_of": stem, "variant_n": n})
 
     W1, W2 = "Part 1 - Welcome onboard this flight to...", "Part 2"
-    L1, L2 = "Part 1 - Welcome to... [destination] [local time if enabled in Pack settings]", "Part 2"
     for stem, label, script in GREETINGS:
         if stem.startswith("Welcome_"):
             add("BoardingWelcome", "time", stem, label, script, required=stem != "Welcome_Night", part=W1)
             add_variations(stem, "BoardingWelcome", label, script, W1, "time")
     add("BoardingWelcome", "main", "Modular_Welcome", GENERAL[0][1], GENERAL[0][2], required=True, part=W2)
     add_variations("Modular_Welcome", "BoardingWelcome", GENERAL[0][1], GENERAL[0][2], W2)
-    for stem, label, script in GREETINGS:
-        if not stem.startswith("Welcome_"):
-            add("After Landing", "time", stem, label, script, required=True, part=L1)
     for i, word in enumerate(HOURS):
         n = i or 12
         add("Time and Numbers", "time", f"Hour_{n:02d}", f"Hour {n}", word.capitalize(), required=True)
@@ -718,16 +718,22 @@ def slot_list(project: dict) -> list[dict]:
         add("Time and Numbers", "time", f"Min_{minute:02d}", f"Minutes :{minute:02d}", word.capitalize(), required=True)
     add("Time and Numbers", "time", "AM", "AM (optional)", "A.M. - said after the minutes, e.g. 'four thirty-five A.M.'")
     add("Time and Numbers", "time", "PM", "PM (optional)", "P.M. - said after the minutes, e.g. 'four thirty-five P.M.'")
-    add("After Landing", "main", "Modular_Landing", GENERAL[1][1], GENERAL[1][2], required=True, part=L2)
-    add_variations("Modular_Landing", "After Landing", GENERAL[1][1], GENERAL[1][2], L2)
-    if project.get("landing_base"):   # the landing PA's second part can say the crew base: recorded parts + the base, in the pack's order
-        texts = {1: "On behalf of this... (the crew base is added next)",
-                 2: "...-based crew, thank you for choosing [airline]. We appreciate you and look forward to seeing you soon!"}
-        for item in landing_order(project):
-            if item.startswith("part:"):
-                n = int(item[5:])
-                add("After Landing", "main", landing_stem(n), f"After Landing - part {n} (with crew base)", texts.get(n, "Another part of the landing announcement."), part=LANDING_PART)
-                out[-1]["landing_item"] = item
+    greet = {stem: (label, script) for stem, label, script in GREETINGS}
+    for item in landing_order(project):   # the After Landing PA: its recorded pieces, in the pack's order
+        first = len(out)
+        if item == "welcome":
+            add("After Landing", "time", "WelcomeTo", "Welcome to... (before the airport name)", greet["WelcomeTo"][1], required=True, part=LANDING_PART)
+        elif item == "time":
+            add("After Landing", "time", "LocalTime", "...where the local time is (before the time)", greet["LocalTime"][1], required=True, part=LANDING_PART)
+        elif item.startswith("part:"):
+            n = int(item[5:])
+            label = "After Landing - part 1 (after the local time)" if n == 1 else f"After Landing - part {n}"
+            script = GENERAL[1][2] if n == 1 else "Another part of the landing announcement."
+            add("After Landing", "main", landing_stem(n), label, script, required=n == 1, part=LANDING_PART)
+            if n == 1:
+                add_variations("Modular_Landing", "After Landing", label, script, LANDING_PART)
+        for sl in out[first:]:
+            sl["landing_item"] = item
     for stem, label, script in GENERAL[2:]:
         add("Other announcements", "main", stem, label, script)
         if stem in VARIANT_BASES:
@@ -822,7 +828,7 @@ def phase_of(slot: dict) -> tuple[str, int]:
     if slot.get("descent_item"):
         return "Descent & approach", 1.5
     if slot.get("landing_item"):
-        return "After Landing", 8
+        return "After Landing", 6.5
     if slot.get("crew"):   # the crew introduction comes first in the Safety briefing
         return "Safety briefing", -1
     if slot.get("typed") and slot.get("base") in SAFETY_TYPED:   # introduction, its aircraft versions, demonstration, its aircraft versions
@@ -971,7 +977,7 @@ def status(root: Path, project: dict) -> list[dict]:
         if r["group"] in alphabetical:
             return r["label"].lower()
         if r.get("landing_item"):
-            return 100 + landing_pos[r["landing_item"]]
+            return -100 + landing_pos[r["landing_item"]]
         if r.get("descent_item"):
             return -100 + descent_pos[r["descent_item"]]
         if r["stem"] == "DescentStarted" and project.get("descent_city"):
@@ -1395,8 +1401,7 @@ def voice_json(project: dict) -> dict:
     if project.get("descent_city"):
         out["descent_city"] = True
         out["descent_order"] = descent_order(project)
-    if project.get("landing_base"):
-        out["landing_base"] = True
+    if project.get("landing_order") is not None and not project.get("landing_base"):
         out["landing_order"] = landing_order(project)
     crew = crew_config(project)
     if crew["on"]:   # how to build the crew introduction travels with the pack
@@ -1684,15 +1689,15 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
             if f"part:{n}" not in order:
                 order.append(f"part:{n}")
         project["descent_order"] = order
-    if info.get("landing_base") or any((pack / "main").glob("Modular_LandingPart*.ogg")) if (pack / "main").is_dir() else False:
-        project["landing_base"] = True
-        if isinstance(info.get("landing_order"), list):
-            project["landing_order"] = info["landing_order"]
+    if isinstance(info.get("landing_order"), list):
+        project["landing_order"] = info["landing_order"]
+    extra_parts = sorted(int(p.stem[len("Modular_LandingPart"):]) for p in (pack / "main").glob("Modular_LandingPart*.ogg")
+                         if p.stem[len("Modular_LandingPart"):].isdigit()) if (pack / "main").is_dir() else []
+    if extra_parts or "landing_order" in project:
         order = landing_order(project)
-        for p in sorted((pack / "main").glob("Modular_LandingPart*.ogg")):
-            tail = p.stem[len("Modular_LandingPart"):]
-            if tail.isdigit() and f"part:{int(tail)}" not in order:
-                order.append(f"part:{int(tail)}")
+        for n in extra_parts:
+            if n > 1 and f"part:{n}" not in order:
+                order.append(f"part:{n}")
         project["landing_order"] = order
     crew_raw = dict(info.get("crew") or {}) if isinstance(info.get("crew"), dict) else {}
     try:

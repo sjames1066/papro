@@ -1670,25 +1670,10 @@ def crew_base_pick(voice_dir: Path, origin: str, state_key: str) -> Path | None:
     return bases[pick["base"]]
 
 
-def landing_base_pieces(voice_dir: Path, airline: str) -> list[Path] | None:
-    """The pieces that replace the landing PA's generic second part when the pack says the crew base ("On behalf of this
-    Atlanta-based crew, thank you..."), or None (the generic part is used) when the setting is off or a piece is missing."""
-    if not voice_setting(voice_dir, "landing_base"):
-        return None
+def landing_base_clip(voice_dir: Path, airline: str) -> Path | None:
+    """The crew base clip for the landing PA: the one chosen for this flight (shared with the crew introduction)."""
     flight = load_state().get("flight") or {}
-    key = crew_state_key(airline, voice_dir, flight)
-    found: list[Path] = []
-    for item in voice_setting(voice_dir, "landing_order") or ["part:1", "base", "part:2"]:
-        if item == "base":
-            f = crew_base_pick(voice_dir, str(flight.get("origin", "")), key)
-        elif str(item).startswith("part:") and str(item)[5:].isdigit():
-            f = _find_piece(voice_dir, [f"Modular_LandingPart{int(item[5:])}"], (MAIN_FOLDER,))
-        else:
-            continue
-        if not f:
-            return None
-        found.append(f)
-    return found or None
+    return crew_base_pick(voice_dir, str(flight.get("origin", "")), crew_state_key(airline, voice_dir, flight))
 
 
 def build_crew_intro(voice_dir: Path, airline: str, origin: str, aircraft: str, out: Path, state_key: str) -> bool:
@@ -1775,31 +1760,46 @@ def round_clock(arrival: str) -> str:
 
 
 def landing_pieces(lib_dir: Path, clip: Path, arrival: str | None, want_time: bool = True,
-                   lead: Path | None = None, rest_pieces: list[Path] | None = None) -> tuple[list[Path] | None, str]:
-    """[Welcome to] + <destination> + "local time is HH:MM" + rest of the landing PA. `lead` is the "welcome to" clip when
-    `clip` is only the airport's name (the old dest clips already include it).
+                   lead: Path | None = None, order: list | None = None, base_clip: Path | None = None) -> tuple[list[Path] | None, str]:
+    """The After Landing PA from pieces, in the order the pack sets (default: [Welcome to] + <destination> + "local time is HH:MM" +
+    the rest of the landing PA). `lead` is the "welcome to" clip when `clip` is only the airport's name (the old dest clips already
+    include it). A recorded part, or the crew base, that is missing gives None (the generic PA is used).
     Returns (pieces or None, a note about the time that could not be added)."""
-    rest = modular_piece(lib_dir, "Landing")
-    if not rest:
-        return None, ""
-    pieces, note = ([lead, clip] if lead else [clip]), ""
-    if not want_time:
-        pass  # switched off in Settings
-    elif arrival:
-        arrival = round_clock(arrival)   # the spoken time is to the nearest five minutes
-        hour, minute = arrival.split(":")
-        twelve = int(hour) % 12 or 12  # PAs use the 12-hour clock: 14:35 -> "two thirty-five"
-        needed = [part_file(lib_dir, f"Hour_{twelve:02d}") or part_file(lib_dir, f"Hour_{hour}")]
-        if minute != "00" or part_file(lib_dir, "Min_00"):
-            needed.append(part_file(lib_dir, f"Min_{minute}"))
-        if all(needed):
-            meridiem = part_file(lib_dir, "PM" if int(hour) >= 12 else "AM")  # optional "AM" / "PM" clip after the minutes
-            pieces += [p for p in (part_file(lib_dir, "LocalTime"), *needed, meridiem) if p]
-        else:
-            note = f"local time {arrival} skipped (a Hour_{twelve:02d} / Min_{minute} piece is missing)"
-    else:
-        note = "local time skipped (SimBrief gave no arrival time)"
-    return pieces + (rest_pieces or [rest]), note
+    pieces, note = [], ""
+    for item in order or ["welcome", "airport", "time", "part:1"]:
+        if item == "welcome":
+            if lead:
+                pieces.append(lead)
+        elif item == "airport":
+            pieces.append(clip)
+        elif item == "base":
+            if not base_clip:
+                return None, ""
+            pieces.append(base_clip)
+        elif str(item).startswith("part:") and str(item)[5:].isdigit():
+            n = int(item[5:])
+            found = modular_piece(lib_dir, "Landing") if n == 1 else _find_piece(lib_dir, [f"Modular_LandingPart{n}"], (MAIN_FOLDER,))
+            if not found:
+                return None, ""
+            pieces.append(found)
+        elif item == "time":
+            if not want_time:
+                continue  # switched off in Settings
+            if not arrival:
+                note = "local time skipped (SimBrief gave no arrival time)"
+                continue
+            arrival = round_clock(arrival)   # the spoken time is to the nearest five minutes
+            hour, minute = arrival.split(":")
+            twelve = int(hour) % 12 or 12  # PAs use the 12-hour clock: 14:35 -> "two thirty-five"
+            needed = [part_file(lib_dir, f"Hour_{twelve:02d}") or part_file(lib_dir, f"Hour_{hour}")]
+            if minute != "00" or part_file(lib_dir, "Min_00"):
+                needed.append(part_file(lib_dir, f"Min_{minute}"))
+            if all(needed):
+                meridiem = part_file(lib_dir, "PM" if int(hour) >= 12 else "AM")  # optional "AM" / "PM" clip after the minutes
+                pieces += [x for x in (part_file(lib_dir, "LocalTime"), *needed, meridiem) if x]
+            else:
+                note = f"local time {arrival} skipped (a Hour_{twelve:02d} / Min_{minute} piece is missing)"
+    return (pieces or None), note
 
 
 LANGUAGES_FILE = "languages.json"   # Airlines\\<ICAO>\\languages.json: {"enabled": true, "order": ["de", "en"], "per_pa": {"SafetyBriefing": ["en", "de"]}}
@@ -2107,6 +2107,7 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
                     log.warning("Could not build the descent announcement: %s", exc)
 
     summary, custom, notes = [], 0, []
+    land_order = voice_setting(voice_dir, "landing_order") or None   # how the pack builds its After Landing PA (None: the usual order)
     pause = int(cfg.get("segment_pause_ms", 60))
     flow = cfg.get("join_style", "flow") != "pauses"
     with tempfile.TemporaryDirectory(dir=DATA_DIR) as work:
@@ -2127,7 +2128,7 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
             else:
                 clips = all_clips[folder]
             clip = clips.get(chosen) or clips.get("")  # the chosen variant, else the plain file, else generic
-            joined = (folder in ("dep", "fuel") and welcome_mode) or (folder == "dest" and modular_piece(voice_dir, "Landing"))
+            joined = (folder in ("dep", "fuel") and welcome_mode) or (folder == "dest" and (land_order or modular_piece(voice_dir, "Landing")))
             extra = pick_extra(cfg, voice_dir, f"{airline}_{dest_icao}") if joined and folder != "dest" else None
             if extra:
                 log.info("Bolt-on for this flight: %s", extra.stem)
@@ -2141,8 +2142,8 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
                 if joined and clip:
                     if folder == "dest":
                         pieces, note = landing_pieces(voice_dir, clip, arrival, local_time_on(cfg, source),
-                                                      lead if landing_from_name else None,
-                                                      landing_base_pieces(voice_dir, airline))
+                                                      lead if landing_from_name else None, land_order,
+                                                      landing_base_clip(voice_dir, airline) if land_order and "base" in land_order else None)
                         if note and note not in notes:
                             notes.append(note)
                     else:
@@ -3240,7 +3241,7 @@ class UIMixin:
             "also_icaos": ", ".join(project.get("also_icaos", [])), "local_time": project.get("local_time") is not False,
             "description": project.get("description", ""), "version": project.get("version", "1.0.0"),
             "effect": bool(project.get("effect", True)), "music_level": papro_studio.music_level(project), "airports": project["airports"], "aircraft": project.get("aircraft", []), "aircraft_on": bool(project.get("aircraft_on")),
-            "app_boost": boost_percent(cfg), "languages": self.language_snapshot(project), "language": project.get("language", ""), "aircraft_presets": papro_studio.AIRCRAFT_PRESETS, "typed_bases": papro_studio.TYPED_BASES, "aircraft_types": papro_studio.AIRCRAFT_TYPES, "extras": project["extras"], "music": project.get("music", []), "crew": papro_studio.crew_config(project), "descent_city": bool(project.get("descent_city")), "descent_order": papro_studio.descent_order(project), "landing_base": bool(project.get("landing_base")), "landing_order": papro_studio.landing_order(project), "service_types": project.get("service_types", []),
+            "app_boost": boost_percent(cfg), "languages": self.language_snapshot(project), "language": project.get("language", ""), "aircraft_presets": papro_studio.AIRCRAFT_PRESETS, "typed_bases": papro_studio.TYPED_BASES, "aircraft_types": papro_studio.AIRCRAFT_TYPES, "extras": project["extras"], "music": project.get("music", []), "crew": papro_studio.crew_config(project), "descent_city": bool(project.get("descent_city")), "descent_order": papro_studio.descent_order(project), "landing_order": papro_studio.landing_order(project), "service_types": project.get("service_types", []),
             "logo": papro_studio.logo_path(STUDIO_DIR, project).is_file(), "has_script": bool(project.get("scripts")), "origin": bool(project.get("origin")), "in_library": self.project_in_library(cfg, project["icao"], project["voice"]), "upgrades": papro_studio.upgrade_preview(STUDIO_DIR, project), "target_pending": False, "rows": rows, "missing": len(papro_studio.missing(STUDIO_DIR, project)),
             "target": target, "target_count": count, "target_source": label,
             "done": sum(1 for r in rows if r["done"] or r["skipped"]), "total": len(rows)}
@@ -3483,12 +3484,6 @@ class UIMixin:
                 project["descent_city"] = bool(data.get("on"))
                 if not project["descent_city"]:
                     project.pop("descent_city")
-                papro_studio.save(STUDIO_DIR, project)
-                papro_studio.sync_secondary(STUDIO_DIR, project)
-            elif name == "landing_base":   # the landing PA says the crew base
-                project["landing_base"] = bool(data.get("on"))
-                if not project["landing_base"]:
-                    project.pop("landing_base")
                 papro_studio.save(STUDIO_DIR, project)
                 papro_studio.sync_secondary(STUDIO_DIR, project)
             elif name == "landing_section":
