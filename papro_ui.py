@@ -1573,8 +1573,24 @@ function slotRow(c,r){
   if(r.variantable){const av=el("button","sq ghost","+");av.title="Add a variation: record another take of this announcement. PAPro picks one at random each flight.";av.style.fontSize="18px";av.style.lineHeight="1";av.onclick=async()=>{openGroups.add(r.group);await studio("variant",{...pid(c),base:r.stem});studioSig="";renderStudio()};act.append(av)}
   d.append(act);return d;
 }
+function faEditor(c,d){
+  const cr=c.crew||{fa:{}};
+  d.append(el("div","small","Flight attendants per aircraft type (the number is said in the introduction; the crew introduction is used only on aircraft types listed here):"));
+  const fa={...cr.fa};const list=el("div");list.style.cssText="display:flex;flex-direction:column;gap:6px;margin:8px 0;max-width:360px";
+  const saveFa=async()=>{const r=await api("studio_crew",{...pid(c),fa});if(r.ok){cr.fa={...fa}}else if(r.error)toast(r.error,5000)};
+  const draw=()=>{list.textContent="";Object.keys(fa).sort().forEach(t=>{const row=el("div");row.style.cssText="display:flex;align-items:center;gap:8px";
+    const nm=el("b",null,t);nm.style.cssText="width:70px";const n=el("input");n.type="number";n.min=1;n.max=12;n.value=fa[t];n.style.width="70px";n.onchange=()=>{fa[t]=Math.max(1,Math.min(12,+n.value||1));n.value=fa[t];saveFa()};
+    const x=el("button","ghost","✕");x.onclick=()=>{delete fa[t];draw();saveFa()};row.append(nm,n,el("span","small","flight attendants"),x);list.append(row)})};
+  draw();d.append(list);
+  const add=el("div","addline"),ti=el("input");ti.type="text";ti.placeholder="Aircraft type, e.g. A320";ti.setAttribute("list","crewtypes");ti.style.textTransform="uppercase";
+  const dl=el("datalist");dl.id="crewtypes";(c.aircraft_types||[]).forEach(t=>{const o=el("option");o.value=t;dl.append(o)});
+  const ni=el("input");ni.type="number";ni.min=1;ni.max=12;ni.value=4;ni.style.width="70px";const ab=el("button",null,"Add");
+  ab.onclick=()=>{const t=ti.value.trim().toUpperCase();if(!t)return;fa[t]=Math.max(1,Math.min(12,+ni.value||4));ti.value="";draw();saveFa()};
+  add.append(ti,dl,ni,ab);d.append(add);
+}
 function openCrew(){openGroups.add("Safety briefing");openGroups.add("Safety briefing/Crew introduction")}
 function crewControls(c,d){
+  faEditor(c,d);
       const cr=c.crew||{order:[],fa:{}};let order=[...cr.order];
       d.append(el("div","small","The pre-safety briefing is built for each flight from these pieces, in the order below (drag to reorder, ✕ to delete a piece, the buttons add more). The number of flight attendants comes from the aircraft type (Crew introduction settings, below Voice details) and is said with the hour clips (1-12) from After Landing. A flight from a recorded base uses that base, otherwise one is picked at random, and each flight attendant gets a different random name."));
       const intros=c.rows.filter(r=>r.crew==="intro"),bases=c.rows.filter(r=>r.crew==="base"),names=c.rows.filter(r=>r.crew==="name");
@@ -1662,6 +1678,12 @@ function buildChecklist(c,host){
   groups.forEach(gr=>{
     const d=el("details","grp");d.open=openGroups.has(gr.name);d.ontoggle=()=>{d.open?openGroups.add(gr.name):openGroups.delete(gr.name)};
     const sm=el("summary",null,gr.name);sm.append(el("span",null,gr.rows.filter(r=>r.done||r.skipped).length+"/"+gr.rows.length));d.append(sm);
+    if(gr.name==="Safety briefing"){
+      const cl=el("label","check");cl.style.cssText="display:flex;align-items:center;gap:8px;margin:4px 0 10px";const cc=el("input");cc.type="checkbox";cc.checked=!!(c.crew&&c.crew.on);
+      cl.append(cc,document.createTextNode(" Add crew introduction (number of flight attendants, base and crew names)"));
+      cc.onchange=async()=>{openCrew();const r=await studio("crew",{...pid(c),on:cc.checked});if(r.ok)toast(cc.checked?"Crew introduction added below":"Crew introduction removed")};
+      d.append(cl);
+    }
     if(gr.name==="Climb & cruise"){
       d.append(el("div","small","Cabin service can have named versions, for example Domestic and International. Name each version (the name is what the pilot sees) and record it below the normal Cabin service. With more than one version, PAPro asks which one to use when a flight is loaded."));
       const sl=el("div","addline"),si=el("input");si.type="text";si.placeholder="Version name, e.g. Domestic";const sb=el("button",null,"Add cabin service version");
@@ -1675,7 +1697,12 @@ function buildChecklist(c,host){
       d.append(dl);
       d.append(el("div","small","Adds a “Descent Started City-based PA” sub-section, for a PA like “We've begun our initial descent into Atlanta. Please ensure all of your carry-on items are properly stowed and fasten your seat belt.” Until both parts are recorded, the normal Descent Started clip is used."));
     }
-    if(gr.name==="After Landing"){d.append(el("div","small","The hour clips (1-12) are also used to say the number of flight attendants in the crew introduction."))}
+    if(gr.name==="After Landing"){
+      const tl=el("label","check");tl.style.cssText="display:flex;align-items:center;gap:8px;margin:4px 0 10px";const tc=el("input");tc.type="checkbox";tc.checked=c.local_time!==false;
+      tl.append(tc,document.createTextNode(" Say the local time in the landing announcement (needs the hour and minute clips)"));
+      tc.onchange=async()=>{openGroups.add("After Landing");const r=await studio("details",{...pid(c),local_time:tc.checked,effect:c.effect});if(r.ok)toast("Saved")};
+      d.append(tl);
+      d.append(el("div","small","The hour clips (1-12) are also used to say the number of flight attendants in the crew introduction."))}
     if(gr.name==="Airports"){
       d.append(el("div","small","Add your airports (paste a whole list if you like) and record just each name (for example “London Heathrow”). PAPro mixes that one clip into both the BoardingWelcome and the landing PA. Add a terminal variant like EGLL_T5 if you record one."));
       const line=el("div","addline"),i=el("textarea");i.rows=2;i.placeholder="EGLL, EGKK, EGCC  (paste a list: commas, semicolons, spaces or new lines)";i.style.textTransform="uppercase";i.style.resize="vertical";const add=el("button",null,"Add airports");
@@ -1796,8 +1823,6 @@ function renderStudio(){
     sb.append(el("div","small","Adds a second set of announcements below, recorded in that language and said after the primary one, with a short pause between."));
     ss.onchange=async()=>{const r=await api("studio_secondary",{...pid(c),language:ss.value});if(r.error){toast(r.error);ss.value=c.secondary_language||""}else toast(ss.value?"Secondary language added below":"Secondary language removed (its recordings are kept)");await refreshNow()};
     gl.append(pb,sb);g.append(gl)}
-  { const tl=el("label","wide check"),tc=el("input");tc.type="checkbox";tc.checked=c.local_time!==false;tl.append(tc,document.createTextNode(" This pack says the local time in its landing announcement (needs the hour and minute clips)"));tl.style.cssText="display:flex;align-items:center;gap:8px;margin-top:4px";
-    tc.onchange=async()=>{const r=await api("studio_details",{...pid(c),local_time:tc.checked,effect:c.effect});if(r.ok)toast("Saved");studioSig=""};card.append(tl)}
   const lg=el("div","logorow"),im=el("img","logoimg");im.alt="Pack logo";
   im.src=c.logo?"/studio/logo?"+new URLSearchParams({icao:c.icao,voice:c.voice,t:TOKEN,v:Date.now()}):"/logo/"+c.icao+".png?t="+TOKEN+"&v="+(snap.logo_v||0);
   const lt=el("div",null);lt.append(el("div","nm2","Pack logo"),el("div","small",c.logo?"Shown in the pack list and the window header, and included in the exported zip.":"Optional. A png, jpg or webp - a square or wide logo on a transparent or light background works best."));
@@ -1834,32 +1859,6 @@ function renderStudio(){
     h.title="Show or hide the voice details";h.onclick=()=>{open=!open;paint();try{localStorage.setItem("paproDetails",open?"1":"0")}catch(e){}};
   }
   root.append(card);
-  { // crew introduction settings: switch it on, and how many flight attendants each aircraft type has
-    const cc=el("section","card tight");const cr=c.crew||{on:false,fa:{}};
-    cc.append(el("h2",null,"Crew introduction settings"));
-    cc.append(el("div","small","For airlines whose pre-safety briefing names the crew, e.g. “Our crew of four Atlanta-based flight attendants...”. Turning it on adds a Crew introduction sub-section under Safety briefing in the checklist above."));
-    const on=el("label","check");on.style.cssText="display:flex;align-items:center;gap:8px;margin:12px 0";const oc=el("input");oc.type="checkbox";oc.checked=!!cr.on;on.append(oc,document.createTextNode(" This pack has a crew introduction"));
-    oc.onchange=async()=>{const r=await studio("crew",{...pid(c),on:oc.checked});if(r.ok)toast(oc.checked?"Crew introduction added to the checklist":"Crew introduction removed")};cc.append(on);
-    if(cr.on){
-      cc.append(el("div","small","Flight attendants per aircraft type (the number is said in the introduction):"));
-      const fa={...cr.fa};const list=el("div");list.style.cssText="display:flex;flex-direction:column;gap:6px;margin:8px 0;max-width:360px";
-      const saveFa=async()=>{const r=await api("studio_crew",{...pid(c),fa});if(r.ok){cr.fa={...fa}}else if(r.error)toast(r.error,5000)};
-      const draw=()=>{list.textContent="";Object.keys(fa).sort().forEach(t=>{const row=el("div");row.style.cssText="display:flex;align-items:center;gap:8px";
-        const nm=el("b",null,t);nm.style.cssText="width:70px";const n=el("input");n.type="number";n.min=1;n.max=12;n.value=fa[t];n.style.width="70px";n.onchange=()=>{fa[t]=Math.max(1,Math.min(12,+n.value||1));n.value=fa[t];saveFa()};
-        const x=el("button","ghost","✕");x.onclick=()=>{delete fa[t];draw();saveFa()};row.append(nm,n,el("span","small","flight attendants"),x);list.append(row)})};
-      draw();cc.append(list);
-      const add=el("div","addline"),ti=el("input");ti.type="text";ti.placeholder="Aircraft type, e.g. A320";ti.setAttribute("list","crewtypes");ti.style.textTransform="uppercase";
-      const dl=el("datalist");dl.id="crewtypes";(c.aircraft_types||[]).forEach(t=>{const o=el("option");o.value=t;dl.append(o)});
-      const ni=el("input");ni.type="number";ni.min=1;ni.max=12;ni.value=4;ni.style.width="70px";const ab=el("button",null,"Add");
-      ab.onclick=()=>{const t=ti.value.trim().toUpperCase();if(!t)return;fa[t]=Math.max(1,Math.min(12,+ni.value||4));ti.value="";draw();saveFa()};
-      add.append(ti,dl,ni,ab);cc.append(add);
-    }
-    { const h=cc.firstChild,body=el("div");[...cc.children].slice(1).forEach(n=>body.append(n));cc.append(body);
-      let open=false;try{open=localStorage.getItem("paproCrewCard")==="1"}catch(e){}
-      h.classList.add("fold");const paint=()=>{h.dataset.open=open?"1":"0";body.style.display=open?"":"none"};paint();
-      h.title="Show or hide the crew introduction settings";h.onclick=()=>{open=!open;paint();try{localStorage.setItem("paproCrewCard",open?"1":"0")}catch(e){}}}
-    root.append(cc);
-  }
   { // preview volume: only for listening in PAPro. The marker is the level the sim will play the pack at.
     const vc=el("section","card tight");const sim=100+(c.app_boost==null?30:c.app_boost);
     const head=el("div");head.style.cssText="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap";
