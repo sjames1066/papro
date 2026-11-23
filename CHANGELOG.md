@@ -1,0 +1,45 @@
+# Changelog: FCAC 1.0.7 → PAPro 1.1.2
+
+FCAC is now **PAPro**. Fenix A320 still gets its PAs by file swap; other aircraft (PMDG and more) now get in-app playback.
+
+## 1.1.2
+- **Landing PA from the nearest airport.** When you touch down, PAPro finds the closest airport (within 30 km) and builds the landing PA for it. If you land at the planned airport, your terminal choice from setup is used.
+- **Diversions.** If you divert to an airport with several recordings (e.g. EGLL T3/T5), the plain or `_GEN` recording is used. PAPro only asks if neither exists.
+- **Terminal choice is always asked.** When an airport has more than one recording you are asked every time. "Remember my choice" and "Forget terminal choices" are removed.
+- **Prefiling the next flight.** A SimBrief plan filed while you are airborne is ignored. PAPro fetches it once you are parked with the engines off.
+- **Boarding music.** All tracks are merged into a single `BoardingMusic.ogg` (1.5 s crossfades). Non-Fenix aircraft loop it from the start of boarding until boarding is complete, and the boarding PA repeats every 3–7 minutes. Fenix gets the merged file; whether Fenix loops it is Fenix's own behaviour (unverified).
+- Build EXE now bundles `airport_coords.json`.
+
+## 1.1.1
+- **EFBx.** The flight plan is read from EFBx (`localhost:35810/efbx/simbrief`) first, falling back to SimBrief.
+- **Web page works at startup.** The server starts as soon as Windows launches PAPro in the tray, so the page and EFBx address work without opening the app first.
+- **Pack Studio**
+  - Skip a PA as *Default sound* or *No sound* (a 1 s silent `.ogg` overrides the default pack's sound).
+  - Skipped items are remembered, including airports, variations, bolt-ons and aircraft versions.
+  - Airport search/filter.
+  - Boarding music volume slider (default 50% of the announcements).
+  - New intro text, *Start New Pack* on the left, and the new-pack form appears only after clicking it.
+  - Saving no longer bumps the pack version: you set it yourself, and it is stored in `voice.json`.
+- **Playback behaviour**
+  - Nothing plays while the Pack Studio tab is open. Due PAs are held and play when you return to the Dashboard.
+  - Joining a flight part way through no longer plays announcements already behind you.
+  - With no pack for the flight's airline, leftover PAs from an earlier flight are cleared so nothing plays.
+- **Dashboard.** Route line is `DEP | name → ARR | name` with a magenta arrow and muted departure code. Installed packs show their version.
+- **Manage pack.** Removed the local-time checkbox (now in Pack Studio) and *Add a voice*. Removing the last voice uninstalls the pack.
+- **Browser / other devices.** PC-only settings are hidden. Network access is always on (toggle removed). No right-click menu, long-press callout, text selection or dragging in the app.
+- **Cleaner.** Windows notifications removed (PAPro stays in the background). Credit link removed (support link kept). Shorter tray text, e.g. "PAs loaded for BAW/SHT for EGCC".
+- **New app icon**: cabin window with sunset wing, in the tray, header, title bar, EXE and installer.
+- Fixes: "vimported" in the install message, duplicate remove buttons on aircraft-version rows, and the extra gap above the Pack Studio heading.
+
+## 1.0.8 – 1.1.0 (changes between the releases)
+- **In-app playback** for aircraft PAPro can't swap files for (PMDG and others): PAPro plays the PAs itself on a chosen output device, with the knob volume and mute applied.
+- **Flight phases** (Preflight → Boarding → … → Deboarding) move forward only. GSX integration is its own setting, and the Dashboard has *Start boarding* and *Disarm Doors PA* buttons.
+- **Languages.** Pack Studio has a required primary language and an optional secondary one, joined with a 2 s pause.
+- **Pack Studio**
+  - A "+ variation" on every PA and *Check clip volume / Match volume* for imported clips.
+  - Variations on greetings, Generic Boarding and refuelling.
+  - Section renames: Landing → After Landing, Descent Started, Seatbelt Sign On (Turbulence).
+  - Sub-headings for Boarding and After Landing.
+  - The Aircraft names section was removed.
+- **Local time is a per-pack setting.** It is in Manage and Pack Studio, no longer in general Settings.
+- **Test tab.** Green *Go* button (Enter works) and a playback volume slider.
