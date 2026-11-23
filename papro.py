@@ -2062,8 +2062,9 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
     if not only and crew_settings(voice_dir):   # the pre-safety briefing is built for this flight's aircraft (crew number, base, names)
         flight_now = load_state().get("flight") or {}
         crew_aircraft = current_aircraft_type()
-        if not crew_aircraft and target_dir:   # Test tab with "Any" aircraft: still try the crew introduction, for the first type the pack knows
-            crew_aircraft = next(iter((crew_settings(voice_dir) or {}).get("fa") or {}), "")
+        known_fa = (crew_settings(voice_dir) or {}).get("fa") or {}
+        if target_dir and not int(known_fa.get(crew_aircraft, 0) or 0):   # Test tab: "Any" or a type the crew introduction has no number for -> the first one it has
+            crew_aircraft = next(iter(known_fa), crew_aircraft)
         with tempfile.TemporaryDirectory(dir=DATA_DIR) as crew_work:
             crew_out = Path(crew_work) / "PreSafetyBriefing.ogg"
             try:
