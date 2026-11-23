@@ -1719,9 +1719,9 @@ function buildChecklist(c,host){
       d.append(el("div","small","Adds a “Descent Started City-based PA” sub-section, for a PA like “We've begun our initial descent into Atlanta. Please ensure all of your carry-on items are properly stowed and fasten your seat belt.” Until both parts are recorded, the normal Descent Started clip is used."));
     }
     if(gr.name==="After Landing"){
-      const tl=el("label","check");tl.style.cssText="display:flex;align-items:center;gap:8px;margin:4px 0 10px";const tc=el("input");tc.type="checkbox";tc.checked=c.local_time!==false;
-      tl.append(tc,document.createTextNode(" Say the local time in the landing announcement (needs the hour and minute clips)"));
-      tc.onchange=async()=>{openGroups.add("After Landing");const r=await studio("details",{...pid(c),local_time:tc.checked,effect:c.effect});if(r.ok)toast("Saved")};
+      const tl=el("label","check");tl.style.cssText="display:flex;align-items:center;gap:8px;margin:4px 0 10px";const tc=el("input");tc.type="checkbox";tc.checked=!c.landing_off;
+      tl.append(tc,document.createTextNode(" Add customization (airport name, local time, crew base and your own parts)"));
+      tc.onchange=async()=>{openGroups.add("After Landing");if(tc.checked)openLanding();const r=await studio("landing_custom",{...pid(c),on:tc.checked});if(r.ok)toast(tc.checked?"After Landing customization added below":"After Landing customization removed")};
       d.append(tl);
 }
     if(gr.name==="Time and Numbers"){d.append(el("div","small","The clock used by the landing announcement (“...where the local time is four thirty-five P.M.”). The hour clips (1-12) are also used to say the number of flight attendants in the crew introduction."))}
@@ -1760,7 +1760,7 @@ function buildChecklist(c,host){
       if(c.extras.length){const cr=el("div","chiprow");c.extras.forEach(a=>{const b=el("button","ghost",a.replace(/_/g," ")+" ✕");b.onclick=()=>studio("extra",{...pid(c),name:a,remove:true});cr.append(b)});d.append(cr)}
     }
     const crewHere=gr.name==="Safety briefing"&&c.crew&&c.crew.on;
-    const landHere=gr.name==="After Landing";
+    const landHere=gr.name==="After Landing"&&!c.landing_off;
     if(gr.rows.some(r=>r.part)||crewHere||landHere){
       const parts=[];if(crewHere)parts.push({name:"Crew introduction",rows:[]});
       gr.rows.forEach(r=>{let p=parts.find(x=>x.name===r.part);if(!p){p={name:r.part,rows:[]};parts.push(p)}p.rows.push(r)});

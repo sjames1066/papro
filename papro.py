@@ -3241,7 +3241,7 @@ class UIMixin:
             "also_icaos": ", ".join(project.get("also_icaos", [])), "local_time": project.get("local_time") is not False,
             "description": project.get("description", ""), "version": project.get("version", "1.0.0"),
             "effect": bool(project.get("effect", True)), "music_level": papro_studio.music_level(project), "airports": project["airports"], "aircraft": project.get("aircraft", []), "aircraft_on": bool(project.get("aircraft_on")),
-            "app_boost": boost_percent(cfg), "languages": self.language_snapshot(project), "language": project.get("language", ""), "aircraft_presets": papro_studio.AIRCRAFT_PRESETS, "typed_bases": papro_studio.TYPED_BASES, "aircraft_types": papro_studio.AIRCRAFT_TYPES, "extras": project["extras"], "music": project.get("music", []), "crew": papro_studio.crew_config(project), "descent_city": bool(project.get("descent_city")), "descent_order": papro_studio.descent_order(project), "landing_order": papro_studio.landing_order(project), "service_types": project.get("service_types", []),
+            "app_boost": boost_percent(cfg), "languages": self.language_snapshot(project), "language": project.get("language", ""), "aircraft_presets": papro_studio.AIRCRAFT_PRESETS, "typed_bases": papro_studio.TYPED_BASES, "aircraft_types": papro_studio.AIRCRAFT_TYPES, "extras": project["extras"], "music": project.get("music", []), "crew": papro_studio.crew_config(project), "descent_city": bool(project.get("descent_city")), "descent_order": papro_studio.descent_order(project), "landing_order": papro_studio.landing_order(project), "landing_off": bool(project.get("landing_off")), "service_types": project.get("service_types", []),
             "logo": papro_studio.logo_path(STUDIO_DIR, project).is_file(), "has_script": bool(project.get("scripts")), "origin": bool(project.get("origin")), "in_library": self.project_in_library(cfg, project["icao"], project["voice"]), "upgrades": papro_studio.upgrade_preview(STUDIO_DIR, project), "target_pending": False, "rows": rows, "missing": len(papro_studio.missing(STUDIO_DIR, project)),
             "target": target, "target_count": count, "target_source": label,
             "done": sum(1 for r in rows if r["done"] or r["skipped"]), "total": len(rows)}
@@ -3484,6 +3484,13 @@ class UIMixin:
                 project["descent_city"] = bool(data.get("on"))
                 if not project["descent_city"]:
                     project.pop("descent_city")
+                papro_studio.save(STUDIO_DIR, project)
+                papro_studio.sync_secondary(STUDIO_DIR, project)
+            elif name == "landing_custom":   # the After Landing "Add customization" box
+                if data.get("on"):
+                    project.pop("landing_off", None)
+                else:
+                    project["landing_off"] = True
                 papro_studio.save(STUDIO_DIR, project)
                 papro_studio.sync_secondary(STUDIO_DIR, project)
             elif name == "landing_section":

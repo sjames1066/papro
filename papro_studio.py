@@ -309,6 +309,8 @@ LANDING_ITEM = re.compile(r"^(part:[1-9]\d?|welcome|airport|time|base)$")
 
 
 def landing_order(project: dict) -> list[str]:
+    if project.get("landing_off"):   # "Add customization" is unticked: no landing parts
+        return []
     raw = None if project.get("landing_base") else project.get("landing_order")   # landing_base: an earlier test version of this setting
     if raw is None:
         return list(LANDING_DEFAULT_ORDER)
@@ -607,7 +609,7 @@ def create(root: Path, icao: str, airline: str, voice: str) -> dict:
 
 
 # --------------------------------------------------------------------------- primary / secondary language
-SHARED_FIELDS = ("artist", "accent", "description", "credit_url", "donate_url", "version", "local_time", "also_icaos", "crew", "service_types", "descent_city", "descent_order", "landing_base", "landing_order")
+SHARED_FIELDS = ("artist", "accent", "description", "credit_url", "donate_url", "version", "local_time", "also_icaos", "crew", "service_types", "descent_city", "descent_order", "landing_base", "landing_order", "landing_off")
 
 
 def secondary_of(root: Path, project: dict) -> dict | None:
@@ -1399,7 +1401,7 @@ def voice_json(project: dict) -> dict:
     if project.get("descent_city"):
         out["descent_city"] = True
         out["descent_order"] = descent_order(project)
-    if True:   # always written, so the pack builds its After Landing PA the way Pack Studio shows it
+    if not project.get("landing_off"):   # written, so the pack builds its After Landing PA the way Pack Studio shows it
         out["landing_order"] = landing_order(project)
     crew = crew_config(project)
     if crew["on"]:   # how to build the crew introduction travels with the pack
