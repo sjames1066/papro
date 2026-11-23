@@ -1606,7 +1606,7 @@ function buildChecklist(c,host){
       const sl=el("input");sl.type="range";sl.min=5;sl.max=100;sl.step=5;sl.value=c.music_level;sl.style.cssText="flex:1;max-width:260px";
       const lv=el("b",null,c.music_level+"%");
       sl.oninput=()=>{lv.textContent=sl.value+"%"};
-      sl.onchange=async()=>{toast("Setting the music volume...");const r=await api("studio_music_level",{...pid(c),level:+sl.value});if(r.ok){c.music_level=+sl.value;studioSig=JSON.stringify(snap.studio)}if(r.ok)toast(r.tracks?"Music volume set on "+r.tracks+(r.tracks===1?" track":" tracks"):"Music volume saved - applies to tracks you add")};
+      sl.onchange=async()=>{stopPlay();toast("Setting the music volume...");const r=await api("studio_music_level",{...pid(c),level:+sl.value});if(r.ok){c.music_level=+sl.value;studioSig=JSON.stringify(snap.studio)}if(r.ok)toast(r.tracks?"Music volume set on "+r.tracks+(r.tracks===1?" track":" tracks"):"Music volume saved - applies to tracks you add")};
       ml.append(el("span",null,"Music volume (% of the announcements):"),sl,lv);ml.title="50% is half as loud as the announcements (6 dB quieter). Changing it re-levels the tracks already in this pack.";d.append(ml);
       if(c.music.length){const cr=el("div","chiprow");c.music.forEach(a=>{const b=el("button","ghost",a+" ✕");b.onclick=()=>studio("music",{...pid(c),name:a,remove:true});cr.append(b)});d.append(cr)}
     }
