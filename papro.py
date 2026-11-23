@@ -2889,6 +2889,14 @@ class UIMixin:
             finally:
                 _STATE_LOCAL.path = None
                 _AIRCRAFT_LOCAL.value = None
+            try:   # a pack still being recorded has gaps: the airline's own Fenix PAs fill them, as they do in the sim
+                real = airline_packs_dir(cfg) / icao
+                if real.is_dir():
+                    for f in real.glob("*.ogg"):
+                        if not (pack / f.name).exists() and not is_modular(f.name) and not is_variant(f.name) and not typed_info(f.name):
+                            shutil.copyfile(f, pack / f.name)
+            except OSError as exc:
+                log.warning("Test tab: could not add the Fenix PAs: %s", exc)
             TEST_DIR.mkdir(parents=True, exist_ok=True)
             old = sorted((p for p in TEST_DIR.iterdir() if p.is_dir()), key=lambda p: p.stat().st_mtime)[:-10]
             for p in old:
