@@ -1648,6 +1648,49 @@ def crew_settings(voice_dir: Path) -> dict | None:
     return crew if isinstance(crew, dict) and crew.get("order") else None
 
 
+def crew_state_key(airline: str, voice_dir: Path, flight: dict) -> str:
+    return f"{airline}/{voice_dir.name}/{flight.get('number', '')}/{flight.get('origin', '')}/{flight.get('dest', '')}"
+
+
+def crew_base_pick(voice_dir: Path, origin: str, state_key: str) -> Path | None:
+    """The clip of this flight's crew base (the departure airport if recorded, else a random one; rolled once per flight and
+    shared with the crew introduction), or None when no base is recorded."""
+    bases = {f.stem[5:].upper(): f for f in (voice_dir / "crew").glob("Base_*.ogg")}
+    if not bases:
+        return None
+    state = load_state()
+    pick_all = state.setdefault("crew_pick", {})
+    pick = pick_all.get(state_key) or {}
+    if pick.get("base") not in bases:
+        base = origin.upper() if origin.upper() in bases else random.choice(sorted(bases))
+        pick = {**pick, "base": base}
+        pick_all.clear()
+        pick_all[state_key] = pick
+        save_state(state)
+    return bases[pick["base"]]
+
+
+def landing_base_pieces(voice_dir: Path, airline: str) -> list[Path] | None:
+    """The pieces that replace the landing PA's generic second part when the pack says the crew base ("On behalf of this
+    Atlanta-based crew, thank you..."), or None (the generic part is used) when the setting is off or a piece is missing."""
+    if not voice_setting(voice_dir, "landing_base"):
+        return None
+    flight = load_state().get("flight") or {}
+    key = crew_state_key(airline, voice_dir, flight)
+    found: list[Path] = []
+    for item in voice_setting(voice_dir, "landing_order") or ["part:1", "base", "part:2"]:
+        if item == "base":
+            f = crew_base_pick(voice_dir, str(flight.get("origin", "")), key)
+        elif str(item).startswith("part:") and str(item)[5:].isdigit():
+            f = _find_piece(voice_dir, [f"Modular_LandingPart{int(item[5:])}"], (MAIN_FOLDER,))
+        else:
+            continue
+        if not f:
+            return None
+        found.append(f)
+    return found or None
+
+
 def build_crew_intro(voice_dir: Path, airline: str, origin: str, aircraft: str, out: Path, state_key: str) -> bool:
     """Build the pre-safety briefing from pieces: intro parts, the number of flight attendants (the clock's hour clips), a base
     and the crew's names, in the order the pack set. The aircraft type gives the number; the base is the departure airport if
@@ -1665,8 +1708,8 @@ def build_crew_intro(voice_dir: Path, airline: str, origin: str, aircraft: str, 
     pick = pick_all.get(state_key) or {}
     bases = {f.stem[5:].upper(): f for f in folder.glob("Base_*.ogg")}
     names = {f.stem[5:]: f for f in folder.glob("Name_*.ogg")}
-    if not pick or pick.get("n") != count:
-        base = origin.upper() if origin.upper() in bases else (random.choice(sorted(bases)) if bases else "")
+    if not pick or pick.get("n") != count or pick.get("base") not in bases:
+        base = pick.get("base") if pick.get("base") in bases else (origin.upper() if origin.upper() in bases else (random.choice(sorted(bases)) if bases else ""))
         chosen = random.sample(sorted(names), min(count, len(names))) if names else []
         pick = {"n": count, "base": base, "names": chosen}
         pick_all.clear()
@@ -1732,7 +1775,7 @@ def round_clock(arrival: str) -> str:
 
 
 def landing_pieces(lib_dir: Path, clip: Path, arrival: str | None, want_time: bool = True,
-                   lead: Path | None = None) -> tuple[list[Path] | None, str]:
+                   lead: Path | None = None, rest_pieces: list[Path] | None = None) -> tuple[list[Path] | None, str]:
     """[Welcome to] + <destination> + "local time is HH:MM" + rest of the landing PA. `lead` is the "welcome to" clip when
     `clip` is only the airport's name (the old dest clips already include it).
     Returns (pieces or None, a note about the time that could not be added)."""
@@ -1756,7 +1799,7 @@ def landing_pieces(lib_dir: Path, clip: Path, arrival: str | None, want_time: bo
             note = f"local time {arrival} skipped (a Hour_{twelve:02d} / Min_{minute} piece is missing)"
     else:
         note = "local time skipped (SimBrief gave no arrival time)"
-    return pieces + [rest], note
+    return pieces + (rest_pieces or [rest]), note
 
 
 LANGUAGES_FILE = "languages.json"   # Airlines\\<ICAO>\\languages.json: {"enabled": true, "order": ["de", "en"], "per_pa": {"SafetyBriefing": ["en", "de"]}}
@@ -2009,7 +2052,7 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
             crew_out = Path(crew_work) / "PreSafetyBriefing.ogg"
             try:
                 if build_crew_intro(voice_dir, airline, str(flight_now.get("origin", "")), current_aircraft_type(), crew_out,
-                                    f"{airline}/{voice_dir.name}/{flight_now.get('number', '')}/{flight_now.get('origin', '')}/{dest_icao}"):
+                                    crew_state_key(airline, voice_dir, flight_now)):
                     install_file(crew_out, fenix_dir / "PreSafetyBriefing.ogg", boost)
             except (papro_audio.AudioError, OSError) as exc:
                 log.warning("Could not build the crew introduction: %s", exc)
@@ -2098,7 +2141,8 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
                 if joined and clip:
                     if folder == "dest":
                         pieces, note = landing_pieces(voice_dir, clip, arrival, local_time_on(cfg, source),
-                                                      lead if landing_from_name else None)
+                                                      lead if landing_from_name else None,
+                                                      landing_base_pieces(voice_dir, airline))
                         if note and note not in notes:
                             notes.append(note)
                     else:
@@ -3196,7 +3240,7 @@ class UIMixin:
             "also_icaos": ", ".join(project.get("also_icaos", [])), "local_time": project.get("local_time") is not False,
             "description": project.get("description", ""), "version": project.get("version", "1.0.0"),
             "effect": bool(project.get("effect", True)), "music_level": papro_studio.music_level(project), "airports": project["airports"], "aircraft": project.get("aircraft", []), "aircraft_on": bool(project.get("aircraft_on")),
-            "app_boost": boost_percent(cfg), "languages": self.language_snapshot(project), "language": project.get("language", ""), "aircraft_presets": papro_studio.AIRCRAFT_PRESETS, "typed_bases": papro_studio.TYPED_BASES, "aircraft_types": papro_studio.AIRCRAFT_TYPES, "extras": project["extras"], "music": project.get("music", []), "crew": papro_studio.crew_config(project), "descent_city": bool(project.get("descent_city")), "descent_order": papro_studio.descent_order(project), "service_types": project.get("service_types", []),
+            "app_boost": boost_percent(cfg), "languages": self.language_snapshot(project), "language": project.get("language", ""), "aircraft_presets": papro_studio.AIRCRAFT_PRESETS, "typed_bases": papro_studio.TYPED_BASES, "aircraft_types": papro_studio.AIRCRAFT_TYPES, "extras": project["extras"], "music": project.get("music", []), "crew": papro_studio.crew_config(project), "descent_city": bool(project.get("descent_city")), "descent_order": papro_studio.descent_order(project), "landing_base": bool(project.get("landing_base")), "landing_order": papro_studio.landing_order(project), "service_types": project.get("service_types", []),
             "logo": papro_studio.logo_path(STUDIO_DIR, project).is_file(), "has_script": bool(project.get("scripts")), "origin": bool(project.get("origin")), "in_library": self.project_in_library(cfg, project["icao"], project["voice"]), "upgrades": papro_studio.upgrade_preview(STUDIO_DIR, project), "target_pending": False, "rows": rows, "missing": len(papro_studio.missing(STUDIO_DIR, project)),
             "target": target, "target_count": count, "target_source": label,
             "done": sum(1 for r in rows if r["done"] or r["skipped"]), "total": len(rows)}
@@ -3440,6 +3484,21 @@ class UIMixin:
                 if not project["descent_city"]:
                     project.pop("descent_city")
                 papro_studio.save(STUDIO_DIR, project)
+                papro_studio.sync_secondary(STUDIO_DIR, project)
+            elif name == "landing_base":   # the landing PA says the crew base
+                project["landing_base"] = bool(data.get("on"))
+                if not project["landing_base"]:
+                    project.pop("landing_base")
+                papro_studio.save(STUDIO_DIR, project)
+                papro_studio.sync_secondary(STUDIO_DIR, project)
+            elif name == "landing_section":
+                if data.get("remove"):
+                    papro_studio.remove_landing_section(STUDIO_DIR, project, str(data.get("item", "")))
+                else:
+                    papro_studio.add_landing_section(STUDIO_DIR, project, str(data.get("item", "")))
+                papro_studio.sync_secondary(STUDIO_DIR, project)
+            elif name == "landing_order":
+                papro_studio.set_landing_order(STUDIO_DIR, project, data.get("order") or [])
                 papro_studio.sync_secondary(STUDIO_DIR, project)
             elif name == "descent_section":   # add / delete a piece of the city-based descent announcement
                 if data.get("remove"):

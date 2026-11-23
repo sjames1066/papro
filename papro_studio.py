@@ -299,6 +299,60 @@ def remove_descent_section(root: Path, project: dict, item: str) -> None:
     save(root, project)
 
 
+# --------------------------------------------------------------------------- landing PA with the crew base
+# "On behalf of this <base>-based crew, thank you for choosing Delta...": recorded parts and the flight's crew base (the same base
+# as in the crew introduction), in an order the pack creator sets. It replaces the generic "part 2" of the landing PA.
+LANDING_PART = "After Landing with crew base"
+LANDING_DEFAULT_ORDER = ["part:1", "base", "part:2"]
+LANDING_ITEM = re.compile(r"^(part:[1-9]\d?|base)$")
+
+
+def landing_order(project: dict) -> list[str]:
+    raw = project.get("landing_order")
+    if raw is None:
+        return list(LANDING_DEFAULT_ORDER)
+    out = []
+    for i in raw:
+        if isinstance(i, str) and LANDING_ITEM.match(i) and i not in out:
+            out.append(i)
+    return out
+
+
+def landing_stem(n: int) -> str:
+    return f"Modular_LandingPart{n}"
+
+
+def set_landing_order(root: Path, project: dict, order) -> None:
+    project["landing_order"] = [i for i in order if isinstance(i, str) and LANDING_ITEM.match(i)]
+    save(root, project)
+
+
+def add_landing_section(root: Path, project: dict, item: str) -> None:
+    order = landing_order(project)
+    if item == "part":
+        used = [int(i[5:]) for i in order if i.startswith("part:")]
+        n = next((k for k in range(1, 20) if k not in used), None)
+        if n is None:
+            raise StudioError("That is enough parts.")
+        item = f"part:{n}"
+    if not LANDING_ITEM.match(item):
+        raise StudioError("Unknown part of the landing announcement.")
+    if item not in order:
+        order.append(item)
+    project["landing_order"] = order
+    save(root, project)
+
+
+def remove_landing_section(root: Path, project: dict, item: str) -> None:
+    if item.startswith("part:"):
+        try:
+            delete_slot(root, project, f"main/{landing_stem(int(item[5:]))}")
+        except (StudioError, ValueError):
+            pass
+    project["landing_order"] = [i for i in landing_order(project) if i != item]
+    save(root, project)
+
+
 def typed_stem(base: str, types: list[str], n: int = 1) -> str:
     return f"{base}@{'+'.join(types)}" + (f"~v{n}" if n > 1 else "")
 
@@ -549,7 +603,7 @@ def create(root: Path, icao: str, airline: str, voice: str) -> dict:
 
 
 # --------------------------------------------------------------------------- primary / secondary language
-SHARED_FIELDS = ("artist", "accent", "description", "credit_url", "donate_url", "version", "local_time", "also_icaos", "crew", "service_types", "descent_city", "descent_order")
+SHARED_FIELDS = ("artist", "accent", "description", "credit_url", "donate_url", "version", "local_time", "also_icaos", "crew", "service_types", "descent_city", "descent_order", "landing_base", "landing_order")
 
 
 def secondary_of(root: Path, project: dict) -> dict | None:
@@ -666,6 +720,14 @@ def slot_list(project: dict) -> list[dict]:
     add("After Landing", "time", "PM", "Local time - PM (optional)", "P.M. - said after the minutes, e.g. 'four thirty-five P.M.'", part=L1)
     add("After Landing", "main", "Modular_Landing", GENERAL[1][1], GENERAL[1][2], required=True, part=L2)
     add_variations("Modular_Landing", "After Landing", GENERAL[1][1], GENERAL[1][2], L2)
+    if project.get("landing_base"):   # the landing PA's second part can say the crew base: recorded parts + the base, in the pack's order
+        texts = {1: "On behalf of this... (the crew base is added next)",
+                 2: "...-based crew, thank you for choosing [airline]. We appreciate you and look forward to seeing you soon!"}
+        for item in landing_order(project):
+            if item.startswith("part:"):
+                n = int(item[5:])
+                add("After Landing", "main", landing_stem(n), f"After Landing - part {n} (with crew base)", texts.get(n, "Another part of the landing announcement."), part=LANDING_PART)
+                out[-1]["landing_item"] = item
     for stem, label, script in GENERAL[2:]:
         add("Other announcements", "main", stem, label, script)
         if stem in VARIANT_BASES:
@@ -758,6 +820,8 @@ def phase_of(slot: dict) -> tuple[str, int]:
     """(phase name, position inside it) for a slot, from its file-name base."""
     if slot.get("descent_item"):
         return "Descent & approach", 1.5
+    if slot.get("landing_item"):
+        return "After Landing", 8
     if slot.get("crew"):   # the crew introduction comes first in the Safety briefing
         return "Safety briefing", -1
     if slot.get("typed") and slot.get("base") in SAFETY_TYPED:   # introduction, its aircraft versions, demonstration, its aircraft versions
@@ -897,6 +961,7 @@ def status(root: Path, project: dict) -> list[dict]:
                      "lufs": info.get("lufs_out") if have else None, "imported": bool(have and info.get("imported")), "variants": variants})
     crew_order = crew_config(project)["order"]
     descent_pos = {item: i for i, item in enumerate(descent_order(project))}
+    landing_pos = {item: i for i, item in enumerate(landing_order(project))}
     alphabetical = {"Boarding music", "Bolt-ons"}  # the clock stays in clock order; everything else is in flight order
     first = {}
     for i, r in enumerate(rows):
@@ -904,6 +969,8 @@ def status(root: Path, project: dict) -> list[dict]:
     def order(r):
         if r["group"] in alphabetical:
             return r["label"].lower()
+        if r.get("landing_item"):
+            return 100 + landing_pos[r["landing_item"]]
         if r.get("descent_item"):
             return -100 + descent_pos[r["descent_item"]]
         if r["stem"] == "DescentStarted" and project.get("descent_city"):
@@ -1327,6 +1394,9 @@ def voice_json(project: dict) -> dict:
     if project.get("descent_city"):
         out["descent_city"] = True
         out["descent_order"] = descent_order(project)
+    if project.get("landing_base"):
+        out["landing_base"] = True
+        out["landing_order"] = landing_order(project)
     crew = crew_config(project)
     if crew["on"]:   # how to build the crew introduction travels with the pack
         out["crew"] = {"order": crew["order"], "fa": crew["fa"]}
@@ -1613,6 +1683,16 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
             if f"part:{n}" not in order:
                 order.append(f"part:{n}")
         project["descent_order"] = order
+    if info.get("landing_base") or any((pack / "main").glob("Modular_LandingPart*.ogg")) if (pack / "main").is_dir() else False:
+        project["landing_base"] = True
+        if isinstance(info.get("landing_order"), list):
+            project["landing_order"] = info["landing_order"]
+        order = landing_order(project)
+        for p in sorted((pack / "main").glob("Modular_LandingPart*.ogg")):
+            tail = p.stem[len("Modular_LandingPart"):]
+            if tail.isdigit() and f"part:{int(tail)}" not in order:
+                order.append(f"part:{int(tail)}")
+        project["landing_order"] = order
     crew_raw = dict(info.get("crew") or {}) if isinstance(info.get("crew"), dict) else {}
     try:
         saved_crew = json.loads((src / "studio.json").read_text(encoding="utf-8-sig")).get("crew")
@@ -1727,7 +1807,7 @@ def install_to_library(root: Path, project: dict, airline_dir: Path) -> Path:
         pass
     if project.get("scripts"):
         (dest / "scripts.json").write_text(json.dumps(project["scripts"], indent=2, ensure_ascii=False), encoding="utf-8")
-    structure = {k: project[k] for k in ("airports", "extras", "variants", "typed", "silent", "service_types", "descent_order") if project.get(k)}
+    structure = {k: project[k] for k in ("airports", "extras", "variants", "typed", "silent", "service_types", "descent_order", "landing_order") if project.get(k)}
     if crew_config(project)["on"]:
         structure["crew"] = crew_config(project)
     structure_file = dest / "studio.json"   # the parts of the checklist that are not backed by a clip yet (an airport you have not recorded, a skipped "+")

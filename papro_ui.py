@@ -1638,12 +1638,14 @@ function crewControls(c,d){
         ni.addEventListener("keydown",e=>{if(e.key==="Enter")nb.click()});nl.append(ni,nr,nb);d.append(nl)}
 }
 function openDescent(){openGroups.add("Descent & approach");openGroups.add("Descent & approach/Descent Started City-based PA")}
-function descentControls(c,d){
-  let order=[...(c.descent_order||["part:1","city","part:2"])];
-  d.append(el("div","small","PAPro builds the descent announcement for each flight from these pieces, in this order (drag to reorder, ✕ to delete a piece, the buttons add more). The city is the destination's airport name from the Airports section. Until every piece is recorded, the normal Descent Started clip is used."));
-  const lab=k=>k==="city"?"City name (from the Airports section)":"Part "+k.slice(5);
+function openLanding(){openGroups.add("After Landing");openGroups.add("After Landing/After Landing with crew base")}
+// a PA built from recorded parts plus one special piece (the city / the crew base), in an order the pack creator sets
+function pieceControls(c,d,o){
+  let order=[...o.order];
+  d.append(el("div","small",o.intro));
+  const lab=k=>k===o.special?o.specialLabel:"Part "+k.slice(5);
   const ol=el("div");ol.style.cssText="display:flex;flex-direction:column;gap:6px;max-width:460px;margin:10px 0";
-  const saveOrder=async()=>{await api("studio_descent_order",{...pid(c),order});c.descent_order=[...order]};
+  const saveOrder=async()=>{await api(o.orderAction,{...pid(c),order});o.save([...order])};
   let dragFrom=-1;
   const draw=()=>{ol.textContent="";order.forEach((k,i)=>{const row=el("div");row.draggable=true;row.style.cssText="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--line);border-radius:10px;cursor:grab";
     const gp=el("span",null,"⠿");gp.style.cssText="color:var(--muted);font-size:16px";row.append(gp);
@@ -1651,7 +1653,7 @@ function descentControls(c,d){
     const up=el("button","ghost","↑"),dn=el("button","ghost","↓"),x=el("button","danger","✕");up.style.padding=dn.style.padding="2px 9px";up.disabled=i===0;dn.disabled=i===order.length-1;
     x.title="Delete this piece";
     up.onclick=()=>{[order[i-1],order[i]]=[order[i],order[i-1]];draw();saveOrder()};dn.onclick=()=>{[order[i+1],order[i]]=[order[i],order[i+1]];draw();saveOrder()};
-    let arm=null;x.onclick=async()=>{if(!x.classList.contains("arm")){x.classList.add("arm");x.textContent="Delete?";arm=setTimeout(()=>{x.classList.remove("arm");x.textContent="✕"},3000);return}clearTimeout(arm);openDescent();await studio("descent_section",{...pid(c),item:k,remove:true})};
+    let arm=null;x.onclick=async()=>{if(!x.classList.contains("arm")){x.classList.add("arm");x.textContent="Delete?";arm=setTimeout(()=>{x.classList.remove("arm");x.textContent="✕"},3000);return}clearTimeout(arm);o.open();await studio(o.secAction,{...pid(c),item:k,remove:true})};
     row.ondragstart=e=>{dragFrom=i;e.dataTransfer.effectAllowed="move";try{e.dataTransfer.setData("text/plain",String(i))}catch(_){}row.style.opacity=".5"};
     row.ondragend=()=>{row.style.opacity="";[...ol.children].forEach(n=>n.style.outline="")};
     row.ondragover=e=>{e.preventDefault();e.dataTransfer.dropEffect="move";row.style.outline="2px solid var(--accent,#8a5cf6)"};
@@ -1661,10 +1663,20 @@ function descentControls(c,d){
     if(!order.length)ol.append(el("div","small","Nothing here yet - add a piece below."))};
   draw();const ot=el("div","small","Order the pieces are said in");ot.style.margin="10px 0 4px";d.append(ot,ol);
   const ctl=el("div","row");ctl.style.cssText="justify-content:flex-start;gap:8px;margin-bottom:10px;flex-wrap:wrap";
-  const addBtn=(text,item,title)=>{const b=el("button","ghost",text);b.title=title;b.onclick=async()=>{openDescent();const r=await studio("descent_section",{...pid(c),item});if(r.error)toast(r.error,5000)};ctl.append(b)};
+  const addBtn=(text,item,title)=>{const b=el("button","ghost",text);b.title=title;b.onclick=async()=>{o.open();const r=await studio(o.secAction,{...pid(c),item});if(r.error)toast(r.error,5000)};ctl.append(b)};
   addBtn("+ Part","part","Add another recorded part to the announcement");
-  if(!order.includes("city"))addBtn("+ City name","city","Say the destination's airport name");
+  if(!order.includes(o.special))addBtn(o.addSpecial,o.special,o.specialTitle);
   d.append(ctl);
+}
+function descentControls(c,d){
+  pieceControls(c,d,{order:c.descent_order||["part:1","city","part:2"],special:"city",specialLabel:"City name (from the Airports section)",addSpecial:"+ City name",specialTitle:"Say the destination's airport name",
+    intro:"PAPro builds the descent announcement for each flight from these pieces, in this order (drag to reorder, ✕ to delete a piece, the buttons add more). The city is the destination's airport name from the Airports section. Until every piece is recorded, the Generic clip is used.",
+    secAction:"descent_section",orderAction:"studio_descent_order",open:openDescent,save:v=>{c.descent_order=v}});
+}
+function landingControls(c,d){
+  pieceControls(c,d,{order:c.landing_order||["part:1","base","part:2"],special:"base",specialLabel:"Crew base (the base chosen for this flight in the Crew introduction)",addSpecial:"+ Base",specialTitle:"Say the crew base",
+    intro:"For a landing announcement like “On behalf of this Atlanta-based crew, thank you for choosing...”. It replaces the normal After Landing part 2 when every piece is recorded. The base is the same one used in the crew introduction (Safety briefing > Crew introduction: turn it on and record at least one base there).",
+    secAction:"landing_section",orderAction:"studio_landing_order",open:openLanding,save:v=>{c.landing_order=v}});
 }
 function buildChecklist(c,host){
   const pr=el("div",null);pr.style.margin="16px 2px";pr.append(el("div","small",c.done+" of "+c.total+" recorded or skipped"+(c.missing?" · "+c.missing+" required still to do":" · all required clips done")));
@@ -1702,6 +1714,10 @@ function buildChecklist(c,host){
       tl.append(tc,document.createTextNode(" Say the local time in the landing announcement (needs the hour and minute clips)"));
       tc.onchange=async()=>{openGroups.add("After Landing");const r=await studio("details",{...pid(c),local_time:tc.checked,effect:c.effect});if(r.ok)toast("Saved")};
       d.append(tl);
+      const bl=el("label","check");bl.style.cssText="display:flex;align-items:center;gap:8px;margin:4px 0 10px";const bc=el("input");bc.type="checkbox";bc.checked=!!c.landing_base;
+      bl.append(bc,document.createTextNode(" Add crew base to the landing PA (“On behalf of this Atlanta-based crew...”)"));
+      bc.onchange=async()=>{const r=await studio("landing_base",{...pid(c),on:bc.checked});if(r.ok){if(bc.checked)openLanding();toast(bc.checked?"Record the landing parts below (the crew bases come from the Crew introduction)":"Landing announcement back to the generic part 2")}};
+      d.append(bl);
       d.append(el("div","small","The hour clips (1-12) are also used to say the number of flight attendants in the crew introduction."))}
     if(gr.name==="Airports"){
       d.append(el("div","small","Add your airports (paste a whole list if you like) and record just each name (for example “London Heathrow”). PAPro mixes that one clip into both the BoardingWelcome and the landing PA. Add a terminal variant like EGLL_T5 if you record one."));
@@ -1738,11 +1754,13 @@ function buildChecklist(c,host){
       if(c.extras.length){const cr=el("div","chiprow");c.extras.forEach(a=>{const b=el("button","ghost",a.replace(/_/g," ")+" ✕");b.onclick=()=>studio("extra",{...pid(c),name:a,remove:true});cr.append(b)});d.append(cr)}
     }
     const crewHere=gr.name==="Safety briefing"&&c.crew&&c.crew.on;
-    if(gr.rows.some(r=>r.part)||crewHere){
+    const landHere=gr.name==="After Landing"&&c.landing_base;
+    if(gr.rows.some(r=>r.part)||crewHere||landHere){
       const parts=[];if(crewHere)parts.push({name:"Crew introduction",rows:[]});
       gr.rows.forEach(r=>{let p=parts.find(x=>x.name===r.part);if(!p){p={name:r.part,rows:[]};parts.push(p)}p.rows.push(r)});
+      if(landHere&&!parts.find(x=>x.name==="After Landing with crew base"))parts.push({name:"After Landing with crew base",rows:[]});
       parts.forEach(pt=>{const key=gr.name+"/"+pt.name,sd=el("details","grp sub");sd.open=openGroups.has(key);sd.ontoggle=()=>{sd.open?openGroups.add(key):openGroups.delete(key)};
-        const ss=el("summary",null,pt.name);ss.append(el("span",null,pt.rows.filter(r=>r.done||r.skipped).length+"/"+pt.rows.length));sd.append(ss);if(crewHere&&pt.name==="Crew introduction")crewControls(c,sd);if(pt.name==="Descent Started City-based PA")descentControls(c,sd);pt.rows.forEach(r=>sd.append(slotRow(c,r)));d.append(sd)});
+        const ss=el("summary",null,pt.name);ss.append(el("span",null,pt.rows.filter(r=>r.done||r.skipped).length+"/"+pt.rows.length));sd.append(ss);if(crewHere&&pt.name==="Crew introduction")crewControls(c,sd);if(pt.name==="Descent Started City-based PA")descentControls(c,sd);if(pt.name==="After Landing with crew base")landingControls(c,sd);pt.rows.forEach(r=>sd.append(slotRow(c,r)));d.append(sd)});
     }else gr.rows.forEach(r=>d.append(slotRow(c,r)));
     host.append(d);
   });
