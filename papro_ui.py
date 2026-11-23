@@ -492,6 +492,7 @@ header p{margin:0;color:var(--muted);font-size:12.5px}
 .switch.on .track::after{left:41px;background:#fff}
 .card{background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,.015));border:1px solid var(--line);
       border-radius:18px;padding:20px 22px;backdrop-filter:blur(6px)}
+.card.tight{margin-top:8px!important;margin-bottom:8px!important}
 .label{font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);margin:0 0 12px}
 .herorow{display:flex;gap:16px;align-items:stretch;margin-bottom:26px}.herorow .hero{flex:1;min-width:0;margin-bottom:0}
 .knobbox{flex:none;width:182px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:14px 10px;background:linear-gradient(#1b1c21,#111216);border-color:#2b2d35}
@@ -1733,7 +1734,7 @@ function renderStudio(){
       dt.append(tab);lc.append(dt)}
     root.append(lc);
   }
-  const card=el("section","card");card.append(el("h2",null,"Voice details"));
+  const card=el("section","card tight");card.append(el("h2",null,"Voice details"));
   const g=el("div","sd-grid");
   g.append(field("Voice artist","artist",c,"Your name"),field("Accent","accent",c,"British"),field("Short description","description",c,"Calm and collected",true),
            field("Support link (Ko-fi, Patreon...)","donate_url",c,"https://ko-fi.com/..."),field("Pack version","version",c,"1.0.0"),field("Also used by (other airline codes, e.g. SHT, CFE)","also_icaos",c,"SHT, CFE","wide"));
@@ -1787,7 +1788,7 @@ function renderStudio(){
   }
   root.append(card);
   { // crew introduction settings: switch it on, and how many flight attendants each aircraft type has
-    const cc=el("section","card");cc.style.marginTop="16px";const cr=c.crew||{on:false,fa:{}};
+    const cc=el("section","card tight");const cr=c.crew||{on:false,fa:{}};
     cc.append(el("h2",null,"Crew introduction settings"));
     cc.append(el("div","small","For airlines whose pre-safety briefing names the crew, e.g. “Our crew of four Atlanta-based flight attendants...”. Turning it on adds a Crew introduction section to the checklist above."));
     const on=el("label","check");on.style.cssText="display:flex;align-items:center;gap:8px;margin:12px 0";const oc=el("input");oc.type="checkbox";oc.checked=!!cr.on;on.append(oc,document.createTextNode(" This pack has a crew introduction"));
@@ -1813,7 +1814,7 @@ function renderStudio(){
     root.append(cc);
   }
   { // preview volume: only for listening in PAPro. The marker is the level the sim will play the pack at.
-    const vc=el("section","card");vc.style.marginTop="16px";const sim=100+(c.app_boost==null?30:c.app_boost);
+    const vc=el("section","card tight");const sim=100+(c.app_boost==null?30:c.app_boost);
     const head=el("div");head.style.cssText="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap";
     const t=el("h2",null,"Preview volume"),lab=el("span","small");head.append(t,lab);vc.append(head);
     vc.append(el("div","small","Only changes how loud you hear clips while testing here in PAPro - it does not change the pack or what plays in the sim. The marker is the level the sim will play your announcements at (your recordings plus the PA volume in Settings), so drag to it to hear them as they will sound."));
