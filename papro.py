@@ -2061,10 +2061,13 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
 
     if not only and crew_settings(voice_dir):   # the pre-safety briefing is built for this flight's aircraft (crew number, base, names)
         flight_now = load_state().get("flight") or {}
+        crew_aircraft = current_aircraft_type()
+        if not crew_aircraft and target_dir:   # Test tab with "Any" aircraft: still try the crew introduction, for the first type the pack knows
+            crew_aircraft = next(iter((crew_settings(voice_dir) or {}).get("fa") or {}), "")
         with tempfile.TemporaryDirectory(dir=DATA_DIR) as crew_work:
             crew_out = Path(crew_work) / "PreSafetyBriefing.ogg"
             try:
-                if build_crew_intro(voice_dir, airline, str(flight_now.get("origin", "")), current_aircraft_type(), crew_out,
+                if build_crew_intro(voice_dir, airline, str(flight_now.get("origin", "")), crew_aircraft, crew_out,
                                     crew_state_key(airline, voice_dir, flight_now)):
                     install_file(crew_out, fenix_dir / "PreSafetyBriefing.ogg", boost)
             except (papro_audio.AudioError, OSError) as exc:
@@ -2854,6 +2857,7 @@ class UIMixin:
                         info = typed_info(f.name)
                         if info:
                             types |= info[1] - {"ALL"}
+                types |= {str(t).upper() for t in ((crew_settings(vdir) or {}).get("fa") or {})}   # types the crew introduction knows
             airlines.append({"icao": code, "name": airline_display_name(cfg, code, installed.get(code), ""), "aircraft_types": sorted(types),
                              "voices": [{"key": k, "name": voice_info(p, k)["name"], "airports": sorted(ports.get(k, []))}
                                         for k, p in voices.items()]})
@@ -2909,7 +2913,7 @@ class UIMixin:
                     for f in real.glob("*.ogg"):
                         if not (pack / f.name).exists() and not is_modular(f.name) and not is_variant(f.name) and not typed_info(f.name):
                             shutil.copyfile(f, pack / f.name)
-            except OSError as exc:
+            except (OSError, AppError) as exc:
                 log.warning("Test tab: could not add the Fenix PAs: %s", exc)
             TEST_DIR.mkdir(parents=True, exist_ok=True)
             old = sorted((p for p in TEST_DIR.iterdir() if p.is_dir()), key=lambda p: p.stat().st_mtime)[:-10]
