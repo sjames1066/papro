@@ -1274,8 +1274,8 @@ async function testInit(){
   const keep={air:$("#t-air").value,voice:$("#t-voice").value,dest:$("#t-dest").value,ac:$("#t-ac").value};
   const a=$("#t-air"); a.innerHTML=""; for(const x of tOpts){const o=el("option",null,x.icao+" - "+x.name);o.value=x.icao;a.appendChild(o)}
   if(!tOpts.length){$("#t-voice").innerHTML="";$("#t-dest").innerHTML="";tMsg("No pack in your library has a recorded airport yet. Import a pack (Download Packs tab) or record one in Pack Studio and use \"Use in PAPro now\".");return}
-  a.onchange=()=>testFillVoices(); $("#t-voice").onchange=()=>testFillDest(); $("#t-ac").oninput=()=>$("#t-ac").classList.remove("bad");$("#t-ac").onchange=()=>{$("#t-ac").value=$("#t-ac").value.trim().toUpperCase();if(testAcOk())testBuild(false)}; $("#t-dest").onchange=()=>testBuild(false);
-  $("#t-time").onchange=()=>{const m=$("#t-time").value.trim().match(/^(\d{1,2})[:.]?(\d{2})$/); if(m&&+m[1]<24&&+m[2]<60)$("#t-time").value=m[1].padStart(2,"0")+":"+m[2]; tSpoken(); testBuild(false)};
+  a.onchange=()=>testFillVoices(); $("#t-voice").onchange=()=>testFillDest(); $("#t-ac").oninput=()=>$("#t-ac").classList.remove("bad");$("#t-ac").onchange=()=>{$("#t-ac").value=$("#t-ac").value.trim().toUpperCase();if(testAcOk())testStale()}; $("#t-dest").onchange=testStale;
+  $("#t-time").onchange=()=>{const m=$("#t-time").value.trim().match(/^(\d{1,2})[:.]?(\d{2})$/); if(m&&+m[1]<24&&+m[2]<60)$("#t-time").value=m[1].padStart(2,"0")+":"+m[2]; tSpoken(); testStale()};
   $("#t-time").oninput=tSpoken;
   $("#t-build").onclick=()=>testBuild(true);
   $("#view-test").onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey&&!e.ctrlKey&&!e.altKey&&["INPUT","SELECT"].includes(e.target.tagName)&&e.target.id!=="t-seek"){e.preventDefault();$("#t-build").click()}};
@@ -1303,7 +1303,8 @@ function testFillDest(keep){const x=tOpts.find(a=>a.icao===$("#t-air").value),y=
   for(const p of y.airports){const o=el("option",null,p);o.value=p;d.appendChild(o)}
   if(keep&&keep.dest&&[...d.options].some(o=>o.value===keep.dest))d.value=keep.dest;
   if(!y.airports.length){const o=el("option",null,"(no airports recorded)");o.value="";d.appendChild(o);tMsg("This voice has no airport recordings, so there is nothing to build yet.");return}
-  testBuild(false)}
+  testStale()}
+function testStale(){testStop();tKey="";tRows=[];$("#t-list").innerHTML="";tMsg("Choose your options, then press Go to build the announcements.")}
 function testMark(){tBar();tRows.forEach((r,i)=>{r.row.classList.toggle("now",i===tIdx);r.btn.textContent=(i===tIdx&&tAudio)?"■":"▶"});
   $("#t-all").textContent=tPlaylist?(tPaused?"▶  Resume":"❚❚  Pause"):"▶  Test All";
   $("#t-all").classList.toggle("running",tPlaylist);
@@ -1329,7 +1330,7 @@ function testPlay(i){ // play one clip; in playlist mode move on to the next whe
   fetch("/test/audio?t="+TOKEN+"&key="+tKey+"&file="+encodeURIComponent(t.file)).then(r=>{if(!r.ok)throw 0;return r.blob()}).then(blob=>{
     if(tAudio!==a)return; tUrl=URL.createObjectURL(blob); a.src=tUrl; return a.play()}).catch(()=>{ if(tAudio===a&&!a.src){toast("Could not play "+t.label);testStop()}});
 }
-async function testAll(){ if(tBusy)return; if(!tKey){await testBuild(false)} if(!tRows.length)return; tPlaylist=true; testPlay(0)}
+async function testAll(){ if(tBusy)return; if(!tKey||!tRows.length){tMsg("Press Go first to build the announcements, then Test All.");return} tPlaylist=true; testPlay(0)}
 async function testBuild(rebuild){
   if(tBusy||!testAcOk())return; tBusy=true; testStop(); tMsg("Building your announcements..."); $("#t-all").disabled=true;
   const r=await api("test_build",{icao:$("#t-air").value,voice:$("#t-voice").value,dest:$("#t-dest").value,arrival:$("#t-time").value,aircraft:$("#t-ac").value.trim().toUpperCase(),rebuild:rebuild});
