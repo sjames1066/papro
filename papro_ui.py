@@ -1885,6 +1885,8 @@ function renderStudio(){
   }
   const card=el("section","card tight");card.append(el("h2",null,"Voice details"));
   const g=el("div","sd-grid");
+  { const cur={new_airline:c.airline,new_icao:c.icao,new_voice:c.voice};
+    g.append(field("Airline name","new_airline",cur,"Delta Air Lines"),field("Airline code (ICAO)","new_icao",cur,"DAL"),field("Character name (the voice)","new_voice",cur,"Aaron","wide")) }
   g.append(field("Voice artist","artist",c,"Your name"),field("Accent","accent",c,"British"),field("Short description","description",c,"Calm and collected",true),
            field("Support link (Ko-fi, Patreon...)","donate_url",c,"https://ko-fi.com/..."),field("Pack version","version",c,"1.0.0"),field("Also used by (other airline codes, e.g. SHT, CFE)","also_icaos",c,"SHT, CFE","wide"));
   card.append(g);
@@ -1910,7 +1912,7 @@ function renderStudio(){
   const lr=el("button","ghost","Remove");lr.style.display=c.logo?"":"none";lr.onclick=async()=>{const r=await studio("logo_remove",pid(c));if(r.ok)toast("Logo removed")};
   lg.append(im,lt,lb,lr,lf);card.append(lg);
   const save=()=>{const d={...pid(c),effect:c.effect};g.querySelectorAll("input").forEach(i=>d[i.dataset.k]=i.value);return d};
-  g.querySelectorAll("input").forEach(i=>i.onchange=async()=>{const r=await api("studio_details",save());if(r.ok)toast("Saved");else if(r.error)toast(r.error);studioSig=""});
+  g.querySelectorAll("input").forEach(i=>i.onchange=async()=>{const r=await api("studio_details",save());if(r.ok)toast(/^new_/.test(i.dataset.k)?"Saved - press Save (green) to add it to your library under the new name":"Saved");else if(r.error)toast(r.error);studioSig="";await refreshNow()});
   const ef=el("div","radios");ef.style.marginTop="14px";
   [[true,"Cabin-PA sound on","Band-limited speaker voice with light compression, like the original announcements. Recommended."],[false,"Leave my recording as it is","Only the loudness is matched."]].forEach(([v,t,sub])=>{
     const r=el("div","radio"+(c.effect===v?" sel":""));r.append(el("b",null,t),el("span",null,sub));r.onclick=async()=>{if(c.effect===v)return;toast("Reprocessing...");await studio("details",{...save(),effect:v});toast("Reprocessed with "+(v?"the PA sound":"no effect"))};ef.append(r)});

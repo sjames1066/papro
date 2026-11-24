@@ -3438,6 +3438,13 @@ class UIMixin:
             project = self.studio_project(data)
             cfg = load_config()
             if name == "details":
+                if any(k in data for k in ("new_icao", "new_airline", "new_voice")):   # airline code / name, character's name
+                    try:
+                        project = papro_studio.rename_project(STUDIO_DIR, project, str(data.get("new_icao", project["icao"])),
+                                                              str(data.get("new_airline", project["airline"])), str(data.get("new_voice", project["voice"])))
+                    except papro_studio.StudioError as exc:
+                        return {"error": str(exc)}
+                    self.studio_current = (project["icao"], project["voice"])
                 for key, limit in (("artist", 80), ("accent", 40), ("description", 200), ("version", 20)):
                     if key in data:
                         project[key] = str(data[key]).strip()[:limit]

@@ -665,6 +665,50 @@ def create(root: Path, icao: str, airline: str, voice: str) -> dict:
     return project
 
 
+def rename_project(root: Path, project: dict, icao: str, airline: str, voice: str) -> dict:
+    """Change the airline code, airline name and/or the character's name of a pack in progress. The project folder (and the
+    secondary-language half, if any) moves with it. The copy already saved in your library keeps its old name; saving again
+    adds the voice under the new one."""
+    icao, airline, voice = icao.strip().upper(), airline.strip()[:80], voice.strip()[:40]
+    if not re.fullmatch(r"[A-Z0-9]{3}", icao):
+        raise StudioError("The airline code must be 3 letters or digits, like BAW.")
+    if not airline or not voice:
+        raise StudioError("The airline name and the character's name cannot be empty.")
+    old_icao, old_voice = project["icao"], project["voice"]
+    moved = (icao, slug(voice)) != (old_icao, slug(old_voice))
+    if moved and (project_dir(root, icao, voice) / "project.json").is_file():
+        raise StudioError(f"There is already a pack called {voice} for {icao}.")
+    sec = secondary_of(root, project)
+    sec_voice = ""
+    if sec is not None:
+        sec_voice = f"{voice} - {LANGUAGES.get(sec.get('language'), sec.get('language', ''))}"[:40]
+        if moved and (icao, slug(sec_voice)) != (old_icao, slug(sec["voice"])) and (project_dir(root, icao, sec_voice) / "project.json").is_file():
+            raise StudioError(f"There is already a pack called {sec_voice} for {icao}.")
+    old_dir = project_dir(root, old_icao, old_voice)
+    if moved:
+        new_dir = project_dir(root, icao, voice)
+        new_dir.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(old_dir), str(new_dir))
+    project.update(icao=icao, airline=airline, voice=voice)
+    if moved:
+        project.pop("origin", None)   # the library copy belongs to the old name: saving now adds a voice under the new one
+    if sec is not None:
+        sec_old = project_dir(root, old_icao, sec["voice"])
+        sec_new = project_dir(root, icao, sec_voice)
+        if sec_old != sec_new and sec_old.is_dir():
+            shutil.move(str(sec_old), str(sec_new))
+        sec.update(icao=icao, airline=airline, voice=sec_voice, primary_voice=voice)
+        if moved:
+            sec.pop("origin", None)
+        save(root, sec)
+        project["secondary"] = {**project["secondary"], "voice": sec_voice}
+    save(root, project)
+    parent = old_dir.parent
+    if moved and parent != root and parent.is_dir() and not any(parent.iterdir()):
+        parent.rmdir()
+    return project
+
+
 # --------------------------------------------------------------------------- primary / secondary language
 SHARED_FIELDS = ("artist", "accent", "description", "credit_url", "donate_url", "version", "local_time", "also_icaos", "crew", "service_types", "descent_city", "descent_order", "landing_base", "landing_order", "landing_off", "boarding_order", "boarding_off", "time_period")
 
