@@ -4113,6 +4113,9 @@ class TrayApp(UIMixin):
         self.release_held()
         if not engine.joined:   # PAPro opened part way through a flight: don't play what is already behind you
             engine.join(reading, tracker.phase())
+        from papro_phases import PHASES as _PH
+
+        engine.boarding_ok = tracker.rank >= _PH.index("Boarding")   # the welcome waits for boarding to start (GSX or the button)
         engine.feed(reading)
         self.track_flight_lock(reading)
         self.boarding_music(engine, tracker)

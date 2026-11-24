@@ -145,7 +145,7 @@ class PhaseEngine:
             parked = gs < 1.0 and engines is not True
             if parked and "boarding_complete" not in self.done:
                 self.t_idle = self.t_idle if self.t_idle is not None else t
-                if t - self.t_idle >= WELCOME_AFTER_S:
+                if t - self.t_idle >= WELCOME_AFTER_S and getattr(self, "boarding_ok", True):
                     self._fire("welcome")
             else:
                 self.t_idle = None
