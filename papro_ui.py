@@ -1266,7 +1266,7 @@ setInterval(()=>{ // a minimized Chromium window reports its position as far off
   if(away&&!minSent&&snap&&snap.settings&&snap.settings.minimize_to_tray){minSent=true;api("minimized")}
   if(!away)minSent=false;
 },500);
-window.addEventListener("pagehide",()=>{try{fetch("/api/closing",{method:"POST",keepalive:true,headers:{"X-Token":TOKEN,"Content-Type":"application/json"},body:"{}"})}catch(e){}});
+window.addEventListener("pagehide",()=>{if(document.body.classList.contains("remote"))return;try{fetch("/api/closing",{method:"POST",keepalive:true,headers:{"X-Token":TOKEN,"Content-Type":"application/json"},body:"{}"})}catch(e){}});
 $("#n-cancel").onclick=()=>$("#m-name").classList.remove("show");
 $("#n-ok").onclick=async()=>{const v=$("#n-input").value.trim(); if(!v)return; $("#m-name").classList.remove("show"); await api("username",{name:v}); toast("Saved - fetching your flight")};
 $("#n-input").addEventListener("keydown",e=>{if(e.key==="Enter")$("#n-ok").click()});
