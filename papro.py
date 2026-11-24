@@ -3139,7 +3139,7 @@ class UIMixin:
                 except (TypeError, ValueError):
                     return {"error": "The volume must be a number from 0 to 100."}
             self.sync_knob()
-        elif name in ("phase_boarding", "phase_disarm"):
+        elif name in ("phase_boarding", "phase_complete", "phase_disarm"):
             self.phase_action(name.split("_", 1)[1])
         elif name == "audio_devices":   # the sound outputs on this PC (listed when Settings opens, not with every refresh)
             import papro_play
@@ -3992,7 +3992,7 @@ class TrayApp(UIMixin):
         name = tracker.phase()
         playing = _PLAYBACK["on"]   # PAPro plays the PAs itself (not a Fenix): it has buttons the Fenix doesn't need
         return {"name": name, "source": tracker.source(), "index": PHASES.index(name) if name in PHASES else -1, "steps": PHASES,
-                "can_board": bool(playing and tracker.can_start_boarding()), "can_disarm": bool(playing and tracker.can_disarm_doors())}
+                "can_board": bool(playing and tracker.can_start_boarding()), "can_complete": bool(playing and tracker.can_complete_boarding()), "can_disarm": bool(playing and tracker.can_disarm_doors())}
 
     def sync_knob(self) -> None:
         try:
@@ -4087,6 +4087,11 @@ class TrayApp(UIMixin):
         tracker = getattr(self, "tracker", None)
         if what == "boarding" and tracker:
             tracker.start_boarding()
+        elif what == "complete" and tracker:
+            tracker.complete_boarding()
+            engine = getattr(self, "phases", None)
+            if engine is not None and _PLAYBACK["on"]:
+                engine.boarding_done(time.time())
         elif what == "disarm" and _PLAYBACK["on"]:
             engine = getattr(self, "phases", None)
             if engine is not None:

@@ -116,6 +116,13 @@ class PhaseEngine:
             self._fire(key)
 
     # -- the sim says ----------------------------------------------------------------------------------
+    def boarding_done(self, t: float) -> None:
+        """The Boarding Complete button: the announcement now, then the doors, safety briefing and so on follow as usual."""
+        if not self.flown and "boarding_complete" not in self.done:
+            self.done.add("welcome")
+            self._fire("boarding_complete")
+            self.t_boarding_done = t
+
     def landed_event(self, t: float) -> None:
         """The landing detector says we are down and slow: the landing PA, then wait to be parked."""
         if "after_landing" not in self.done and self.flown:
@@ -300,6 +307,7 @@ class PhaseTracker:
         self.current = None
         self.rank = 0
         self.manual_boarding_flag = False
+        self.manual_complete_flag = False
         self.flown = False            # has been airborne at some point this flight
         self.air_since = None
         self.max_alt = 0.0
@@ -314,6 +322,10 @@ class PhaseTracker:
     def start_boarding(self) -> None:
         """The "Start boarding" button (aircraft with no GSX to say so)."""
         self.manual_boarding_flag = True
+
+    def complete_boarding(self) -> None:
+        """The "Boarding Complete" button (manual boarding)."""
+        self.manual_complete_flag = True
 
     def set_flight(self, dest, cruise_ft) -> None:
         self.dest, self.cruise_ft = dest, cruise_ft
@@ -401,7 +413,7 @@ class PhaseTracker:
                 if gsx_b == GSX_PERFORMING or self.manual_boarding_flag:
                     self._go("Boarding")
                 released = self.prev_brake is True and brake is False
-                if gsx_b == GSX_COMPLETED or beacon is True or released:
+                if gsx_b == GSX_COMPLETED or beacon is True or released or self.manual_complete_flag:
                     self._go("Boarding complete")
                 if self.rank >= R["Boarding complete"]:
                     back = self._backward(r, heading, lat, lon, gs)
@@ -448,6 +460,9 @@ class PhaseTracker:
     # -- what the Dashboard may offer ------------------------------------------------------------------
     def can_start_boarding(self) -> bool:
         return self.rank < PHASES.index("Boarding") and not self.flown
+
+    def can_complete_boarding(self) -> bool:
+        return self.manual_boarding_flag and self.rank == PHASES.index("Boarding") and not self.flown
 
     def can_disarm_doors(self) -> bool:
         return self.rank == PHASES.index("Taxi in")

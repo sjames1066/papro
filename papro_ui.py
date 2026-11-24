@@ -1040,7 +1040,8 @@ function renderHero(){
   if(snap.phase){const ph=snap.phase,box=el("div","h-phase");box.title="Worked out from the sim: speed, direction, altitude, lights and doors (and GSX when it is on). It only moves forward until a new flight plan is loaded.";
     const top=el("div","h-ptop");top.append(el("span","h-plab","Flight phase"),el("b",null,ph.name),el("span","h-psrc",""));
     const bar=el("div","h-pbar");ph.steps.forEach((n,i)=>{const sg=el("i",i<ph.index?"done":i===ph.index?"now":"");sg.title=n;bar.append(sg)});box.append(top,bar);
-    if(ph.can_board){const bb=el("button","ghost","Start boarding");bb.style.marginTop="10px";bb.title="Begin the boarding phase (this aircraft has no GSX status to do it for you)";bb.onclick=()=>api("phase_boarding");box.append(bb)}
+    if(ph.can_board){const bb=el("button","ghost","Start boarding");bb.style.marginTop="10px";bb.onclick=()=>api("phase_boarding");box.append(bb)}
+    if(ph.can_complete){const bc=el("button","ghost","Boarding Complete");bc.style.marginTop="10px";bc.onclick=()=>api("phase_complete");box.append(bc)}
     if(ph.can_disarm){const bd=el("button","ghost","Disarm Doors PA");bd.style.marginTop="10px";bd.title="Play the Disarm Doors announcement now";bd.onclick=()=>api("phase_disarm");box.append(bd)}
     mid.append(box)}
   h.append(mid);
