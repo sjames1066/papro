@@ -503,21 +503,22 @@ header p{margin:0;color:var(--muted);font-size:12.5px}
 .knobbox .kt{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#9a9ca8;font-weight:600}
 .knob{position:relative;width:132px;height:132px;border-radius:50%;cursor:pointer;user-select:none;outline:none;-webkit-tap-highlight-color:transparent}
 .knob:focus-visible{box-shadow:0 0 0 3px rgba(255,255,255,.35)}
-.kscale{position:absolute;inset:0;width:100%;height:100%}.kscale line{stroke:#6f717c;stroke-width:2;stroke-linecap:round}.kscale line.lit{stroke:#f2f2f4}
+.kscale{position:absolute;inset:0;width:100%;height:100%}.kscale line{stroke:#6f717c;stroke-width:2;stroke-linecap:round}.kscale line.lit{stroke:#ffe9a8;filter:drop-shadow(0 0 2px rgba(255,214,110,.95)) drop-shadow(0 0 6px rgba(255,176,40,.75))}
 .kscale text{fill:#c9cad2;font-size:9px;font-weight:700;text-anchor:middle}
 /* a black matte knob with a knurled skirt and a white pointer, like an audio-control-panel volume knob */
 .kcap{position:absolute;inset:25px;border-radius:50%;display:flex;align-items:center;justify-content:space-between;padding:0 6px;
   background:radial-gradient(circle at 50% 38%,#2a2b31 0 52%,#16171b 53% 100%);border:2px solid #0a0a0c;
   box-shadow:0 6px 0 #050506,0 10px 14px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.14),inset 0 0 0 5px #1c1d22,inset 0 0 0 6px #34353c;transition:transform .12s,box-shadow .12s}
 .kcap::before{content:"";position:absolute;inset:-5px;border-radius:50%;background:repeating-conic-gradient(#25262c 0 4deg,#0e0e11 4deg 8deg);z-index:-1;box-shadow:0 0 0 1px #3a3b42}
-.kptr{position:absolute;left:50%;top:6px;width:4px;height:calc(50% - 8px);margin-left:-2px;border-radius:2px;background:#f4f4f6;transform-origin:50% calc(100% + 0px);
-  box-shadow:0 0 0 1px rgba(0,0,0,.4);transition:transform .12s,background .2s,opacity .2s}
+.kptr{position:absolute;left:50%;top:6px;width:4px;height:calc(50% - 8px);margin-left:-2px;border-radius:2px;background:#fff3c4;transform-origin:50% calc(100% + 0px);
+  box-shadow:0 0 0 1px rgba(0,0,0,.4),0 0 5px 1px rgba(255,220,120,.9),0 0 14px 3px rgba(255,170,40,.55);transition:transform .12s,background .2s,opacity .2s,box-shadow .2s}
+.knob:not(.on) .kptr{box-shadow:0 0 0 1px rgba(0,0,0,.4)}
 .kcap i{position:relative;font-style:normal;font-size:18px;color:#5d5f69;line-height:1;opacity:0;transition:opacity .15s}.knob:hover .kcap i{opacity:.9}
 .knob.on .kcap{box-shadow:0 6px 0 #050506,0 10px 14px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.14),inset 0 0 0 5px #1c1d22,inset 0 0 0 6px #34353c,0 0 0 2px rgba(255,255,255,.18)}
 .knob:not(.on) .kcap{transform:translateY(5px);box-shadow:0 1px 0 #050506,0 3px 6px rgba(0,0,0,.55),inset 0 3px 9px rgba(0,0,0,.6),inset 0 0 0 5px #17181c,inset 0 0 0 6px #2a2b31}
 .knob:not(.on) .kptr{background:#8b8d98;opacity:.7}
-.knobbox .kpa{font-size:21px;font-weight:700;letter-spacing:.16em;color:#f2f2f4;line-height:1;margin-top:4px;transition:color .2s,opacity .2s}
-.knobbox:has(.knob:not(.on)) .kpa{color:#7b7d88}
+.knobbox .kpa{text-shadow:0 0 6px rgba(255,214,110,.6),0 0 16px rgba(255,170,40,.45);font-size:21px;font-weight:700;letter-spacing:.16em;color:#f2f2f4;line-height:1;margin-top:4px;transition:color .2s,opacity .2s}
+.knobbox:has(.knob:not(.on)) .kpa{color:#7b7d88;text-shadow:none}
 .knobbox .kv{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums;color:#e8e8ec}.h-ptop b.detect{color:var(--faint);font-weight:500;animation:pulse 1.2s ease-in-out infinite}@keyframes pulse{50%{opacity:.35}}
 .knobbox .kst{font-size:12px;color:#8e909c;min-height:15px}
 @media(max-width:760px){.herorow{flex-direction:column}.knobbox{width:auto;flex-direction:row;gap:16px}}
