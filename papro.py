@@ -1744,6 +1744,9 @@ def build_crew_intro(voice_dir: Path, airline: str, origin: str, aircraft: str, 
     return True
 
 
+_WELCOME_WHY: list[str] = []
+
+
 def welcome_pieces(lib_dir: Path, clip: Path, tag: str, tail: list[Path] | None = None, order: list | None = None) -> list[Path] | None:
     """The welcome aboard from pieces, in the order the pack sets (default: good morning/afternoon/evening + destination + the rest of
     the welcome aboard), then the fuel tag-on and a bolt-on; None if a piece is missing."""
@@ -1765,6 +1768,8 @@ def welcome_pieces(lib_dir: Path, clip: Path, tag: str, tail: list[Path] | None 
         else:
             continue
         if not found:
+            _WELCOME_WHY[:] = [{"greeting": f"the {tag} greeting ({name}) is not recorded", "airport": "the airport's name is not recorded"}.get(
+                item, f"Boarding welcome part {str(item)[5:]} is not recorded" if str(item).startswith("part:") else f"{item} is missing")]
             return None
         pieces.append(found)
     return [*pieces, *(tail or [])] if pieces else None
@@ -2169,7 +2174,13 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
             if extra:
                 log.info("Bolt-on for this flight: %s", extra.stem)
             built = 0
-            for name in target_names(pristine, mapping, own_main):
+            names_here = target_names(pristine, mapping, own_main)
+            added: list[str] = []
+            if welcome_mode and folder in ("dep", "fuel"):   # built from pieces: every time of day, even if the pack's own generics lack some
+                wanted = [f"BoardingWelcome[{t.capitalize()}].ogg" for t in (TIME_OF_DAY if folder == "dep" else ("refueling",))]
+                added = [n for n in wanted if n.lower() not in {x.lower() for x in names_here}]
+                names_here += added
+            for name in names_here:
                 dst = fenix_dir / name
                 generic = own_main / name if own_main and (own_main / name).is_file() else (pristine / name if pristine else None)
                 if generic and generic.is_file():   # extra takes of the generic PA (BoardingWelcome[Morning]~v2.ogg)
@@ -2186,7 +2197,12 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
                         tags = pack_tags(name) & set(TIME_OF_DAY)
                         tag = next(iter(tags)) if tags else (clock_tag() if folder == "fuel" else None)
                         tail = ([fuel_tag(voice_dir)] if folder == "fuel" else []) + [extra]
+                        _WELCOME_WHY.clear()
                         pieces = welcome_pieces(voice_dir, clip, tag, [t for t in tail if t], board_order) if tag else None
+                        if not pieces and target_dir and _WELCOME_WHY:
+                            why = f"welcome aboard not built from pieces (generic used): {_WELCOME_WHY[0]}"
+                            if why not in notes:
+                                notes.append(why)
                 if pieces:
                     out = Path(work) / name
                     if papro_audio is None or not papro_audio.have_backend():
@@ -2204,7 +2220,7 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
                     built += 1
                 elif generic and generic.is_file():
                     install_file(generic, dst, boost)  # no recording (or no pieces) for this airport: back to the generic file
-                else:
+                elif name not in added:   # (a name only added for the pieces never removes a file the airline's own pack has)
                     dst.unlink(missing_ok=True)
             custom += bool(built)
             summary.append(f"{mapping['folder']}: {'custom' if built else 'generic'}")
