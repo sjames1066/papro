@@ -2952,7 +2952,8 @@ class UIMixin:
                 save_state(scratch)
             _AIRCRAFT_LOCAL.value = aircraft              # the aircraft type to build for ("" = no type: generic PAs)
             try:
-                message = apply_destination(cfg, icao, dest, variant=STANDARD, arrival=arrival, voice=voice, target_dir=pack)
+                message = apply_destination(cfg, icao, dest, choose=lambda title, text, options: (options[0], False), variant=STANDARD,
+                                             arrival=arrival, voice=voice, target_dir=pack)   # the Test tab never asks: the first choice is used
             except AppError as exc:
                 shutil.rmtree(sandbox, ignore_errors=True)
                 return {"error": str(exc)}
