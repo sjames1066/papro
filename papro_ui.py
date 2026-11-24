@@ -514,7 +514,7 @@ header p{margin:0;color:var(--muted);font-size:12.5px}
   box-shadow:0 0 0 1px rgba(0,0,0,.4);transition:transform .12s,background .2s,opacity .2s}
 .kcap i{position:relative;font-style:normal;font-size:18px;color:#5d5f69;line-height:1;opacity:0;transition:opacity .15s}.knob:hover .kcap i{opacity:.9}
 .knob.on .kcap{box-shadow:0 6px 0 #050506,0 10px 14px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.14),inset 0 0 0 5px #1c1d22,inset 0 0 0 6px #34353c,0 0 0 2px rgba(255,255,255,.18)}
-.knob:not(.on) .kcap{transform:translateY(5px);box-shadow:0 1px 0 #050506,0 3px 6px rgba(0,0,0,.55),inset 0 3px 9px rgba(0,0,0,.6),inset 0 0 0 5px #17181c,inset 0 0 0 6px #2a2b31}
+.knob:not(.on) .kcap{transform:none}
 .knob:not(.on) .kptr{background:#8b8d98;opacity:.7}
 .knobbox .kpa{font-size:21px;font-weight:700;letter-spacing:.16em;color:#f2f2f4;line-height:1;margin-top:4px;transition:color .2s,opacity .2s}
 .knobbox:has(.knob:not(.on)) .kpa{color:#7b7d88}
