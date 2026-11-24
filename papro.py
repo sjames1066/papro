@@ -1609,6 +1609,7 @@ def pick_extra(cfg: dict, base: Path, key: str) -> Path | None:
     return next((p for p in files if p.name == used[key]), None)
 
 
+DETECT_PHASE_S = 8   # after connecting, PAPro watches the sim this long to work out the phase of flight before it plays anything
 BOARDING_PA_MIN_S, BOARDING_PA_MAX_S = 180, 420     # the boarding announcement repeats this often while boarding
 PLAYBACK_DIR = DATA_DIR / "playback"          # where PAs are built for aircraft that PAPro plays itself
 _PLAYBACK = {"on": False}                      # set from the sim: the loaded aircraft is not a supported (Fenix) one
@@ -3991,7 +3992,9 @@ class TrayApp(UIMixin):
             return None
         name = tracker.phase()
         playing = _PLAYBACK["on"]   # PAPro plays the PAs itself (not a Fenix): it has buttons the Fenix doesn't need
-        return {"name": name, "source": tracker.source(), "index": PHASES.index(name) if name in PHASES else -1, "steps": PHASES,
+        engine = getattr(self, "phases", None)
+        detecting = bool(playing and not (engine is not None and engine.joined))
+        return {"name": name, "detecting": detecting, "source": tracker.source(), "index": PHASES.index(name) if name in PHASES else -1, "steps": PHASES,
                 "can_board": bool(playing and tracker.can_start_boarding()), "can_complete": bool(playing and tracker.can_complete_boarding()), "can_disarm": bool(playing and tracker.can_disarm_doors())}
 
     def sync_knob(self) -> None:
@@ -4115,9 +4118,15 @@ class TrayApp(UIMixin):
             from papro_phases import PhaseEngine
 
             engine = self.phases = PhaseEngine(self.play_key)
-        self.release_held()
-        if not engine.joined:   # PAPro opened part way through a flight: don't play what is already behind you
+        if not engine.joined:   # PAPro opened part way through a flight: look for a few seconds first, then play nothing that is behind you
+            if getattr(self, "_detect_t0", None) is None:
+                self._detect_t0 = reading["t"]
+            if reading["t"] - self._detect_t0 < DETECT_PHASE_S:
+                self.track_flight_lock(reading)
+                return
+            self._detect_t0 = None
             engine.join(reading, tracker.phase())
+        self.release_held()
         from papro_phases import PHASES as _PH
 
         engine.use_gsx = tracker.use_gsx

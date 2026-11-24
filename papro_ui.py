@@ -515,7 +515,8 @@ header p{margin:0;color:var(--muted);font-size:12.5px}
 .knob:not(.on) .kptr{background:#8b8d98;opacity:.7}
 .knobbox .kpa{font-size:21px;font-weight:700;letter-spacing:.16em;color:#f2f2f4;line-height:1;margin-top:4px;transition:color .2s,opacity .2s}
 .knobbox:has(.knob:not(.on)) .kpa{color:#7b7d88}
-.knobbox .kv{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums;color:#e8e8ec}.knobbox .kst{font-size:12px;color:#8e909c}
+.knobbox .kv{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums;color:#e8e8ec}.h-ptop b.detect{color:var(--faint);font-weight:500;animation:pulse 1.2s ease-in-out infinite}@keyframes pulse{50%{opacity:.35}}
+.knobbox .kst{font-size:12px;color:#8e909c}
 @media(max-width:760px){.herorow{flex-direction:column}.knobbox{width:auto;flex-direction:row;gap:16px}}
 .hero.ok{border-color:rgba(80,200,140,.65);background:linear-gradient(rgba(80,200,140,.10),rgba(80,200,140,.04));box-shadow:0 0 0 1px rgba(80,200,140,.25),0 8px 30px rgba(80,200,140,.10)}
 .hero{display:flex;align-items:center;gap:20px;margin-bottom:26px}
@@ -1038,11 +1039,11 @@ function renderHero(){
   if(snap.aircraft){const ac=snap.aircraft,chip=el("div","h-ac "+(ac.supported?"ok":"warn"));chip.title=ac.supported?"PAs can be played in the sim for this aircraft":"PAPro can't play PAs inside this aircraft yet";
     chip.append(el("i"),el("span",null,ac.title+(ac.supported?" · PAs supported":" · not supported yet")));mid.append(chip)}
   if(snap.phase){const ph=snap.phase,box=el("div","h-phase");box.title="Worked out from the sim: speed, direction, altitude, lights and doors (and GSX when it is on). It only moves forward until a new flight plan is loaded.";
-    const top=el("div","h-ptop");top.append(el("span","h-plab","Flight phase"),el("b",null,ph.name),el("span","h-psrc",""));
+    const top=el("div","h-ptop");top.append(el("span","h-plab","Flight phase"),el("b",ph.detecting?"detect":null,ph.detecting?"Detecting flight phase...":ph.name),el("span","h-psrc",""));
     const bar=el("div","h-pbar");ph.steps.forEach((n,i)=>{const sg=el("i",i<ph.index?"done":i===ph.index?"now":"");sg.title=n;bar.append(sg)});box.append(top,bar);
-    if(ph.can_board){const bb=el("button","ghost","Start boarding");bb.style.marginTop="10px";bb.onclick=()=>api("phase_boarding");box.append(bb)}
-    if(ph.can_complete){const bc=el("button","ghost","Boarding Complete");bc.style.marginTop="10px";bc.onclick=()=>api("phase_complete");box.append(bc)}
-    if(ph.can_disarm){const bd=el("button","ghost","Disarm Doors PA");bd.style.marginTop="10px";bd.title="Play the Disarm Doors announcement now";bd.onclick=()=>api("phase_disarm");box.append(bd)}
+    if(ph.can_board&&!ph.detecting){const bb=el("button","ghost","Start boarding");bb.style.marginTop="10px";bb.onclick=()=>api("phase_boarding");box.append(bb)}
+    if(ph.can_complete&&!ph.detecting){const bc=el("button","ghost","Boarding Complete");bc.style.marginTop="10px";bc.onclick=()=>api("phase_complete");box.append(bc)}
+    if(ph.can_disarm&&!ph.detecting){const bd=el("button","ghost","Disarm Doors PA");bd.style.marginTop="10px";bd.title="Play the Disarm Doors announcement now";bd.onclick=()=>api("phase_disarm");box.append(bd)}
     mid.append(box)}
   h.append(mid);
   const side=el("div","side");
