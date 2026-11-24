@@ -167,7 +167,10 @@ class Player:
                 stream.write(np.ascontiguousarray(np.clip(chunk, -1.0, 1.0), dtype="float32"))
         finally:
             try:
-                stream.stop()
+                if self.stop_flag.is_set() and hasattr(stream, "abort"):
+                    stream.abort()   # skipped: cut the sound now instead of letting the buffered audio play out
+                else:
+                    stream.stop()
                 stream.close()
             except Exception:
                 pass
