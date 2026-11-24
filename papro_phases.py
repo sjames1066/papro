@@ -53,6 +53,7 @@ class PhaseEngine:
         self.prev_brake = None
         self.prev_seatbelt = None
         self.flight_clock = None
+        self.gsx_boarding_seen = False
         self.joined = False         # the first reading has not been looked at yet (see join())
 
     # -- helpers ---------------------------------------------------------------------------------------
@@ -147,6 +148,13 @@ class PhaseEngine:
         if alt >= CRUISE_ALT_FT:
             self.cruise_seen = True
 
+        # ---- GSX boarding finished or aborted -> Boarding complete ---------------------------------------
+        gsx_b = r.get("gsx_boarding") if getattr(self, "use_gsx", True) else None
+        if gsx_b == GSX_PERFORMING:
+            self.gsx_boarding_seen = True
+        elif getattr(self, "gsx_boarding_seen", False) and gsx_b is not None and ground and not self.flown:
+            self.gsx_boarding_seen = False
+            self.boarding_done(t)
         # ---- on the ground before the flight -------------------------------------------------------------
         if ground and not self.flown:
             parked = gs < 1.0 and engines is not True
@@ -308,6 +316,7 @@ class PhaseTracker:
         self.rank = 0
         self.manual_boarding_flag = False
         self.manual_complete_flag = False
+        self.gsx_was_boarding = False
         self.flown = False            # has been airborne at some point this flight
         self.air_since = None
         self.max_alt = 0.0
@@ -410,8 +419,12 @@ class PhaseTracker:
                     self.parked_t = None
             else:
                 # before the flight
+                if gsx_b == GSX_PERFORMING:
+                    self.gsx_was_boarding = True
                 if gsx_b == GSX_PERFORMING or self.manual_boarding_flag:
                     self._go("Boarding")
+                if getattr(self, "gsx_was_boarding", False) and gsx_b is not None and gsx_b != GSX_PERFORMING:
+                    self.manual_complete_flag = True   # GSX finished or aborted the boarding
                 released = self.prev_brake is True and brake is False
                 if gsx_b == GSX_COMPLETED or beacon is True or released or self.manual_complete_flag:
                     self._go("Boarding complete")

@@ -4120,6 +4120,7 @@ class TrayApp(UIMixin):
             engine.join(reading, tracker.phase())
         from papro_phases import PHASES as _PH
 
+        engine.use_gsx = tracker.use_gsx
         engine.boarding_ok = tracker.rank >= _PH.index("Boarding")   # the welcome waits for boarding to start (GSX or the button)
         engine.feed(reading)
         self.track_flight_lock(reading)
