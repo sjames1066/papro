@@ -634,7 +634,7 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
 .radio b{font-weight:600}
 .radio span{color:var(--muted);font-size:12.5px}
 .radio.sel{border-color:transparent;background:linear-gradient(var(--surface2),var(--surface2)) padding-box,var(--grad) border-box;border:1px solid transparent;box-shadow:0 0 0 1px rgba(206,58,128,.35)}
-.modal{position:fixed;inset:0;background:rgba(5,3,14,.72);backdrop-filter:blur(5px);display:none;align-items:center;justify-content:center;z-index:5}
+.modal{position:fixed;inset:0;background:rgba(5,3,14,.72);backdrop-filter:blur(5px);display:none;align-items:center;justify-content:center;z-index:50}
 .modal.show{display:flex}
 #m-settings .row{position:sticky;bottom:-26px;background:var(--surface);padding:12px 0 2px}
 .dialog{max-height:92vh;overflow-y:auto;background:var(--surface);border:1px solid var(--line2);border-radius:20px;padding:26px;width:440px;max-width:92vw;
