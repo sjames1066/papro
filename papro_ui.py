@@ -1005,7 +1005,7 @@ function paintKnob(){const k=snap&&snap.settings&&snap.settings.pa_knob||{on:tru
   $("#kscale").querySelectorAll("line").forEach(l=>l.classList.toggle("lit",on&&(+l.dataset.i)*10<=v));
   $("#kvol").textContent=v+"%";$("#kst").textContent=on?(v===0?"PAs audible (volume 0)":"PAs audible"):"Muted - playback continues"}
 function knobSet(p){window.knobLocal={...(window.knobLocal||(snap.settings&&snap.settings.pa_knob)||{on:true,volume:70}),...p};paintKnob();
-  clearTimeout(knobSave);knobSave=setTimeout(async()=>{const d=window.knobLocal;await api("pa_knob",{on:d.on,volume:d.volume});try{snap=await (await fetch("/api/state",{headers:{"X-Token":TOKEN}})).json()}catch(e){}window.knobLocal=null;paintKnob()},250)}
+  clearTimeout(knobSave);knobSave=setTimeout(async()=>{const d=window.knobLocal;await api("pa_knob",{on:d.on,volume:d.volume});try{snap=await (await fetch("/api/state",{headers:{"X-Token":TOKEN}})).json()}catch(e){}window.knobLocal=null;knobSave=null;paintKnob()},250)}
 (function initKnob(){const kn=$("#knob"),cur=()=>window.knobLocal||(snap&&snap.settings&&snap.settings.pa_knob)||{on:true,volume:70};
   kn.onclick=e=>{const r=$(".kcap").getBoundingClientRect(),x=(e.clientX-r.left)/r.width,c=cur();
     if(x<0.34)knobSet({volume:Math.max(0,c.volume-5)});else if(x>0.66)knobSet({volume:Math.min(100,c.volume+5)});else knobSet({on:!c.on})};
