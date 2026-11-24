@@ -582,6 +582,10 @@ input[type=text]:focus{border-color:var(--magenta)}
 .section-head{display:flex;align-items:baseline;gap:10px;margin:0 2px 12px}
 .section-head h2{margin:0;font-size:15px;font-weight:600}
 .section-head span{color:var(--faint);font-size:12.5px}
+.tsticky{position:sticky;top:0;z-index:20;margin:16px -14px 0;padding:12px 14px;background:rgba(13,10,26,.92);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+#t-bar{margin-top:12px}
+#t-list .section-head{margin:30px 2px 12px}
+#t-list>.section-head:first-child,#t-list>.small+.section-head{margin-top:6px}
 .packs{display:grid;grid-template-columns:1fr;gap:12px}
 .pack{padding:16px 20px}
 .pack .top{display:flex;align-items:center;gap:16px}
@@ -773,12 +777,14 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
       <button class="ghost" id="t-flight" title="Fill in everything from your current SimBrief flight (airline, destination, aircraft, arrival time, flight number, origin) and build it" style="padding:14px 18px">Test Current Flight</button>
       <button class="go" id="t-build" title="Build these announcements again, re-rolling the variations (Enter does the same)">Go</button>
     </div>
-    <div style="display:flex;align-items:center;gap:16px;margin-top:16px">
+    <div class="tsticky">
+    <div style="display:flex;align-items:center;gap:16px">
       <button class="primary" id="t-all">&#9654;  Test All</button><button class="ghost" id="t-skip" style="display:none;padding:14px 22px">⏭  Skip</button><button class="ghost" id="t-stop" style="display:none;padding:14px 22px">■  Stop</button><span id="t-now"></span>
       <label class="tvol" title="How loud the test playback is (this page only; your cabin PA settings are not changed)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/></svg><input type="range" id="t-vol" min="0" max="100" value="100" step="1"><span id="t-volv">100%</span></label>
     </div>
-    <div id="t-bar" style="display:none;align-items:center;gap:12px;margin-top:14px">
+    <div id="t-bar" style="display:none;align-items:center;gap:12px">
       <span id="t-cur" class="tt">0:00</span><input type="range" id="t-seek" min="0" max="1000" value="0" step="1" style="flex:1"><span id="t-dur" class="tt">0:00</span>
+    </div>
     </div>
     <div id="t-list" style="margin-top:18px"></div>
   </div>
