@@ -581,6 +581,7 @@ input[type=text]:focus{border-color:var(--magenta)}
 .trow .tn{font-size:13.5px}.trow .tf{margin-left:auto;color:var(--faint);font-size:11.5px}
 .section-head{display:flex;align-items:baseline;gap:10px;margin:0 2px 12px}
 .section-head h2{margin:0;font-size:15px;font-weight:600}
+.fold{cursor:pointer;user-select:none}.fold .chev{font-style:normal;color:var(--faint);font-size:13px;width:14px;transition:transform .15s}.fold.shut .chev{transform:rotate(-90deg)}#packs.shut{display:none}
 .section-head span{color:var(--faint);font-size:12.5px}
 .tsticky{position:sticky;top:0;z-index:20;margin:16px -14px 0;padding:12px 14px;background:rgba(13,10,26,.92);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
 #t-bar{margin-top:12px}
@@ -755,7 +756,7 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
   <div class="keepopen slim" id="keep-note"><button class="keepx" id="keep-x" title="Close this reminder" aria-label="Close this reminder">&times;</button><b>Keep PAPro running during your flight</b><span>It builds the landing announcement with the real local time once you have landed. Leave it in the tray until you have parked.</span>
     <label class="keepno"><input type="checkbox" id="keep-never"> Don't remind me again</label></div>
 
-  <div class="section-head"><h2>Installed airline packs</h2><span id="packsub"></span></div>
+  <div class="section-head fold" id="packhead" role="button" tabindex="0" aria-expanded="true"><i class="chev">&#9662;</i><h2>Installed airline packs</h2><span id="packsub"></span></div>
   <div class="packs" id="packs"></div>
 
   <footer>
@@ -1117,6 +1118,9 @@ function renderPackList(boxId,list,emptyText){
     if(f!==null&&f!==undefined){pp.textContent=Math.round(f*100)+"%";pb.firstChild.style.width=(f*100)+"%"}else pp.textContent="";
   });
 }
+(function(){const h=$("#packhead"),p=$("#packs");let shut=false;try{shut=localStorage.getItem("packsShut")==="1"}catch(e){}
+  const set=s=>{shut=s;h.classList.toggle("shut",s);p.classList.toggle("shut",s);h.setAttribute("aria-expanded",!s);try{localStorage.setItem("packsShut",s?"1":"0")}catch(e){}};
+  h.onclick=()=>set(!shut);h.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();set(!shut)}};set(shut)})();
 function renderPacks(){
   const mine=snap.packs.filter(p=>p.installed&&!p.catalog), more=snap.packs.filter(p=>p.catalog||!p.installed);
   renderPackList("packs",mine,"No airline packs installed yet. Open the Download Packs tab to get one.");
