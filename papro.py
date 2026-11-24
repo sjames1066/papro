@@ -4125,6 +4125,7 @@ class TrayApp(UIMixin):
                 self.track_flight_lock(reading)
                 return
             self._detect_t0 = None
+            tracker.seed(reading)
             engine.join(reading, tracker.phase())
         self.release_held()
         from papro_phases import PHASES as _PH

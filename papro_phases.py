@@ -331,6 +331,28 @@ class PhaseTracker:
         """The "Start boarding" button (aircraft with no GSX to say so)."""
         self.manual_boarding_flag = True
 
+    def seed(self, r: dict) -> None:
+        """Opened part way through a flight, so there is no history to work the phase out from: take it from one reading."""
+        if self.rank > 0 or r.get("on_ground"):
+            return
+        alt = float(r.get("alt") or 0.0)
+        agl = float(r.get("agl") or 0.0)
+        vs = float(r.get("vs") or 0.0)
+        R = {n: i for i, n in enumerate(PHASES)}
+        self.flown, self.max_alt = True, alt
+        self.air_since = float(r.get("t", 0.0)) - INITIAL_CLIMB_AIRBORNE_S
+        if vs < -300:
+            near = self.dist_nm is not None and self.dist_nm <= APPROACH_NM
+            name = "Approach" if near else "Descent"
+        elif alt >= CRUISE_ALT_FT or (self.cruise_ft and abs(alt - self.cruise_ft) <= CRUISE_MATCH_FT):
+            name = "Cruise"
+        elif agl > 3000 or alt > 10000:
+            name = "Climb"
+        else:
+            name = "Initial climb"
+        self.rank = R[name]
+        self.current = name
+
     def complete_boarding(self) -> None:
         """The "Boarding Complete" button (manual boarding)."""
         self.manual_complete_flag = True
