@@ -143,16 +143,18 @@ class SimWatcher:
                 return True
         return False if seen else None
 
-    _lvar_failed: set = set()
-
     def _lvar(self, requests, name):
-        """An aircraft's own variable (an L: var), or None. A name that errors is not tried again."""
-        if name in self._lvar_failed:
-            return None
+        """An aircraft's / add-on's own variable (an L: var), or None. The SimConnect library has no names for these, so
+        the request is built by hand (the library would read "L:FSDT_..." as an indexed name and return nothing)."""
         try:
-            value = requests.get(name)
+            from SimConnect.RequestList import Request
+
+            cache = self.__dict__.setdefault("_lvar_reqs", {})
+            req = cache.get(name)
+            if req is None:
+                req = cache[name] = Request((name.encode(), b"number"), requests.sm, _time=500)
+            value = req.value
         except Exception:
-            self._lvar_failed.add(name)
             return None
         if value is None:
             return None
