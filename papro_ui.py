@@ -751,7 +751,7 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
       <div class="knob on" id="knob" tabindex="0" role="slider" aria-label="PA volume" aria-valuemin="0" aria-valuemax="100" title="Click the middle to mute / unmute. Click the left or right side, or scroll, to change the volume.">
         <svg class="kscale" viewBox="0 0 140 140" id="kscale"></svg>
         <div class="kcap"><div class="kptr" id="kptr"></div><i class="kl">&#8249;</i><i class="kr">&#8250;</i></div></div>
-      <div class="kpa" id="kpa">PA</div><div class="kv" id="kvol">70%</div><div class="kst" id="kst">PAs audible</div><button class="ghost" id="kskip" style="margin-top:6px">Skip PA</button></aside></div>
+      <div class="kpa" id="kpa">PA</div><div class="kv" id="kvol">70%</div><div class="kst" id="kst"></div><button class="ghost" id="kskip" style="margin-top:6px">Skip PA</button></aside></div>
   <div class="keepopen slim" id="keep-note"><button class="keepx" id="keep-x" title="Close this reminder" aria-label="Close this reminder">&times;</button><b>Keep PAPro running during your flight</b><span>It builds the landing announcement with the real local time once you have landed. Leave it in the tray until you have parked.</span>
     <label class="keepno"><input type="checkbox" id="keep-never"> Don't remind me again</label></div>
 
@@ -1003,7 +1003,7 @@ function drawKnobScale(){const sv=$("#kscale");if(sv.firstChild)return;let h="";
 function paintKnob(){const k=snap&&snap.settings&&snap.settings.pa_knob||{on:true,volume:70},st=window.knobLocal||k,on=!!st.on,v=st.volume;drawKnobScale();
   $("#knob").classList.toggle("on",on);$("#kptr").style.transform="rotate("+(-135+270*v/100)+"deg)";$("#knob").setAttribute("aria-valuenow",v);
   $("#kscale").querySelectorAll("line").forEach(l=>l.classList.toggle("lit",on&&(+l.dataset.i)*10<=v));
-  $("#kvol").textContent=v+"%";$("#kst").textContent=on?(v===0?"Volume 0":"On"):"Muted"}
+  $("#kvol").textContent=v+"%";$("#kst").textContent=on?"":"Muted"}
 function knobSet(p){window.knobLocal={...(window.knobLocal||(snap.settings&&snap.settings.pa_knob)||{on:true,volume:70}),...p};paintKnob();
   clearTimeout(knobSave);knobSave=setTimeout(async()=>{const d=window.knobLocal;await api("pa_knob",{on:d.on,volume:d.volume});try{snap=await (await fetch("/api/state",{headers:{"X-Token":TOKEN}})).json()}catch(e){}window.knobLocal=null;knobSave=null;paintKnob()},250)}
 (function initKnob(){const kn=$("#knob"),cur=()=>window.knobLocal||(snap&&snap.settings&&snap.settings.pa_knob)||{on:true,volume:70};
