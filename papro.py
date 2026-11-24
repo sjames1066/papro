@@ -3877,6 +3877,11 @@ class TrayApp(UIMixin):
         import pystray
 
         self.show_window = show_window
+        try:
+            stamps = [Path(__file__).with_name(n).stat().st_mtime for n in ("papro.py", "papro_phases.py", "papro_play.py", "papro_sim.py", "papro_ui.py")]
+            log.info("PAPro %s started - code saved %s", VERSION, time.strftime("%H:%M:%S", time.localtime(max(stamps))))
+        except OSError:
+            pass
         self.aircraft = None   # {"title", "supported"} of the aircraft loaded in MSFS, or None
         self.pystray = pystray
         self.stop = threading.Event()
