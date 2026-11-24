@@ -107,8 +107,27 @@ class SoundDeviceBackend:
         dev_ch = max(1, min(2, int(info.get("max_output_channels") or 2)))
         stream = sd.OutputStream(samplerate=dev_rate, channels=dev_ch, dtype="float32", device=index)
         stream.start()
+        _name_session()
         log.info("Audio output: %s at %d Hz, %d ch (clip %d Hz, %d ch)", info.get("name"), dev_rate, dev_ch, rate, channels)
         return _Converting(stream, rate, channels, dev_rate, dev_ch)
+
+
+def _name_session() -> None:
+    """Windows' volume mixer shows this process as "PAPro" (it would say Python otherwise). Needs pycaw; skipped without it."""
+    try:
+        import os
+        import sys
+        from pycaw.pycaw import AudioUtilities
+
+        icon = Path(sys.executable).with_name("papro.ico") if not getattr(sys, "frozen", False) else Path(sys.executable)
+        for session in AudioUtilities.GetAllSessions():
+            if session.Process and session.Process.pid == os.getpid():
+                ctl = session._ctl
+                ctl.SetDisplayName("PAPro", None)
+                if icon.is_file():
+                    ctl.SetIconPath(str(icon) + (",0" if icon.suffix == ".exe" else ""), None)
+    except Exception as exc:
+        log.debug("Could not name the audio session: %s", exc)
 
 
 class _Converting:
