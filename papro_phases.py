@@ -259,6 +259,7 @@ DESCENT_DROP_FT = 3000.0
 APPROACH_NM = 25.0
 LANDED_KT = 60.0
 GSX_PERFORMING, GSX_COMPLETED = 5, 6
+PARKED_DEBOARD_S = 20.0          # stopped with the engines off this long after landing -> Deboarding, even with no GSX / door signal
 
 
 def haversine_nm(lat1, lon1, lat2, lon2) -> float:
@@ -324,6 +325,12 @@ class PhaseTracker:
         return "estimated"
 
     # -- helpers ---------------------------------------------------------------------------------------
+    def _parked_since(self, t: float) -> float:
+        """Seconds the aircraft has been stopped with the engines off (starts counting on the first call)."""
+        if getattr(self, "parked_t", None) is None:
+            self.parked_t = t
+        return t - self.parked_t
+
     def _go(self, name: str) -> None:
         i = PHASES.index(name)
         if i > self.rank:
@@ -382,8 +389,13 @@ class PhaseTracker:
                 # landed: slow enough -> Taxi in; a door open / GSX deboarding -> Deboarding
                 if gs < LANDED_KT:
                     self._go("Taxi in")
-                if self.rank >= R["Taxi in"] and (r.get("door_open") or gsx_d == GSX_PERFORMING):
+                engines_off = r.get("eng_running") is False or (r.get("eng_running") is None and brake is True)
+                parked = gs < 1.0 and engines_off and brake is not False
+                if self.rank >= R["Taxi in"] and (r.get("door_open") or (gsx_d is not None and gsx_d >= GSX_PERFORMING)
+                                                  or (parked and self._parked_since(t) >= PARKED_DEBOARD_S)):
                     self._go("Deboarding")
+                if not parked:
+                    self.parked_t = None
             else:
                 # before the flight
                 if gsx_b == GSX_PERFORMING or self.manual_boarding_flag:
