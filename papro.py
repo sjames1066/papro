@@ -2952,8 +2952,9 @@ class UIMixin:
                 save_state(scratch)
             _AIRCRAFT_LOCAL.value = aircraft              # the aircraft type to build for ("" = no type: generic PAs)
             try:
-                message = apply_destination(cfg, icao, dest, choose=lambda title, text, options: (options[0], False), variant=STANDARD,
-                                             arrival=arrival, voice=voice, target_dir=pack)   # the Test tab never asks: the first choice is used
+                message = apply_destination(cfg, icao, dest, choose=(lambda title, text, options: self.ask_choice(title, text, options, quiet=True)) if hasattr(self, "ask_choice")
+                                             else (lambda title, text, options: (options[0], False)),
+                                             variant=None, arrival=arrival, voice=voice, target_dir=pack)   # the Test tab asks too (over this window), so the choices can be tested
             except AppError as exc:
                 shutil.rmtree(sandbox, ignore_errors=True)
                 return {"error": str(exc)}
@@ -3791,15 +3792,17 @@ class UIMixin:
 
         threading.Thread(target=work, daemon=True).start()
 
-    def ask_choice(self, title: str, text: str, options: list[str]) -> tuple[str, bool]:
-        """Called while applying a flight whose airport has several recordings. Waits for the window's answer."""
+    def ask_choice(self, title: str, text: str, options: list[str], quiet: bool = False) -> tuple[str, bool]:
+        """Called while applying a flight whose airport has several recordings. Waits for the window's answer.
+        quiet (the Test tab): the question appears over the window that is already open - no status message, no new window."""
         import secrets
 
         event = threading.Event()
         self.prompt = {"id": secrets.token_hex(4), "title": title, "text": text, "options": options,
                        "event": event, "answer": None}
-        self.set_status(f"{title}: choose a recording in the PAPro window", notify=True)
-        self.open_window()
+        if not quiet:
+            self.set_status(f"{title}: choose a recording in the PAPro window", notify=True)
+            self.open_window()
         event.wait(timeout=600)
         prompt, self.prompt = self.prompt, None
         return (prompt or {}).get("answer") or (options[0], False)
