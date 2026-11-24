@@ -335,7 +335,12 @@ KEY_FILES = {
 
 
 def music_file(folder: Path) -> Path | None:
-    """The merged boarding music in the built pack, if there is one."""
+    """The boarding music in the built pack: one of its tracks at random, or the merged BoardingMusic.ogg."""
+    import random
+
+    tracks = sorted(Path(folder).glob("BoardingMusic~*.ogg")) if Path(folder).is_dir() else []
+    if tracks:
+        return random.choice(tracks)
     p = Path(folder) / "BoardingMusic.ogg"
     return p if p.is_file() else None
 

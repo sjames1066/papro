@@ -2064,7 +2064,7 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
         music = sorted(n for n in sources if n.startswith("BoardingMusic"))
         if music:   # all the boarding tracks become ONE BoardingMusic.ogg (it plays on repeat until boarding is complete)
             tracks = [sources.pop(n) for n in music]
-            merged = merged_music(tracks)
+            merged = None if (_PLAYBACK["on"] and len(tracks) > 1) else merged_music(tracks)   # PAPro plays one at random
             if merged:
                 sources["BoardingMusic.ogg"] = merged
             else:
