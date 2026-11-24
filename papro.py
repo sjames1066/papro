@@ -568,6 +568,10 @@ def efbx_plan(cfg: dict) -> dict | None:
     return plan
 
 
+SIMBRIEF_MIN_GAP_S = 20   # SimBrief is asked at most this often for the same plan (the Test tab, Dashboard and poll share one answer)
+_SIMBRIEF_CACHE: dict = {}
+
+
 def fetch_flight(cfg: dict) -> dict:
     """Return {'airline','icao','name'} (airline ICAO, destination ICAO) from the latest SimBrief plan."""
     data = efbx_plan(cfg)   # EFBx already has your SimBrief plan: ask it first (no username needed)
@@ -581,6 +585,10 @@ def fetch_flight(cfg: dict) -> dict:
     else:
         raise AppError("Enter your SimBrief username: right-click the tray icon -> Set SimBrief username.")
 
+    now = time.monotonic()
+    cached = _SIMBRIEF_CACHE.get("flight")
+    if cached and cached[0] == params and now - cached[1] < SIMBRIEF_MIN_GAP_S:   # never import the same plan twice in a few seconds
+        return dict(cached[2])
     try:
         resp = requests.get(SIMBRIEF_URL, params=params, timeout=15)
     except requests.RequestException as exc:
@@ -593,7 +601,9 @@ def fetch_flight(cfg: dict) -> dict:
     if resp.status_code != 200 or (status and status.lower() != "success"):
         raise AppError(f"SimBrief: {status or resp.status_code} (check your username and that a plan exists).")
 
-    return _flight_from_plan(data)
+    flight = _flight_from_plan(data)
+    _SIMBRIEF_CACHE["flight"] = (params, time.monotonic(), flight)
+    return dict(flight)
 
 
 def _flight_from_plan(data: dict) -> dict:
@@ -4361,7 +4371,7 @@ class TrayApp(UIMixin):
             interval = 60
             try:
                 cfg = load_config()
-                interval = max(15, int(cfg.get("poll_interval_seconds", 60)))
+                interval = max(30, int(cfg.get("poll_interval_seconds", 60)))
                 if self.auto and cfg.get("auto_poll", True):
                     self.poll_once()
             except AppError as exc:
