@@ -100,12 +100,12 @@ class PhaseEngine:
                 closest = ("landing_seats", "landing_dim", "landing_secured")
             elif phase == "Descent" or (vs is not None and float(vs) < -300):
                 closest = ("descent",)
-            elif phase == "Cruise":
+            elif phase == "Cruise" or alt >= CRUISE_ALT_FT:   # (a fresh start has no history, so the height says where we are)
                 closest = ("cabin_service",)
-            elif phase == "Climb":
-                closest = ()
-            else:
+            elif agl < SEATBELT_OFF_MIN_AGL_FT and (vs is None or float(vs) > 0):
                 closest = ("after_takeoff",)
+            else:
+                closest = ()
         elif phase in ("Taxi in", "Deboarding"):
             closest = ("after_landing",)
         elif phase == "Pushback":
