@@ -2331,7 +2331,7 @@ def nearest_airport(lat: float, lon: float, max_km: float = NEAREST_MAX_KM) -> s
     return best
 
 
-def rebuild_landing(cfg: dict, arrival: str | None, position: tuple[float, float] | None = None) -> str:
+def rebuild_landing(cfg: dict, arrival: str | None, position: tuple[float, float] | None = None, ask: bool = True) -> str:
     """You have landed and slowed down: rebuild the landing PA with the local time the sim reported (HH:MM)."""
     state = load_state()
     flight = state.get("flight") or {}
@@ -2355,7 +2355,7 @@ def rebuild_landing(cfg: dict, arrival: str | None, position: tuple[float, float
         stored = None   # the choice made for the planned airport means nothing here
     _DIVERSION.on = diverted
     try:
-        message = apply_destination(cfg, airline, dest, choose=CHOOSER or choose_default, variant=stored, arrival=arrival, only={"dest"},
+        message = apply_destination(cfg, airline, dest, choose=(CHOOSER if ask else None) or choose_default, variant=stored, arrival=arrival, only={"dest"},
                                     voice=state.get("voice_used", {}).get(f"{airline}_{planned}") or None,
                                     target_dir=playback_target())
     finally:
@@ -4205,7 +4205,7 @@ class TrayApp(UIMixin):
             return
         with self.lock:  # wait for any update in progress
             try:
-                self.set_status(rebuild_landing(load_config(), clock, getattr(self, "touchdown_pos", None)), notify=True)
+                self.set_status(rebuild_landing(load_config(), clock, getattr(self, "touchdown_pos", None), ask=False), notify=True)
             except AppError as exc:
                 self.set_status(str(exc), notify=True)
             except Exception as exc:
