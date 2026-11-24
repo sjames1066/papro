@@ -2839,6 +2839,26 @@ class UIMixin:
 
         return _png_bytes(make_icon(128))
 
+    def saved_window_geometry(self):
+        """[x, y, w, h] from last time, if the window would still be on a screen; otherwise None (centered)."""
+        try:
+            g = [int(v) for v in load_config().get("window_geom") or []]
+        except (AppError, TypeError, ValueError):
+            return None
+        if len(g) != 4 or g[2] < 400 or g[3] < 300:
+            return None
+        if sys.platform.startswith("win"):
+            try:
+                import ctypes
+
+                m = ctypes.windll.user32.GetSystemMetrics
+                left, top, width, height = m(76), m(77), m(78), m(79)   # all screens together
+                if g[0] + 100 > left + width or g[1] + 50 > top + height or g[0] + g[2] - 100 < left or g[1] + 50 < top:
+                    return None
+            except Exception:
+                return None
+        return g
+
     def window_minimized(self) -> None:
         """'Hide to the tray' on minimize: close the window (the app keeps running; the tray icon opens it again)."""
         try:
@@ -3203,6 +3223,13 @@ class UIMixin:
             except (AppError, OSError) as exc:
                 return {"error": str(exc)}
             self.set_status("Settings saved")
+        elif name == "window_geom":   # where the PC window is: reopened there next time
+            try:
+                geom = [int(data[k]) for k in ("x", "y", "w", "h")]
+            except (KeyError, TypeError, ValueError):
+                return {}
+            if geom[2] >= 400 and geom[3] >= 300 and load_config().get("window_geom") != geom:
+                set_config_value("window_geom", geom)
         elif name == "hide_reminder":
             set_config_value("hide_reminder", bool(data.get("hide", True)))
         elif name == "welcomed":

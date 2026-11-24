@@ -411,6 +411,9 @@ class UIServer:
                     try:
                         self.profile_dir.mkdir(parents=True, exist_ok=True)
                         x, y, w, h = centered_geometry()
+                        saved = getattr(self, "saved_window_geometry", lambda: None)()
+                        if saved:
+                            x, y, w, h = saved
                         self.window = subprocess.Popen(
                             [str(exe), f"--app={url}", f"--user-data-dir={self.profile_dir}", f"--window-size={w},{h}",
                              f"--window-position={x},{y}",
@@ -1262,6 +1265,15 @@ $("#s-save").onclick=async()=>{
   const r=await api("settings",{close_to_tray:cfg.close==="yes",autostart:cfg.autostart,minimize_to_tray:cfg.min==="yes",extra_chance:parseInt(cfg.extra,10),pa_boost:parseInt(cfg.boost,10),join_style:cfg.flow,quit_with_msfs:$("#s-quit").checked,audio_device:audioChosen,audio_playback:$("#s-aplay").checked,gsx:$("#s-gsx").checked,});
   if(!r.error){$("#m-settings").classList.remove("show");toast("Settings saved")}
 };
+let geomLast="",geomSent="";
+setInterval(()=>{ // remember where the window is (PC window only), once it has stopped moving
+  if(document.body.classList.contains("remote")||document.hidden)return;
+  const x=Math.round(window.screenX),y=Math.round(window.screenY),w=Math.round(window.outerWidth),h=Math.round(window.outerHeight);
+  if(x<=-30000||y<=-30000||w<400||h<300)return;
+  const g=[x,y,w,h].join(",");
+  if(g===geomLast&&g!==geomSent){geomSent=g;api("window_geom",{x,y,w,h})}
+  geomLast=g;
+},1000);
 let minSent=false;
 setInterval(()=>{ // a minimized Chromium window reports its position as far off screen
   const away=window.screenX<=-30000||window.screenY<=-30000;
