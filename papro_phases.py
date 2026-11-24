@@ -91,6 +91,29 @@ class PhaseEngine:
             self.flown = self.landed = True
         elif gs >= SAFETY_SPEED_KT or phase in ("Pushback", "Taxi out"):
             self.done.update(before)    # already moving: the boarding PAs are over
+        # Opened part way through: say the announcement for the closest phase (just that one), not the ones already behind you
+        agl = float(r.get("agl") or 0.0)
+        closest: tuple[str, ...] = ()
+        if not ground:
+            if phase == "Approach" or (vs is not None and float(vs) < -300 and agl <= LANDING_PREP_AGL_FT):
+                closest = ("landing_seats", "landing_dim", "landing_secured")
+            elif phase == "Descent" or (vs is not None and float(vs) < -300):
+                closest = ("descent",)
+            elif phase == "Cruise":
+                closest = ("cabin_service",)
+            elif phase == "Climb":
+                closest = ("seatbelt_off",)
+            else:
+                closest = ("after_takeoff",)
+        elif phase in ("Taxi in", "Deboarding"):
+            closest = ("after_landing",)
+        elif phase == "Pushback":
+            closest = ("boarding_complete",)
+        elif gs >= SAFETY_SPEED_KT or phase == "Taxi out":
+            closest = ("pre_safety", "safety")
+        for key in closest:
+            self.done.discard(key)
+            self._fire(key)
 
     # -- the sim says ----------------------------------------------------------------------------------
     def landed_event(self, t: float) -> None:

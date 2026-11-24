@@ -2721,6 +2721,7 @@ class UIMixin:
                 "lan": {"on": True, "addresses": [f"http://{ip}:{self.ui.httpd.server_address[1]}/" for ip in self.ui.private_ips()] if getattr(self.ui, "httpd", None) and self.ui.lan_on else []},
                 "gsx": bool(cfg.get("gsx_integration", True)),
                 "audio": {"device": str(cfg.get("pa_output_device") or ""), "playback": bool(cfg.get("pa_playback", True))},
+                "pa_playing": bool(getattr(self, "player", None) is not None and not self.player.idle()),
                 "pa_knob": {"on": bool(cfg.get("pa_knob_on", True)), "volume": max(0, min(100, int(cfg.get("pa_knob_volume", 70))))},
                 "join_style": "pauses" if cfg.get("join_style") == "pauses" else "flow",
                 "autostart": current_autostart(),
@@ -3124,6 +3125,11 @@ class UIMixin:
             save_state(state)
             self.set_status(f"{alias} {'now uses ' + aliases[alias] + ' recordings' if name == 'alias_add' else 'alias removed'}")
             self.wake.set()
+        elif name == "skip_pa":   # the Skip button: cut the announcement in progress and drop the ones queued behind it
+            player = getattr(self, "player", None)
+            if player is not None:
+                player.clear()
+            self.held_keys = []
         elif name == "pa_knob":   # the on-screen PA knob: push (audible / muted) and volume
             if "on" in data:
                 set_config_value("pa_knob_on", bool(data["on"]))
