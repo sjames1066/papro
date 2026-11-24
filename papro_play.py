@@ -222,8 +222,11 @@ class MusicLoop:
         fade_total = int(rate * self.FADE_S)
         faded = 0
         try:
+            pos = 0
             while True:
-                for start in range(0, len(data), CHUNK):
+                pos = 0 if pos >= len(data) else pos
+                while pos < len(data):
+                    start = pos
                     level = max(0.0, min(2.0, float(self.gain())))
                     try:
                         ducked = bool(self.duck()) if self.duck else False
@@ -234,7 +237,12 @@ class MusicLoop:
                         self._duck_level, self._duck_until = 0.0, now + 0.8   # ...and stays silent through the gap between queued clips
                     elif now >= getattr(self, "_duck_until", 0.0):
                         self._duck_level = min(1.0, self._duck_level + CHUNK / rate / 1.5)   # then comes back gently
+                    paused = ducked or now < getattr(self, "_duck_until", 0.0)   # paused for a PA: hold the place in the track
+                    if paused and not stop.is_set():
+                        stream.write(np.zeros((CHUNK, data.shape[1]), dtype="float32"))
+                        continue
                     chunk = data[start:start + CHUNK] * (level * self._duck_level)
+                    pos += CHUNK
                     if not stop.is_set() and time.monotonic() - self.pinged > 8.0:
                         stop.set()
                     if stop.is_set():
