@@ -103,7 +103,7 @@ class PhaseEngine:
             elif phase == "Cruise":
                 closest = ("cabin_service",)
             elif phase == "Climb":
-                closest = ("seatbelt_off",)
+                closest = ()
             else:
                 closest = ("after_takeoff",)
         elif phase in ("Taxi in", "Deboarding"):
@@ -186,8 +186,7 @@ class PhaseEngine:
                 self._fire("after_takeoff")
             if self.flown:
                 off_edge = seatbelt is False and self.prev_seatbelt is True and agl >= SEATBELT_OFF_MIN_AGL_FT
-                off_fallback = seatbelt is None and alt >= SEATBELT_FALLBACK_ALT_FT and "seatbelt_off" not in self.done
-                if off_edge or off_fallback:
+                if off_edge:   # only when the aircraft's seatbelt sign can be read (no guessing from altitude)
                     self._fire("seatbelt_off")
                     self.t_seatbelt_off = t
                 if self.t_seatbelt_off is not None and t - self.t_seatbelt_off >= CABIN_SERVICE_AFTER_S:
