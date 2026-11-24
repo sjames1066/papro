@@ -4183,6 +4183,7 @@ class TrayApp(UIMixin):
             self.sync_knob()
             music = self.music = MusicLoop(knob_gain, SoundDeviceBackend(device))
             self.music_device = device
+        music.duck = lambda: getattr(self, "player", None) is not None and not self.player.idle()   # quiet during a PA
         music.ping()
         track = music_file(PLAYBACK_DIR)
         if track and not music.running():

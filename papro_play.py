@@ -187,6 +187,8 @@ class MusicLoop:
         self.stop_flag = threading.Event()
         self.thread: threading.Thread | None = None
         self.pinged = time.monotonic()
+        self.duck: Callable[[], bool] | None = None   # True while an announcement is playing: the music goes quiet for it
+        self._duck_level = 1.0
 
     def ping(self) -> None:
         """Called about once a second while the sim is sending data; the music stops by itself if the calls stop (sim closed)."""
@@ -223,7 +225,16 @@ class MusicLoop:
             while True:
                 for start in range(0, len(data), CHUNK):
                     level = max(0.0, min(2.0, float(self.gain())))
-                    chunk = data[start:start + CHUNK] * level
+                    try:
+                        ducked = bool(self.duck()) if self.duck else False
+                    except Exception:
+                        ducked = False
+                    now = time.monotonic()
+                    if ducked:   # one sound at a time: the music is silent the moment an announcement is playing
+                        self._duck_level, self._duck_until = 0.0, now + 0.8   # ...and stays silent through the gap between queued clips
+                    elif now >= getattr(self, "_duck_until", 0.0):
+                        self._duck_level = min(1.0, self._duck_level + CHUNK / rate / 1.5)   # then comes back gently
+                    chunk = data[start:start + CHUNK] * (level * self._duck_level)
                     if not stop.is_set() and time.monotonic() - self.pinged > 8.0:
                         stop.set()
                     if stop.is_set():
