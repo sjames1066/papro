@@ -92,14 +92,56 @@ class SoundDeviceBackend:
 
         index = find_device(self.device) if isinstance(self.device, str) else self.device
         try:
-            stream = sd.OutputStream(samplerate=rate, channels=channels, dtype="float32", device=index)
+            return self._open(sd, rate, channels, index)
         except Exception:
             if index is None:
                 raise
             log.warning("Could not open the chosen output - using the default instead")
-            stream = sd.OutputStream(samplerate=rate, channels=channels, dtype="float32")
+            return self._open(sd, rate, channels, None)
+
+    @staticmethod
+    def _open(sd, rate, channels, index):
+        """Opens the device at its own rate and channel count; the clip is converted to that (see _Converting)."""
+        info = sd.query_devices(index if index is not None else sd.default.device[1])
+        dev_rate = int(info.get("default_samplerate") or rate)
+        dev_ch = max(1, min(2, int(info.get("max_output_channels") or 2)))
+        stream = sd.OutputStream(samplerate=dev_rate, channels=dev_ch, dtype="float32", device=index)
         stream.start()
-        return stream
+        log.info("Audio output: %s at %d Hz, %d ch (clip %d Hz, %d ch)", info.get("name"), dev_rate, dev_ch, rate, channels)
+        return _Converting(stream, rate, channels, dev_rate, dev_ch)
+
+
+class _Converting:
+    """An output stream plus convert_all(): a whole clip in the device's rate and channels."""
+
+    def __init__(self, stream, rate, channels, dev_rate, dev_ch):
+        self.stream, self.rate, self.channels, self.dev_rate, self.dev_ch = stream, rate, channels, dev_rate, dev_ch
+
+    def convert_all(self, data):
+        data = np.asarray(data, dtype="float32")
+        if self.rate != self.dev_rate and len(data):
+            n = len(data)
+            m = max(1, int(round(n * self.dev_rate / self.rate)))
+            spec = np.fft.rfft(data, axis=0)
+            out = np.zeros((m // 2 + 1, data.shape[1]), dtype=spec.dtype)
+            k = min(len(spec), len(out))
+            out[:k] = spec[:k]
+            data = (np.fft.irfft(out, n=m, axis=0) * (m / n)).astype("float32")
+        if data.shape[1] != self.dev_ch:
+            data = np.repeat(data[:, :1], self.dev_ch, axis=1) if data.shape[1] == 1 else data[:, :self.dev_ch]
+        return np.ascontiguousarray(data)
+
+    def write(self, data):
+        return self.stream.write(np.ascontiguousarray(data, dtype="float32"))
+
+    def stop(self):
+        self.stream.stop()
+
+    def abort(self):
+        self.stream.abort()
+
+    def close(self):
+        self.stream.close()
 
 
 def load_clip(path: Path) -> tuple[np.ndarray, int]:
@@ -158,6 +200,8 @@ class Player:
     def _play_one(self, path) -> None:
         data, rate = (path[1], path[2]) if isinstance(path, tuple) else self.loader(path)
         stream = self.backend.open(rate, data.shape[1])
+        if hasattr(stream, "convert_all"):
+            data = stream.convert_all(data)
         try:
             for start in range(0, len(data), CHUNK):
                 if self.stop_flag.is_set():
@@ -216,6 +260,8 @@ class MusicLoop:
             if not len(data):
                 return
             stream = self.backend.open(rate, data.shape[1])
+            if hasattr(stream, "convert_all"):
+                data, rate = stream.convert_all(data), stream.dev_rate
         except Exception:
             log.exception("Could not start the boarding music %s", path)
             return
