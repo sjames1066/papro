@@ -4180,8 +4180,7 @@ class TrayApp(UIMixin):
             if reading["t"] >= self._reset_at:
                 engine.reset()
                 engine.joined = True      # parked at the gate: the next flight starts from Preflight, nothing to catch up on
-                tracker.reset()
-                self.held_keys = []
+                self.held_keys = []       # the phase stays Deboarding until a different flight plan is loaded
                 self._reset_at = None
 
     def track_flight_lock(self, reading: dict) -> None:
