@@ -3394,7 +3394,7 @@ class UIMixin:
                 except (TypeError, ValueError):
                     return {"error": "The volume must be a number from 0 to 100."}
             self.sync_knob()
-        elif name in ("phase_boarding", "phase_complete", "phase_disarm"):
+        elif name in ("phase_boarding", "phase_complete", "phase_disarm", "phase_reset"):
             self.phase_action(name.split("_", 1)[1])
         elif name == "audio_devices":   # the sound outputs on this PC (listed when Settings opens, not with every refresh)
             import papro_play
@@ -4443,6 +4443,15 @@ class TrayApp(UIMixin):
     def phase_action(self, what: str) -> None:
         """A Dashboard button: "boarding" (start the boarding phase) or "disarm" (the Disarm Doors PA)."""
         tracker = getattr(self, "tracker", None)
+        if what == "reset" and tracker:
+            tracker.reset_to_preflight()
+            engine = getattr(self, "phases", None)
+            if engine is not None:
+                engine.reset()
+                engine.joined = True   # nothing earlier is announced; the flight goes on from Preflight
+            self.landing_pending = None
+            log.info("Phase reset to Preflight (button)")
+            return
         if what == "boarding" and tracker:
             tracker.start_boarding()
         elif what == "complete" and tracker:

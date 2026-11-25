@@ -337,6 +337,12 @@ class PhaseTracker:
         self.prev_brake = None
         self.dist_nm = None
 
+    def reset_to_preflight(self) -> None:
+        """The Reset button: back to Preflight. A beacon that is already on does not count as "boarding complete" again."""
+        self.reset()
+        self.current = "Preflight"
+        self.beacon_wait = True
+
     # -- outside help ----------------------------------------------------------------------------------
     def start_boarding(self) -> None:
         """The "Start boarding" button (aircraft with no GSX to say so)."""
@@ -433,6 +439,8 @@ class PhaseTracker:
         lat, lon, heading = position_degrees(r.get("lat"), r.get("lon"), r.get("heading"))
         brake = None if r.get("parking_brake") is None else bool(r.get("parking_brake"))
         beacon = None if r.get("beacon") is None else bool(r.get("beacon"))
+        if beacon is False:
+            self.beacon_wait = False   # after a manual reset the beacon only counts once it has been seen off
         gsx_b = self._int(r.get("gsx_boarding")) if self.use_gsx else None
         gsx_d = self._int(r.get("gsx_deboarding")) if self.use_gsx else None
         R = {n: i for i, n in enumerate(PHASES)}
@@ -465,7 +473,7 @@ class PhaseTracker:
                 if getattr(self, "gsx_was_boarding", False) and gsx_b is not None and gsx_b != GSX_PERFORMING:
                     self.manual_complete_flag = True   # GSX finished or aborted the boarding
                 released = self.prev_brake is True and brake is False
-                if gsx_b == GSX_COMPLETED or beacon is True or released or self.manual_complete_flag:
+                if gsx_b == GSX_COMPLETED or (beacon is True and not getattr(self, "beacon_wait", False)) or released or self.manual_complete_flag:
                     self._go("Boarding complete")
                 if self.rank >= R["Boarding complete"]:
                     back = self._backward(r, heading, lat, lon, gs)

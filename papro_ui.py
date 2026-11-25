@@ -1228,6 +1228,10 @@ function renderHero(){
       sel.value=v.options.some(o=>o.id===v.selected)||v.selected==="random"&&v.options.length>1?v.selected:v.options[0].id; sel.disabled=snap.busy;
       sel.onchange=()=>api("voice",{voice:sel.value});
       row.append(el("span","small","Voice")); row.append(sel); row.append(b); side.append(row);
+      if(snap.phase){const rb=el("button","ghost","Reset phase");rb.style.cssText="margin-top:8px;font-size:11.5px;padding:4px 10px;opacity:.6;align-self:flex-end";rb.title="Set the flight phase back to Preflight";
+        let armed=null;rb.onclick=()=>{if(armed){clearTimeout(armed);armed=null;api("phase_reset");rb.textContent="Reset phase";rb.style.color="";rb.style.fontWeight="";return}
+          rb.textContent="Reset to Preflight? Click again";rb.style.color="#ff5a5a";rb.style.fontWeight="700";armed=setTimeout(()=>{armed=null;rb.textContent="Reset phase";rb.style.color="";rb.style.fontWeight=""},4000)};
+        side.append(rb)}
     }
     const cur=v.options.find(o=>o.id===(v.selected==="random"||v.options.length===1?(v.selected==="random"?v.used:v.options[0].id):v.selected))||(v.options.length===1?v.options[0]:null);
     if(v.selected==="random"&&cur) side.append(el("span","small","This flight: "+cur.name));
