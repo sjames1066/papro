@@ -1099,10 +1099,9 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
   <div class="row"><button id="q-close">Close</button><button class="primary" id="q-open">Open Audio settings</button></div>
 </div></div>
 <div class="modal" id="m-share"><div class="dialog">
-  <h3>Share this pack</h3>
-  <label class="tlab">Your name, shown as the author<input type="text" id="sh-author" maxlength="60"></label>
-  <label class="tlab" style="margin-top:10px">A note for the reviewer (optional)<input type="text" id="sh-note" maxlength="300"></label>
-  <label class="check" style="margin:12px 0 0"><input type="checkbox" id="sh-rights"> I made these recordings, or may share them</label>
+  <h3>Share with the community</h3>
+  <div id="sh-fields"></div>
+  <label class="check" style="margin:12px 0 0"><input type="checkbox" id="sh-rights"> I agree these files are my own work and I'm happy to share them to the community</label>
   <div class="small" id="sh-msg" style="margin-top:10px;min-height:18px"></div>
   <div class="row"><button class="ghost" id="sh-cancel">Cancel</button><button class="primary" id="sh-go">Share</button></div>
 </div></div>
@@ -2147,11 +2146,20 @@ function renderStudio(){
 }
 
 let shareCard=null;
-function openShare(c){shareCard=c;$("#sh-msg").textContent="";$("#sh-go").disabled=false;$("#sh-rights").checked=false;try{$("#sh-author").value=localStorage.getItem("shareAuthor")||""}catch(e){}$("#m-share").classList.add("show")}
+function openShare(c){shareCard=c;$("#sh-msg").textContent="";$("#sh-go").disabled=false;$("#sh-rights").checked=false;
+  const box=$("#sh-fields");box.replaceChildren();
+  [["airline","Airline name","Delta Air Lines"],["artist","Voice artist","Your name"]].forEach(([k,label,ph])=>{if(String(c[k]||"").trim())return;
+    const l=el("label","tlab",label);l.style.marginTop="10px";const i=el("input");i.type="text";i.id="sh-"+k;i.placeholder=ph;i.maxLength=80;l.append(i);box.append(l)});
+  $("#m-share").classList.add("show")}
 $("#sh-cancel").onclick=()=>$("#m-share").classList.remove("show");
-$("#sh-go").onclick=async()=>{const m=$("#sh-msg"),b=$("#sh-go");b.disabled=true;m.textContent="Sending...";
-  const r=await studio("publish",{...pid(shareCard),author:$("#sh-author").value,note:$("#sh-note").value,rights:$("#sh-rights").checked});
-  b.disabled=false;if(r&&r.ok){try{localStorage.setItem("shareAuthor",$("#sh-author").value)}catch(e){}$("#m-share").classList.remove("show");toast(r.status==="approved"?"Shared - it is in the community list":"Sent for review - it appears once approved",6000)}else m.textContent=(r&&r.error)||"Could not send it"};
+$("#sh-go").onclick=async()=>{const m=$("#sh-msg"),b=$("#sh-go"),c=shareCard;
+  if(!$("#sh-rights").checked){m.textContent="Please tick the box to agree.";return}
+  const fix={};if($("#sh-airline"))fix.new_airline=$("#sh-airline").value.trim();if($("#sh-artist"))fix.artist=$("#sh-artist").value.trim();
+  if(("new_airline" in fix&&!fix.new_airline)||("artist" in fix&&!fix.artist)){m.textContent="Please fill in the empty fields.";return}
+  b.disabled=true;m.textContent="Sending...";
+  if(Object.keys(fix).length){const d=await studio("details",{...pid(c),...fix,effect:c.effect});if(d&&d.error){m.textContent=d.error;b.disabled=false;return}}
+  const r=await studio("publish",{...pid(c),rights:true});
+  b.disabled=false;if(r&&r.ok){$("#m-share").classList.remove("show");toast(r.status==="approved"?"Shared - it is in the community list":"Sent for review - it appears once approved",6000)}else m.textContent=(r&&r.error)||"Could not send it"};
 function renderJob(){
   const j=snap&&snap.studio&&snap.studio.job,m=$("#m-job");m.classList.toggle("show",!!j);if(!j)return;
   $("#job-t").textContent=j.label;const bar=$("#job-bar"),pr=bar.parentElement;

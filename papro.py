@@ -3497,13 +3497,14 @@ class UIMixin:
         entry["rating"], entry["votes"] = float(body.get("rating", 0)), int(body.get("votes", 0))
         return {"ok": True}
 
-    def publish_pack(self, cfg: dict, project: dict, author: str, note: str, rights: bool) -> dict:
-        """Send a finished pack to the community service. It waits there until it has been approved."""
+    def publish_pack(self, cfg: dict, project: dict, rights: bool) -> dict:
+        """Send a finished pack to the community service. It waits there until it has been approved. The airline, code, character
+        and voice artist are the ones in the pack's Voice details."""
         if not rights:
-            return {"error": "Please tick the box to say you may share these recordings."}
-        author = author.strip()[:60]
-        if not author:
-            return {"error": "Please enter the name to show as the author."}
+            return {"error": "Please tick the box to agree."}
+        author = str(project.get("artist", "")).strip()[:60]
+        if not str(project.get("airline", "")).strip() or not author:
+            return {"error": "The airline name and voice artist are needed."}
         base = str(cfg.get("community_url", COMMUNITY_URL)).rsplit("/", 1)[0]
         if not _is_http(base):
             return {"error": "No community service is set up."}
@@ -3512,9 +3513,8 @@ class UIMixin:
         if len(key) < 32:   # proves later that a pack is yours (to update or withdraw it); stays on this PC
             key = secrets.token_hex(24)
             set_config_value("community_author_key", key)
-        set_config_value("community_author", author)
         meta = {"icao": project["icao"], "name": project.get("airline") or project["icao"], "voice": project.get("voice", ""),
-                "version": str(project.get("version", "1.0.0")), "author": author, "note": note.strip()[:300], "rights": True}
+                "version": str(project.get("version", "1.0.0")), "author": author, "rights": True}
         try:
             with open(result["zip"], "rb") as handle:
                 reply = requests.post(base + "/submit", data={"meta": json.dumps(meta), "author_key": key},
@@ -3828,7 +3828,7 @@ class UIMixin:
                 open_path(Path(result["zip"]).parent)
                 return {"ok": True, **result}
             elif name == "publish":
-                return self.publish_pack(cfg, project, str(data.get("author", "")), str(data.get("note", "")), bool(data.get("rights")))
+                return self.publish_pack(cfg, project, bool(data.get("rights")))
             elif name == "install":
                 lib = airline_folder(cfg, project["icao"])
                 dest = papro_studio.install_to_library(STUDIO_DIR, project, lib)
