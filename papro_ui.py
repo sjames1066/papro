@@ -778,6 +778,8 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
 .star{cursor:pointer;font-size:16px;line-height:1;color:var(--faint);padding:0 1px}
 .star.on{color:#e9a31b}.star.on.mine{color:#f5b92e}
 .star:hover{color:#f5b92e}
+html,body,*{scrollbar-width:none}
+*::-webkit-scrollbar{display:none;width:0;height:0}
 .setting{margin-bottom:18px}
 .setting .label{margin-bottom:8px}
 .radios{display:grid;gap:8px}
@@ -1102,11 +1104,11 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
   <div class="row"><button id="q-close">Close</button><button class="primary" id="q-open">Open Audio settings</button></div>
 </div></div>
 <div class="modal" id="m-share"><div class="dialog">
-  <h3>Share with the community</h3>
+  <h3>Upload to Community</h3>
   <div id="sh-fields"></div>
   <label class="check" style="margin:12px 0 0"><input type="checkbox" id="sh-rights"> I agree these files are my own work and I'm happy to share them to the community</label>
   <div class="small" id="sh-msg" style="margin-top:10px;min-height:18px"></div>
-  <div class="row"><button class="ghost" id="sh-cancel">Cancel</button><button class="primary" id="sh-go">Share</button></div>
+  <div class="row"><button class="ghost" id="sh-cancel">Cancel</button><button class="primary" id="sh-go">Upload</button></div>
 </div></div>
 <div class="modal" id="m-job"><div class="dialog"><h3 id="job-t">Working...</h3><p id="job-s">Please wait - this can take a moment.</p><div class="ptrack"><i id="job-bar"></i></div></div></div>
 <div class="toast" id="toast"></div>
@@ -1229,6 +1231,15 @@ function renderHero(){
   h.append(side);
 }
 
+let sampleAudio=null,sampleBtn=null;
+function playSample(url,btn){
+  const was=sampleBtn===btn&&sampleAudio&&!sampleAudio.paused;
+  if(sampleAudio){sampleAudio.pause();sampleAudio=null}
+  if(sampleBtn){sampleBtn.textContent="\u25B6 Sample";sampleBtn=null}
+  if(was)return;
+  const a=new Audio(url+(url.includes("?")?"&":"?")+"t="+Date.now());sampleAudio=a;sampleBtn=btn;btn.textContent="\u25A0 Stop";
+  const done=()=>{if(sampleAudio===a){sampleAudio=null;sampleBtn=null}btn.textContent="\u25B6 Sample"};
+  a.onended=done;a.onerror=()=>{done();toast("Could not play the sample")};a.play().catch(()=>{done();toast("Could not play the sample")})}
 function packCard(p,editable){
   const c=el("div","card pack"); c.id="pack-"+(p.key||p.icao);
   const top=el("div","top"); top.append(editable&&p.installed?editableLogo(p.icao,"logo"):logo(p.icao,"logo"));
@@ -1245,6 +1256,7 @@ function packCard(p,editable){
   if(p.community) info.append(el("div","meta","By "+(p.author||"a community member")+(p.license?"  ·  "+p.license:"")));
   top.append(info);
   const act=el("div","act");
+  if(p.community&&p.sample){const sb=el("button","ghost samp","\u25B6 Sample");sb.title="Hear 10 seconds of the After Landing announcement";sb.onclick=()=>playSample(p.sample,sb);act.append(sb)}
   if(!p.task){
     if(!p.installed||p.update){const b=el("button","primary",p.update?"Update":"Install");b.disabled=snap.busy;b.onclick=()=>api("install",{id:p.id||p.update_id||p.icao});act.append(b)}
     if(p.installed&&!p.catalog){const m=el("button","ghost","Manage");m.disabled=snap.busy;m.onclick=()=>openManage(p.icao);act.append(m)}
@@ -1261,7 +1273,7 @@ function packCard(p,editable){
 const packSigs={};
 function renderPackList(boxId,list,emptyText){
   const box=$("#"+boxId);
-  const sig=JSON.stringify([list.map(p=>[p.key||p.icao,p.installed,p.update,!!p.task,p.name,p.version,p.voices,p.rating,p.votes,p.my_rating,p.rate_id]),snap.busy,snap.catalog_error,snap.logo_v,emptyText]);
+  const sig=JSON.stringify([list.map(p=>[p.key||p.icao,p.installed,p.update,!!p.task,p.name,p.version,p.voices,p.rating,p.votes,p.my_rating,p.rate_id,p.sample]),snap.busy,snap.catalog_error,snap.logo_v,emptyText]);
   if(sig!==packSigs[boxId]){
     packSigs[boxId]=sig; box.replaceChildren();
     if(!list.length){const e=el("div","empty",emptyText); e.style.gridColumn="1/-1"; box.append(e)}
@@ -1882,7 +1894,7 @@ function boardingControls(c,d){
     secAction:"boarding_section",orderAction:"studio_boarding_order",open:openBoarding,save:v=>{c.boarding_order=v}});
 }
 function landingControls(c,d){
-  pieceControls(c,d,{order:c.landing_order||["part:1","airport","time","part:2"],specials:{
+  pieceControls(c,d,{order:c.landing_order||["part:1","airport","part:2","time","part:3"],specials:{
       welcome:{label:"Welcome to... (older recording, before the airport name)"},
       airport:{label:"Airport name (from the Airports section)",add:"+ Airport name",title:"Say the airport's name"},
       time:{label:"Local time (the hour and minute clips from Time and Numbers)",add:"+ Local time",title:"Say the local time"},
@@ -2140,15 +2152,16 @@ function renderStudio(){
     else{master(c,true);if(c.secondary)master(c.secondary,false)}
   }
   const bar2=el("div","sdbar");
-  const dis=el("button","ghost danger",c.in_library?"Remove from packs in progress":"Abandon this pack");dis.title=c.in_library?"Removes this working copy only. The pack in your Airlines library stays.":"Deletes this project's recordings and details. Your Airlines library is not touched.";
-  dis.onclick=()=>confirmDiscard(c);
+  const dis=el("button","ghost danger","Delete");dis.title="Deletes this project's recordings and details"+(c.in_library?". The pack in your Airlines library is kept.":".");
+  let disArm=null;dis.onclick=async()=>{if(!dis.classList.contains("arm")){dis.classList.add("arm");dis.textContent="Confirm delete";disArm=setTimeout(()=>{dis.classList.remove("arm");dis.textContent="Delete"},4000);return}
+    clearTimeout(disArm);const r=await studio("discard",{icao:c.icao,voice:c.voice});if(r.ok)toast("Deleted")};
   const fol=el("button","ghost","Open project folder");fol.onclick=()=>api("studio_folder",pid(c));
   const saveSig=JSON.stringify([c.icao,c.voice,c.rows.map(r=>r.id+(r.done?1:0)+(r.skipped?"s":"")+(r.seconds||"")),c.crew,c.landing_order,c.landing_off,c.boarding_order,c.boarding_off,c.descent_order,c.descent_city,c.time_period,c.airports,c.extras,c.service_types]);
   const use=el("button","save"+(savedSig===saveSig?" done":""),"Save");use.title=c.origin?"Save your changes to your library so PAPro and the Test tab use them":"Add this pack to your library as a voice for "+c.icao+" so PAPro and the Test tab use it";
   use.onclick=async()=>{const r=await studio("install",pid(c));if(r.ok){savedSig=saveSig;use.classList.add("done");toast(r.finished?"Saved to your library":"Added to your library as a voice for "+c.icao)}};
-  const ex=el("button","primary","Export pack zip");ex.onclick=async()=>{const r=await studio("export",pid(c));if(r.ok)toast("Exported - release tag: "+(r.tag||"")+" (the folder is open)",9000)};
-  const sh=el("button","ghost","Share with the community");sh.onclick=()=>openShare(c);
-  bar2.append(dis,fol,use,ex,sh);root.append(bar2);syncPlayer();
+  const ex=el("button","ghost","Export");ex.onclick=async()=>{const r=await studio("export",pid(c));if(r.ok)toast("Exported - release tag: "+(r.tag||"")+" (the folder is open)",9000)};
+  const sh=el("button","primary","Upload to Community");sh.onclick=()=>openShare(c);
+  bar2.append(dis,fol,sh,use,ex);root.append(bar2);syncPlayer();
 }
 
 let shareCard=null;

@@ -126,6 +126,11 @@ async function submit(req, env, ctx) {
     author: clean(meta.author, 60), license: "", note: clean(meta.note, 300), files: oggs, size: buf.byteLength,
     sha256: await sha256(buf), author_hash: authorHash, submitted: new Date().toISOString(), status: "pending", updated: update,
   };
+  const sample = form.get("sample");   // a short clip of the After Landing PA, cut on the author's PC
+  if (sample && typeof sample !== "string" && sample.size > 0 && sample.size <= 400 * 1024) {
+    const head = new Uint8Array(await sample.slice(0, 4).arrayBuffer());
+    if (String.fromCharCode(...head) === "OggS") await env.PACKS.put(`samples/${id}.ogg`, await sample.arrayBuffer());
+  }
   await env.PACKS.put(`pending/${id}.zip`, buf);
   await env.PACKS.put(`meta/${id}.json`, JSON.stringify(record));
   if (env.AUTO_APPROVE === "1" || update) await approve(env, id);
@@ -143,6 +148,7 @@ async function approve(env, id) {
   let logo = null;
   try { logo = await zipLogo(zbuf); } catch { /* no logo is fine */ }
   if (logo) await env.PACKS.put(`logos/${id}.png`, logo); else await env.PACKS.delete(`logos/${id}.png`);
+  const hasSample = !!(await env.PACKS.get(`samples/${id}.ogg`));
   await env.PACKS.delete(`pending/${id}.zip`);
   rec.status = "approved";
   await env.PACKS.put(`meta/${id}.json`, JSON.stringify(rec));
@@ -150,7 +156,8 @@ async function approve(env, id) {
   idx.packs = idx.packs.filter(p => p.id !== id);
   idx.packs.push({
     id, icao: rec.icao, name: rec.name, voice: rec.voice, version: rec.version, author: rec.author, license: rec.license,
-    sha256: rec.sha256, size: rec.size, url: `${env.PUBLIC_URL}/packs/${id}.zip`, ...(logo ? { logo: `${env.PUBLIC_URL}/logos/${id}.png` } : {}), ...(await ratingOf(env, id)),
+    sha256: rec.sha256, size: rec.size, url: `${env.PUBLIC_URL}/packs/${id}.zip`, ...(logo ? { logo: `${env.PUBLIC_URL}/logos/${id}.png` } : {}),
+    ...(hasSample ? { sample: `${env.PUBLIC_URL}/samples/${id}.ogg` } : {}), ...(await ratingOf(env, id)),
   });
   await writeIndex(env, idx);
 }
@@ -208,6 +215,7 @@ async function remove(env, id, reject) {
   await env.PACKS.delete(`meta/${id}.json`);
   await env.PACKS.delete(`ratings/${id}.json`);
   await env.PACKS.delete(`logos/${id}.png`);
+  await env.PACKS.delete(`samples/${id}.ogg`);
   const idx = await readIndex(env);
   idx.packs = idx.packs.filter(p => p.id !== id);
   await writeIndex(env, idx);
@@ -241,6 +249,8 @@ export default {
       if (m) { const o = await env.PACKS.get(`packs/${m[1]}.zip`); return o ? new Response(o.body, { headers: { "content-type": "application/zip" } }) : json({ error: "not found" }, 404); }
       m = path.match(/^\/logos\/([a-z0-9-]+)\.png$/);
       if (m) { const o = await env.PACKS.get(`logos/${m[1]}.png`); return o ? new Response(o.body, { headers: { "content-type": "image/png", "cache-control": "public, max-age=3600" } }) : json({ error: "not found" }, 404); }
+      m = path.match(/^\/samples\/([a-z0-9-]+)\.ogg$/);
+      if (m) { const o = await env.PACKS.get(`samples/${m[1]}.ogg`); return o ? new Response(o.body, { headers: { "content-type": "audio/ogg", "cache-control": "no-cache", "access-control-allow-origin": "*" } }) : json({ error: "not found" }, 404); }
       if (path === "/submit" && req.method === "POST") return await submit(req, env, ctx);
       if (path === "/rate" && req.method === "POST") return await rate(req, env);
       if (path === "/claim" && req.method === "POST") return await claim(req, env);

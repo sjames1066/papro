@@ -29,6 +29,7 @@ import logging
 import os
 import random
 import re
+import contextlib
 import secrets
 import shutil
 import subprocess
@@ -751,7 +752,8 @@ def load_community(cfg: dict) -> list[dict]:
             stars, votes = max(0.0, min(5.0, float(src.get("rating", 0)))), max(0, int(src.get("votes", 0)))
         except (TypeError, ValueError):
             stars, votes = 0.0, 0
-        entry.update({"community": True, "rating": stars, "votes": votes, "author": str(src.get("author", "")).strip()[:60],
+        sample = str(src.get("sample", "")).strip()
+        entry.update({"community": True, "sample": sample if _is_http(sample) else "", "rating": stars, "votes": votes, "author": str(src.get("author", "")).strip()[:60],
                       "license": str(src.get("license", "")).strip()[:40]})
         entry["id"] = "c-" + entry["id"]
         packs.append(entry)
@@ -791,6 +793,54 @@ def _parse_packs(data: dict, url: str) -> list[dict]:
             ][:12],
         })
     return sorted(packs, key=lambda p: p["icao"])
+
+
+def make_sample(pack_folder: Path, out: Path, project: dict | None = None, seconds: float = 10.0) -> Path | None:
+    """A short clip of the pack's After Landing announcement for the Community list's Sample button: built the way the real PA
+    is (first airport recorded in the pack, local time 3:45 PM), then the first ten seconds with a short fade."""
+    try:
+        import tempfile as _tmp
+
+        import papro_audio
+
+        data = None
+        airports = sorted((pack_folder / AIRPORTS_FOLDER).glob("*.ogg")) if (pack_folder / AIRPORTS_FOLDER).is_dir() else []
+        order = None
+        if project is not None and not project.get("landing_off"):
+            order = papro_studio.landing_order(project)
+        lead = part_file(pack_folder, "WelcomeTo")
+        if airports and (lead or order) and order:   # a part that is not recorded yet is left out of the sample, not a reason to give up
+            def there(item: str) -> bool:
+                if item.startswith("part:") and item[5:].isdigit():
+                    n = int(item[5:])
+                    return bool(modular_piece(pack_folder, "Landing") if n == 1 else _find_piece(pack_folder, [f"Modular_LandingPart{n}"], (MAIN_FOLDER,)))
+                return item != "base" or any((pack_folder / "crew").glob("Base_*.ogg"))
+            order = [i for i in order if there(i)]
+
+        if airports and (lead or order):
+            pieces, _note = landing_pieces(pack_folder, airports[0], "15:45", project is None or project.get("local_time") is not False,
+                                           lead, order, next(iter(sorted((pack_folder / "crew").glob("Base_*.ogg"))), None) if order and "base" in order else None)
+            log.info("Sample clip: %s", " + ".join(x.stem for x in pieces) if pieces else "the pieces were not all there - using the generic After Landing")
+            if pieces:
+                with _tmp.TemporaryDirectory(dir=DATA_DIR) as work:
+                    built = Path(work) / "sample.ogg"
+                    papro_audio.join(pieces, built, 60, True)
+                    data, rate = papro_audio._read(built)
+        if data is None:   # no way to build it: the pack's own generic After Landing
+            found = sorted(pack_folder.glob("main/AfterLanding*.ogg")) or sorted(pack_folder.glob("main/Modular_Landing*.ogg"))
+            if not found:
+                return None
+            data, rate = papro_audio._read(found[0])
+        data = data[: int(rate * seconds)]
+        fade = min(len(data), int(rate * 0.5))
+        if fade > 0:
+            data = data.copy()
+            data[-fade:] *= papro_audio.np.linspace(1.0, 0.0, fade, dtype="float32")[:, None]
+        papro_audio._write(out, data, rate)
+        return out if out.is_file() and out.stat().st_size <= 380 * 1024 else None
+    except Exception:
+        log.exception("Could not make a sample clip")
+        return None
 
 
 def pack_identity(zip_path: Path, filename: str = "") -> tuple[str, str]:
@@ -2716,7 +2766,7 @@ class UIMixin:
                           "task": self.tasks.get(entry["id"])})
         for entry in getattr(self, "community", []):   # packs other people made (approved before they are listed)
             packs.append({"icao": entry["icao"], "key": "dl-" + entry["id"], "id": entry["id"], "catalog": True, "community": True,
-                          "rating": entry.get("rating", 0), "votes": entry.get("votes", 0), "my_rating": int(load_config().get("my_ratings", {}).get(entry["id"], 0) or 0),
+                          "sample": entry.get("sample", ""), "rating": entry.get("rating", 0), "votes": entry.get("votes", 0), "my_rating": int(load_config().get("my_ratings", {}).get(entry["id"], 0) or 0),
                           "name": entry["name"], "version": entry["version"], "author": entry.get("author", ""), "license": entry.get("license", ""),
                           "voices": [v["name"] for v in entry.get("voices", [])] or ([entry["voice"]] if entry.get("voice") else []),
                           "size_mb": round(entry["size"] / 1048576) if entry.get("size") else 0, "installed": have_entry(entry) is not None,
@@ -3549,10 +3599,13 @@ class UIMixin:
             set_config_value("community_author_key", key)
         meta = {"icao": project["icao"], "name": project.get("airline") or project["icao"], "voice": project.get("voice", ""),
                 "version": str(project.get("version", "1.0.0")), "author": author, "rights": True}
+        clip = make_sample(papro_studio.project_dir(STUDIO_DIR, project["icao"], project["voice"]) / "pack", Path(result["zip"]).with_suffix(".sample.ogg"), project)
         try:
-            with open(result["zip"], "rb") as handle:
-                reply = requests.post(base + "/submit", data={"meta": json.dumps(meta), "author_key": key},
-                                      files={"pack": (Path(result["zip"]).name, handle, "application/zip")}, timeout=300)
+            with open(result["zip"], "rb") as handle, (open(clip, "rb") if clip else contextlib.nullcontext()) as clip_handle:
+                files = {"pack": (Path(result["zip"]).name, handle, "application/zip")}
+                if clip_handle:
+                    files["sample"] = ("sample.ogg", clip_handle, "audio/ogg")
+                reply = requests.post(base + "/submit", data={"meta": json.dumps(meta), "author_key": key}, files=files, timeout=300)
             body = reply.json() if reply.content else {}
         except (requests.RequestException, OSError, ValueError) as exc:
             return {"error": f"Could not reach the community service: {exc}"}
