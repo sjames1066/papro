@@ -21,7 +21,6 @@ LINEUP_MAX_KT = 35.0          # landing light on at or below this ground speed, 
 AFTER_TAKEOFF_AGL_FT = 1500.0
 SEATBELT_OFF_MIN_AGL_FT = 3000.0
 SEATBELT_FALLBACK_ALT_FT = 10000.0   # no seatbelt switch reading: the signs go off climbing through this
-CABIN_SERVICE_AFTER_S = 480   # after the seatbelt signs go off
 CRUISE_ALT_FT = 20000.0       # above this we count as having been at cruise
 DESCENT_VS_FPM = -700.0
 DESCENT_BELOW_MAX_FT = 3000.0 # this far below the highest altitude of the flight
@@ -189,7 +188,7 @@ class PhaseEngine:
                 if off_edge:   # only when the aircraft's seatbelt sign can be read (no guessing from altitude)
                     self._fire("seatbelt_off")
                     self.t_seatbelt_off = t
-                if self.t_seatbelt_off is not None and t - self.t_seatbelt_off >= CABIN_SERVICE_AFTER_S:
+                if getattr(self, "cruise_reached", False) and "descent" not in self.done:   # at cruise altitude (set from the phase tracker)
                     self._fire("cabin_service")
                 if seatbelt is True and self.prev_seatbelt is False and "seatbelt_off" in self.done \
                         and t - self.t_last_seatbelt_on >= SEATBELT_ON_COOLDOWN_S:

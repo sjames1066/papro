@@ -4169,6 +4169,7 @@ class TrayApp(UIMixin):
         from papro_phases import PHASES as _PH
 
         engine.use_gsx = tracker.use_gsx
+        engine.cruise_reached = tracker.rank == _PH.index("Cruise")   # cabin service: on reaching cruise altitude
         engine.boarding_ok = tracker.rank >= _PH.index("Boarding")   # the welcome waits for boarding to start (GSX or the button)
         engine.feed(reading)
         self.track_flight_lock(reading)
