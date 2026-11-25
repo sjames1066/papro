@@ -747,7 +747,11 @@ def load_community(cfg: dict) -> list[dict]:
         src = raw.get(entry["id"], {})
         if not re.fullmatch(r"[0-9a-f]{64}", entry["sha256"]) or not _is_http(entry["url"]):
             continue
-        entry.update({"community": True, "author": str(src.get("author", "")).strip()[:60],
+        try:
+            stars, votes = max(0.0, min(5.0, float(src.get("rating", 0)))), max(0, int(src.get("votes", 0)))
+        except (TypeError, ValueError):
+            stars, votes = 0.0, 0
+        entry.update({"community": True, "rating": stars, "votes": votes, "author": str(src.get("author", "")).strip()[:60],
                       "license": str(src.get("license", "")).strip()[:40]})
         entry["id"] = "c-" + entry["id"]
         packs.append(entry)
@@ -2708,6 +2712,7 @@ class UIMixin:
                           "task": self.tasks.get(entry["id"])})
         for entry in getattr(self, "community", []):   # packs other people made (approved before they are listed)
             packs.append({"icao": entry["icao"], "key": "dl-" + entry["id"], "id": entry["id"], "catalog": True, "community": True,
+                          "rating": entry.get("rating", 0), "votes": entry.get("votes", 0), "my_rating": int(load_config().get("my_ratings", {}).get(entry["id"], 0) or 0),
                           "name": entry["name"], "version": entry["version"], "author": entry.get("author", ""), "license": entry.get("license", ""),
                           "voices": [v["name"] for v in entry.get("voices", [])] or ([entry["voice"]] if entry.get("voice") else []),
                           "size_mb": round(entry["size"] / 1048576) if entry.get("size") else 0, "installed": False, "update": False,
@@ -3104,6 +3109,8 @@ class UIMixin:
             if not entry:
                 return {"error": "That pack is not in the catalog - refresh the list."}
             self.start_pack_task("install", entry["icao"], entry)
+        elif name == "rate_pack":
+            return self.rate_pack(str(data.get("id", "")), int(data.get("stars") or 0))
         elif name == "import_url":
             try:
                 zip_url = resolve_pack_url(str(data.get("url", "")))
@@ -3461,6 +3468,30 @@ class UIMixin:
             return path.read_bytes() if path else None
         except (papro_studio.StudioError, AppError, OSError):
             return None
+
+    def rate_pack(self, pack_id: str, stars: int) -> dict:
+        """Your 1-5 star vote for a community pack (one per PAPro install; vote again to change it)."""
+        cfg = load_config()
+        entry = next((e for e in getattr(self, "community", []) if e["id"] == pack_id), None)
+        if not entry or not 1 <= stars <= 5:
+            return {"error": "That pack can't be rated."}
+        key = str(cfg.get("community_author_key") or "")
+        if len(key) < 32:
+            key = secrets.token_hex(24)
+            set_config_value("community_author_key", key)
+        base = str(cfg.get("community_url", COMMUNITY_URL)).rsplit("/", 1)[0]
+        try:
+            reply = requests.post(base + "/rate", json={"id": pack_id[2:], "stars": stars, "rater_key": key}, timeout=20)
+            body = reply.json()
+        except (requests.RequestException, ValueError) as exc:
+            return {"error": f"Could not send your rating: {exc}"}
+        if reply.status_code != 200 or not body.get("ok"):
+            return {"error": str(body.get("error") or "The rating was not accepted.")}
+        mine = dict(cfg.get("my_ratings") or {})
+        mine[pack_id] = stars
+        set_config_value("my_ratings", mine)
+        entry["rating"], entry["votes"] = float(body.get("rating", 0)), int(body.get("votes", 0))
+        return {"ok": True}
 
     def publish_pack(self, cfg: dict, project: dict, author: str, note: str, rights: bool) -> dict:
         """Send a finished pack to the community service. It waits there until it has been approved."""

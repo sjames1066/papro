@@ -2,6 +2,7 @@
 //   POST /submit            multipart: pack (zip), meta (json), author_key        -> pending review
 //   GET  /index.json        approved packs, same format as catalog.json
 //   GET  /packs/<id>.zip    an approved pack
+//   POST /rate              json {id, stars 1-5, rater_key}                        -> one vote per install, can be changed
 //   POST /withdraw          json {id, author_key}                                 -> the author removes their own pack
 //   GET  /admin             your review page (Authorization: Bearer ADMIN_TOKEN, or ?token=)
 //   POST /admin/approve|reject|remove/<id>
@@ -97,15 +98,38 @@ async function approve(env, id) {
   idx.packs = idx.packs.filter(p => p.id !== id);
   idx.packs.push({
     id, icao: rec.icao, name: rec.name, voice: rec.voice, version: rec.version, author: rec.author, license: rec.license,
-    sha256: rec.sha256, size: rec.size, url: `${env.PUBLIC_URL}/packs/${id}.zip`,
+    sha256: rec.sha256, size: rec.size, url: `${env.PUBLIC_URL}/packs/${id}.zip`, ...(await ratingOf(env, id)),
   });
   await writeIndex(env, idx);
+}
+
+async function ratingOf(env, id) {
+  const o = await env.PACKS.get(`ratings/${id}.json`);
+  const votes = o ? Object.values(await o.json()) : [];
+  return { votes: votes.length, rating: votes.length ? Math.round(votes.reduce((a, b) => a + b, 0) / votes.length * 10) / 10 : 0 };
+}
+
+async function rate(req, env) {
+  const b = await req.json(), id = slug(b.id), stars = Math.round(Number(b.stars));
+  const key = clean(b.rater_key, 100);
+  if (!(stars >= 1 && stars <= 5) || key.length < 16) return json({ error: "bad rating" }, 400);
+  const idx = await readIndex(env);
+  const entry = idx.packs.find(p => p.id === id);
+  if (!entry) return json({ error: "pack not found" }, 404);
+  const file = `ratings/${id}.json`, o = await env.PACKS.get(file);
+  const votes = o ? await o.json() : {};
+  votes[(await sha256(new TextEncoder().encode(key))).slice(0, 24)] = stars;   // one vote per PAPro install, changeable
+  await env.PACKS.put(file, JSON.stringify(votes));
+  Object.assign(entry, await ratingOf(env, id));
+  await writeIndex(env, idx);
+  return json({ ok: true, rating: entry.rating, votes: entry.votes });
 }
 
 async function remove(env, id, reject) {
   await env.PACKS.delete(`pending/${id}.zip`);
   if (!reject) await env.PACKS.delete(`packs/${id}.zip`);
   await env.PACKS.delete(`meta/${id}.json`);
+  await env.PACKS.delete(`ratings/${id}.json`);
   const idx = await readIndex(env);
   idx.packs = idx.packs.filter(p => p.id !== id);
   await writeIndex(env, idx);
@@ -137,6 +161,7 @@ export default {
       let m = path.match(/^\/packs\/([a-z0-9-]+)\.zip$/);
       if (m) { const o = await env.PACKS.get(`packs/${m[1]}.zip`); return o ? new Response(o.body, { headers: { "content-type": "application/zip" } }) : json({ error: "not found" }, 404); }
       if (path === "/submit" && req.method === "POST") return await submit(req, env);
+      if (path === "/rate" && req.method === "POST") return await rate(req, env);
       if (path === "/withdraw" && req.method === "POST") {
         const b = await req.json(), o = await env.PACKS.get(`meta/${slug(b.id)}.json`);
         if (!o) return json({ error: "not found" }, 404);
