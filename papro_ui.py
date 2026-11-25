@@ -674,6 +674,8 @@ header p{margin:0;color:var(--muted);font-size:12.5px}
 .h-ac i{width:8px;height:8px;border-radius:50%;background:currentColor;flex:none}.h-ac span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .h-phase{margin-top:12px;max-width:340px}.h-ptop{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;font-size:12.5px}.h-ptop b{font-size:15px;white-space:nowrap}.h-plab{white-space:nowrap;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-size:10.5px;font-weight:700}.h-psrc{color:var(--muted);font-size:11px;margin-left:auto}
 .h-pbar{display:flex;gap:3px;margin-top:6px}.h-pbar i{flex:1;height:4px;border-radius:2px;background:rgba(160,166,178,.22)}.h-pbar i.done{background:rgba(61,220,151,.45)}.h-pbar i.now{background:var(--ok);box-shadow:0 0 6px rgba(61,220,151,.6)}
+.h-signs{display:flex;gap:8px;margin-top:10px}.h-sign{width:38px;height:30px;border-radius:7px;display:flex;align-items:center;justify-content:center;background:rgba(120,120,130,.12);color:var(--muted);border:1px solid rgba(120,120,130,.25);opacity:.7;transition:all .25s}
+.h-sign.lit{background:rgba(255,196,92,.18);color:#ffc45c;border-color:rgba(255,196,92,.6);opacity:1;box-shadow:0 0 12px rgba(255,196,92,.55)}
 .h-ac.wait{background:rgba(160,160,170,.14);color:var(--muted)}.h-ac.wait i{animation:hacpulse 1.4s ease-in-out infinite}@keyframes hacpulse{50%{opacity:.25}}.h-ac.ok{background:rgba(61,220,151,.14);color:var(--ok)}.h-ac.warn{background:rgba(255,180,84,.15);color:var(--warn)}
 .h-dest{font-size:15px;color:var(--muted);margin-top:4px}.h-dest b{color:var(--text);font-weight:600}.h-dest b.h-orig{color:var(--muted)}.h-arrow{color:var(--magenta);font-weight:700;white-space:pre}
 .h-nopack{font-size:15px;color:var(--muted);line-height:1.4}.h-nopack a{color:var(--text);font-weight:600;text-decoration:underline}
@@ -1174,7 +1176,7 @@ $("#kskip").onclick=async()=>{await api("skip_pa",{});toast("Skipped")};
 $("#kreplay").onclick=()=>api("replay_pa",{});
 function renderKnob(){const sk=$("#kskip");if(sk){const st=snap&&snap.settings||{},on=!!st.pa_playing;sk.style.display=on?"":"none";const rp=$("#kreplay");if(rp)rp.style.display=(!on&&st.pa_last)?"":"none"}const box=$("#knobbox"),show=!!(snap&&snap.aircraft&&!snap.aircraft.supported);box.style.display=show?"":"none";if(show&&!knobSave)paintKnob()}
 function renderHero(){
-  const sig=JSON.stringify([snap.setup_needed,snap.company,snap.voices,snap.flight,snap.message,snap.applied,snap.updated,snap.busy,snap.logo_v,(snap.packs||[]).filter(p=>p.installed).length,snap.aircraft,snap.phase]);
+  const sig=JSON.stringify([snap.setup_needed,snap.company,snap.voices,snap.flight,snap.message,snap.applied,snap.updated,snap.busy,snap.logo_v,(snap.packs||[]).filter(p=>p.installed).length,snap.aircraft,snap.phase,snap.signs]);
   if(sig===heroSig) return; heroSig=sig;
   const h=$("#hero"); h.replaceChildren(); h.classList.toggle("ok",!!snap.applied);
   const f=snap.flight;
@@ -1196,6 +1198,11 @@ function renderHero(){
   if(!snap.aircraft){const w=el("div","h-ac wait");w.title="PAPro picks up the aircraft as soon as MSFS has one loaded";w.append(el("i"),el("span",null,"Waiting for simulator"));mid.append(w)}
   if(snap.aircraft){const ac=snap.aircraft,chip=el("div","h-ac "+(ac.supported?"ok":"warn"));chip.title=ac.supported?"PAs can be played in the sim for this aircraft":"PAPro can't play PAs inside this aircraft yet";
     chip.append(el("i"),el("span",null,ac.title+(ac.supported?" · PAs supported":" · not supported yet")));mid.append(chip)}
+  if(snap.signs&&(snap.signs.seatbelt!==null||snap.signs.no_smoking!==null)){const row=el("div","h-signs");
+    const sign=(on,title,svg)=>{const d=el("div","h-sign"+(on?" lit":""));d.title=title+(on?" - on":" - off");d.innerHTML=svg;return d};
+    if(snap.signs.seatbelt!==null)row.append(sign(snap.signs.seatbelt,"Fasten seat belts",'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2.2"/><path d="M8 21v-7l-1.5-4.5A2 2 0 0 1 8.4 7h7.2a2 2 0 0 1 1.9 2.5L16 14v7"/><path d="M7.5 12.5l9 3"/></svg>'));
+    if(snap.signs.no_smoking!==null)row.append(sign(snap.signs.no_smoking,"No smoking",'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/><path d="M7 14.5h8.5v2H7z"/><path d="M17.5 14.5v2M19 13.2c0-1-1-1-1-2"/></svg>'));
+    mid.append(row)}
   if(snap.phase){const ph=snap.phase,box=el("div","h-phase");box.title="Worked out from the sim: speed, direction, altitude, lights and doors (and GSX when it is on). It only moves forward until a new flight plan is loaded.";
     const top=el("div","h-ptop");top.append(el("span","h-plab","Flight phase"),el("b",ph.detecting?"detect":null,ph.detecting?"Detecting flight phase...":ph.name),el("span","h-psrc",""));
     const bar=el("div","h-pbar");ph.steps.forEach((n,i)=>{const sg=el("i",i<ph.index?"done":i===ph.index?"now":"");sg.title=n;bar.append(sg)});box.append(top,bar);

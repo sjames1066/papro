@@ -188,6 +188,7 @@ class SimWatcher:
             "beacon": g("LIGHT_BEACON", "LIGHT_BEACON_ON"),
             "landing_light": g("LIGHT_LANDING", "LIGHT_LANDING_ON"),
             "seatbelt": self._seatbelt(requests, g),
+            "no_smoking": g("CABIN_NO_SMOKING_ALERT_SWITCH"),   # 0 = off, 1 = on, 2 = auto (None: the aircraft does not report it)
             "eng_running": any(known) if known else None,
             "fmgc_phase": self._lvar(requests, "L:A32NX_FMGC_FLIGHT_PHASE"),
             "lat": g("PLANE_LATITUDE"), "lon": g("PLANE_LONGITUDE"),

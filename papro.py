@@ -2957,6 +2957,7 @@ class UIMixin:
             "catalog_error": self.catalog_error,
             "app_update": app_update(),
             "aircraft": getattr(self, "aircraft", None),
+            "signs": getattr(self, "signs", None) if getattr(self, "aircraft", None) else None,
             "phase": self.phase_info(),
             "update_checked": int(getattr(self, "update_checked", 0) * 1000),
             "logo_v": self.logo_version,
@@ -4464,6 +4465,8 @@ class TrayApp(UIMixin):
         if tracker is None:
             tracker = self.tracker = PhaseTracker()
         self._sync_tracker(tracker, reading["t"])
+        sb, ns = reading.get("seatbelt"), reading.get("no_smoking")
+        self.signs = {"seatbelt": None if sb is None else bool(sb), "no_smoking": None if ns is None else bool(ns)}   # the cabin signs on the Dashboard
         tracker.feed(reading)
         if not own_playback():
             return
