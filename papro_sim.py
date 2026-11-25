@@ -262,8 +262,23 @@ class SimWatcher:
                     self._unnamed = 0
                 self._report_aircraft(info)
                 if ground is None or agl is None or speed is None:
+                    # connected while MSFS was still loading (menu / no aircraft yet): the connection can stay dead after
+                    # the aircraft loads, so drop it and connect again
+                    self._dead = getattr(self, "_dead", 0) + 1
+                    if self._dead >= 15:
+                        self._dead = 0
+                        log.info("SimConnect gave no flight data - reconnecting")
+                        try:
+                            sm.exit()
+                        except Exception:
+                            pass
+                        sm = requests = None
+                        self._lvar_reqs = {}
+                        self.stop.wait(3)
+                        continue
                     self.stop.wait(1)
                     continue
+                self._dead = 0
                 if self.on_telemetry:
                     try:
                         self.on_telemetry(self.read_telemetry(requests, bool(ground), float(agl), float(speed)))
