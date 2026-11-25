@@ -1196,8 +1196,8 @@ function renderHero(){
   }else mid.append(el("div","h-name","No flight yet"));
   if(snap.message&&!noPack){const m=el("div","msg"); m.textContent=snap.message; mid.append(m)}
   if(!snap.aircraft){const w=el("div","h-ac wait");w.title="PAPro picks up the aircraft as soon as MSFS has one loaded";w.append(el("i"),el("span",null,"Waiting for simulator"));mid.append(w)}
-  if(snap.aircraft){const ac=snap.aircraft,chip=el("div","h-ac "+(ac.supported?"ok":"warn"));chip.title=ac.supported?"PAs can be played in the sim for this aircraft":"PAPro can't play PAs inside this aircraft yet";
-    chip.append(el("i"),el("span",null,ac.title+(ac.supported?" · PAs supported":" · not supported yet")));mid.append(chip)}
+  if(snap.aircraft){const ac=snap.aircraft,chip=el("div","h-ac "+(ac.supported?"ok":"warn"));chip.title=ac.supported?"Native in-sim playback supported":"PAPro can't play PAs inside this aircraft yet";
+    chip.append(el("i"),el("span",null,ac.title+(ac.supported?"":" · not supported yet")));mid.append(chip)}
   if(snap.signs&&(snap.signs.seatbelt!==null||snap.signs.no_smoking!==null)){const row=el("div","h-signs");
     const sign=(on,title,svg)=>{const d=el("div","h-sign"+(on?" lit":""));d.title=title+(on?" - on":" - off");d.innerHTML=svg;return d};
     if(snap.signs.seatbelt!==null)row.append(sign(snap.signs.seatbelt,"Fasten seat belts",'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2.2"/><path d="M8 21v-7l-1.5-4.5A2 2 0 0 1 8.4 7h7.2a2 2 0 0 1 1.9 2.5L16 14v7"/><path d="M7.5 12.5l9 3"/></svg>'));
