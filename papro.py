@@ -4171,7 +4171,7 @@ class TrayApp(UIMixin):
         engine.use_gsx = tracker.use_gsx
         self.check_runway_exit(reading)
         engine.cruise_reached = tracker.rank == _PH.index("Cruise")   # cabin service: on reaching cruise altitude
-        engine.boarding_ok = tracker.rank >= _PH.index("Boarding")   # the welcome waits for boarding to start (GSX or the button)
+        engine.boarding_ok = _PH.index("Boarding") <= tracker.rank <= _PH.index("Taxi out") and not tracker.flown   # the welcome waits for boarding to start (GSX or the button)
         engine.feed(reading)
         self.track_flight_lock(reading)
         self.boarding_music(engine, tracker)
