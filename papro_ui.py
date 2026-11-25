@@ -889,7 +889,7 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
     <button class="cog" id="settings" title="Settings" aria-label="Settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.65 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01A1.7 1.7 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01A1.7 1.7 0 0 0 20.91 10H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg></button>
   </header>
 
-  <nav class="tabs"><button id="tab-main" class="on">Dashboard</button><button id="tab-studio">Pack Studio</button><button id="tab-dl">Download Packs</button><button id="tab-test">Test</button></nav>
+  <nav class="tabs"><button id="tab-main" class="on">Dashboard</button><button id="tab-studio">Pack Studio</button><button id="tab-dl">Pack Manager</button><button id="tab-test">Test</button></nav>
   <div id="view-main">
   <div class="card updbar" id="updbar" style="display:none"><div><b id="upd-t"></b><span id="upd-s"></span></div><button class="primary" id="upd-go">Download</button></div>
   <div class="herorow"><section class="card hero" id="hero"></section>
@@ -901,15 +901,15 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
   <div class="keepopen slim" id="keep-note"><button class="keepx" id="keep-x" title="Close this reminder" aria-label="Close this reminder">&times;</button><b>Keep PAPro running during your flight</b><span>It builds the landing announcement with the real local time once you have landed. Leave it in the tray until you have parked.</span>
     <label class="keepno"><input type="checkbox" id="keep-never"> Don't remind me again</label></div>
 
-  <div class="section-head fold" id="packhead" role="button" tabindex="0" aria-expanded="true"><i class="chev">&#9662;</i><h2>Installed airline packs</h2><span id="packsub"></span></div>
-  <div class="packs" id="packs"></div>
-
   <footer>
     <button class="ghost" id="aliases-btn">Airline aliases</button>
   </footer>
   </div>
   <div id="view-dl" style="display:none">
-    <div class="section-head"><h2>Download packs</h2><span id="dlsub"></span><span style="margin-left:auto;display:flex;gap:10px"><button class="ghost" id="refresh">Refresh list</button><button class="ghost" id="import-btn">Import a pack</button></span></div>
+    <div class="section-head"><h2>Pack Manager</h2><span style="margin-left:auto;display:flex;gap:10px"><button class="ghost" id="refresh">Refresh list</button><button class="ghost" id="import-btn">Import a pack</button></span></div>
+  <div class="section-head fold" id="packhead" role="button" tabindex="0" aria-expanded="true"><i class="chev">&#9662;</i><h2>Installed airline packs</h2><span id="packsub"></span></div>
+  <div class="packs" id="packs"></div>
+    <div class="section-head"><h2>Download packs</h2><span id="dlsub"></span></div>
     <div class="packs" id="dlpacks"></div>
   </div>
   <div id="view-test" style="display:none">
@@ -1262,7 +1262,7 @@ function renderPackList(boxId,list,emptyText){
   h.onclick=()=>set(!shut);h.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();set(!shut)}};set(shut)})();
 function renderPacks(){
   const mine=snap.packs.filter(p=>p.installed&&!p.catalog), more=snap.packs.filter(p=>p.catalog||!p.installed);
-  renderPackList("packs",mine,"No airline packs installed yet. Open the Download Packs tab to get one.");
+  renderPackList("packs",mine,"No airline packs installed yet. Open the Pack Manager tab to get one.");
   renderPackList("dlpacks",more,snap.catalog_error||(snap.packs.length?"Every available pack is installed.":"No airline packs are available to download yet. You can still use Import a pack."));
   $("#packsub").textContent=mine.length?mine.length+" installed":"";
   $("#dlsub").textContent=more.length?more.length+" available":"";
@@ -1273,7 +1273,7 @@ function renderManage(){
   const p=(snap.packs||[]).find(x=>x.icao===manageIcao&&x.installed); if(!p){$("#m-manage").classList.remove("show");return}
   $("#mg-title").textContent="Manage "+p.name; $("#mg-sub").textContent=p.icao+" - open a voice in Pack Studio to re-record or fix it, or take a voice out of the airline.";
   const box=$("#mg-voices"); const items=p.voice_items||[]; const sig=JSON.stringify(items); if(box.dataset.s===sig) return; box.dataset.s=sig; box.replaceChildren();
-  if(!items.length) box.append(el("div","empty","This airline has no voices yet. Add one in Pack Studio or Download packs."));
+  if(!items.length) box.append(el("div","empty","This airline has no voices yet. Add one in Pack Studio or Pack Manager."));
   items.forEach(v=>{
     const row=el("div","card"); row.style.cssText="display:flex;align-items:center;gap:10px;padding:10px 14px;margin-top:8px";
     const nm=el("div","name",v.key==="Default"?(v.name==="Default"?"Main recordings":v.name):v.name); nm.style.flex="1"; row.append(nm);
@@ -1297,7 +1297,7 @@ $("#i-ok").onclick=async()=>{
     let r;
     if(importFile){const q=new URLSearchParams({file:importFile.name,t:TOKEN});const x=await fetch("/import/upload?"+q,{method:"POST",headers:{"X-Token":TOKEN},body:importFile});r=await x.json()}
     else r=await api("import_url",{url});
-    if(r.error){msg.textContent=r.error}else{$("#m-import").classList.remove("show");toast("Importing - watch the Download Packs tab for progress",5000);importWatch={t0:Date.now(),seen:false,n:snap.installs_done||0};setView("dl")}
+    if(r.error){msg.textContent=r.error}else{$("#m-import").classList.remove("show");toast("Importing - watch the Pack Manager tab for progress",5000);importWatch={t0:Date.now(),seen:false,n:snap.installs_done||0};setView("dl")}
   }catch(e){msg.textContent="Import failed - could not send the file."}
   $("#i-ok").disabled=false;$("#i-ok").textContent="Import";
 };
@@ -1428,7 +1428,7 @@ async function testInit(){
   const sig=JSON.stringify(list); if(sig===tSig&&tOpts)return; tSig=sig; tOpts=list; tAllTypes=r.all_types||[];
   const keep={air:$("#t-air").value,voice:$("#t-voice").value,dest:$("#t-dest").value,ac:$("#t-ac").value};
   const a=$("#t-air"); a.innerHTML=""; for(const x of tOpts){const o=el("option",null,x.icao+" - "+x.name);o.value=x.icao;a.appendChild(o)}
-  if(!tOpts.length){$("#t-voice").innerHTML="";$("#t-dest").innerHTML="";tMsg("No pack in your library has a recorded airport yet. Import a pack (Download Packs tab) or record one in Pack Studio and press Save.");return}
+  if(!tOpts.length){$("#t-voice").innerHTML="";$("#t-dest").innerHTML="";tMsg("No pack in your library has a recorded airport yet. Import a pack (Pack Manager tab) or record one in Pack Studio and press Save.");return}
   a.onchange=()=>testFillVoices(); $("#t-voice").onchange=()=>testFillDest(); $("#t-ac").oninput=()=>$("#t-ac").classList.remove("bad");$("#t-ac").onchange=()=>{$("#t-ac").value=$("#t-ac").value.trim().toUpperCase();if(testAcOk())testStale()}; $("#t-dest").onchange=testStale;
   $("#t-time").onchange=()=>{const m=$("#t-time").value.trim().match(/^(\d{1,2})[:.]?(\d{2})$/); if(m&&+m[1]<24&&+m[2]<60)$("#t-time").value=m[1].padStart(2,"0")+":"+m[2]; tSpoken(); testStale()};
   $("#t-time").oninput=tSpoken;
