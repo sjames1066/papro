@@ -2697,7 +2697,11 @@ class UIMixin:
             have = installed.get(code)
             entries = [e for e in self.catalog if e["icao"] == code]
             update = any(have_entry(e) not in (None, e["version"]) for e in entries)
+            ids = (have or {}).get("catalog") or {}
+            crowd = next((e for e in getattr(self, "community", []) if e["id"] in ids), None)   # installed from the community: it can be rated here
             packs.append({"icao": code, "key": code, "name": airline_display_name(cfg, code, have, known_names.get(code, "")),
+                          **({"rate_id": crowd["id"], "rating": crowd.get("rating", 0), "votes": crowd.get("votes", 0),
+                              "my_rating": int(cfg.get("my_ratings", {}).get(crowd["id"], 0) or 0)} if crowd else {}),
                           "version": ((have or {}).get("version") if (have or {}).get("version") not in (None, "", "imported") else "") or library_version(cfg, code) or "Your recordings",
                           "voices": library_voices(cfg, code), "voice_items": library_voice_items(cfg, code), "local_time": local_time_on(cfg, code), "size_mb": 0,
                           "installed": True, "own": not have, "update": update, "task": self.tasks.get(code),

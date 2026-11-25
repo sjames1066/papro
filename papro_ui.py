@@ -773,7 +773,8 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
 .facts b{font-weight:600}
 .facts span{font:500 12px ui-monospace,Consolas,monospace;color:#d9b8ff;word-break:break-all}
 .facts i{font-style:normal;color:var(--muted);font-size:12.5px}
-.stars{margin-top:4px;display:flex;align-items:center;gap:1px}
+.stars{display:flex;align-items:center;gap:1px;margin-right:6px}
+.vcount{font-size:10.5px;color:var(--faint);margin-left:5px}
 .star{cursor:pointer;font-size:16px;line-height:1;color:var(--faint);padding:0 1px}
 .star.on{color:#e9a31b}.star.on.mine{color:#f5b92e}
 .star:hover{color:#f5b92e}
@@ -1236,12 +1237,12 @@ function packCard(p,editable){
   const ver=p.version&&p.version!=="imported"&&p.version!=="Your recordings"?(/^[0-9]/.test(p.version)?"v"+p.version:p.version):"";
   info.append(el("div","meta",[p.icao,ver,p.size_mb?p.size_mb+" MB":""].filter(Boolean).join("  ·  ")));
   if(p.voices&&p.voices.length) info.append(el("div","meta",(p.voices.length>1?"Voices: ":"Voice: ")+p.voices.join(", ")));
-  if(p.community){info.append(el("div","meta","By "+(p.author||"a community member")+(p.license?"  ·  "+p.license:"")));
-    const rt=el("div","stars");rt.title=p.votes?p.rating.toFixed(1)+" from "+p.votes+(p.votes==1?" vote":" votes")+" - click to rate":"Not rated yet - click to rate";
-    for(let i=1;i<=5;i++){const s=el("span","star"+(i<=(p.my_rating||Math.round(p.rating))?" on":"")+(p.my_rating?" mine":""),"\u2605");s.onclick=async()=>{const r=await api("rate_pack",{id:p.id,stars:i});if(r&&r.error)toast(r.error);else{toast("Thanks for rating");await refreshNow()}};rt.append(s)}
-    if(p.votes)rt.append(el("span","small"," "+p.rating.toFixed(1)+" ("+p.votes+")"));info.append(rt)}
+  if(p.community) info.append(el("div","meta","By "+(p.author||"a community member")+(p.license?"  ·  "+p.license:"")));
   top.append(info);
   const act=el("div","act");
+  if(p.community||p.rate_id){const rid=p.rate_id||p.id,rt=el("div","stars");rt.title=p.votes?p.rating.toFixed(1)+" out of 5 from "+p.votes+(p.votes==1?" vote":" votes")+" - click to rate":"Not rated yet - click to rate";
+    for(let i=1;i<=5;i++){const s=el("span","star"+(i<=(p.my_rating||Math.round(p.rating))?" on":"")+(p.my_rating?" mine":""),"\u2605");s.onclick=async()=>{const r=await api("rate_pack",{id:rid,stars:i});if(r&&r.error)toast(r.error);else{toast("Thanks for rating");await refreshNow()}};rt.append(s)}
+    if(p.votes)rt.append(el("span","vcount",String(p.votes)));act.append(rt)}
   if(!p.task){
     if(!p.installed||p.update){const b=el("button","primary",p.update?"Update":"Install");b.disabled=snap.busy;b.onclick=()=>api("install",{id:p.id||p.update_id||p.icao});act.append(b)}
     if(p.installed&&!p.catalog){const m=el("button","ghost","Manage");m.disabled=snap.busy;m.onclick=()=>openManage(p.icao);act.append(m)}
@@ -1258,7 +1259,7 @@ function packCard(p,editable){
 const packSigs={};
 function renderPackList(boxId,list,emptyText){
   const box=$("#"+boxId);
-  const sig=JSON.stringify([list.map(p=>[p.key||p.icao,p.installed,p.update,!!p.task,p.name,p.version,p.voices,p.rating,p.votes,p.my_rating]),snap.busy,snap.catalog_error,snap.logo_v,emptyText]);
+  const sig=JSON.stringify([list.map(p=>[p.key||p.icao,p.installed,p.update,!!p.task,p.name,p.version,p.voices,p.rating,p.votes,p.my_rating,p.rate_id]),snap.busy,snap.catalog_error,snap.logo_v,emptyText]);
   if(sig!==packSigs[boxId]){
     packSigs[boxId]=sig; box.replaceChildren();
     if(!list.length){const e=el("div","empty",emptyText); e.style.gridColumn="1/-1"; box.append(e)}
