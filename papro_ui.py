@@ -1894,7 +1894,7 @@ function boardingControls(c,d){
     secAction:"boarding_section",orderAction:"studio_boarding_order",open:openBoarding,save:v=>{c.boarding_order=v}});
 }
 function landingControls(c,d){
-  pieceControls(c,d,{order:c.landing_order||["part:1","airport","time","part:2"],specials:{
+  pieceControls(c,d,{order:c.landing_order||["part:1","airport","part:2","time","part:3"],specials:{
       welcome:{label:"Welcome to... (older recording, before the airport name)"},
       airport:{label:"Airport name (from the Airports section)",add:"+ Airport name",title:"Say the airport's name"},
       time:{label:"Local time (the hour and minute clips from Time and Numbers)",add:"+ Local time",title:"Say the local time"},
