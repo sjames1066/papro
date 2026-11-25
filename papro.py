@@ -4085,6 +4085,10 @@ class TrayApp(UIMixin):
         if not path:
             log.info("PA due: %s - no recording in the pack", key)
             return
+        if getattr(self, "_joining", False):
+            log.info("Opened mid-flight: %s ready to replay (%s)", key, path.name)
+            self.player_for().last = path
+            return
         log.info("PA due: %s -> %s", key, path.name)
         self.player_for().play(path)
         if key == "welcome":
@@ -4164,7 +4168,11 @@ class TrayApp(UIMixin):
                 return
             self._detect_t0 = None
             tracker.seed(reading)
-            engine.join(reading, tracker.phase())
+            self._joining = True      # opened part way through: the closest PA is made ready for the Replay button, not played
+            try:
+                engine.join(reading, tracker.phase())
+            finally:
+                self._joining = False
         self.release_held()
         from papro_phases import PHASES as _PH
 
