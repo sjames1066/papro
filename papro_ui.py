@@ -1281,10 +1281,10 @@ function renderPackList(boxId,list,emptyText){
   h.onclick=()=>set(!shut);h.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();set(!shut)}};set(shut)});
 function renderPacks(){
   const q=(($("#packq")||{}).value||"").trim().toLowerCase(), hit=p=>!q||[p.name,p.icao,p.author,(p.voices||[]).join(" ")].join(" ").toLowerCase().includes(q);
-  const mine0=snap.packs.filter(p=>p.installed&&!p.catalog), more0=snap.packs.filter(p=>p.community||p.catalog||!p.installed);
+  const mine0=snap.packs.filter(p=>p.installed&&!p.catalog), more0=snap.packs.filter(p=>p.community);
   const mine=mine0.filter(hit), more=more0.filter(hit);
   renderPackList("packs",mine,q?"No installed pack matches.":"No airline packs installed yet. Open the Pack Manager tab to get one.");
-  renderPackList("dlpacks",more,q?"No pack matches.":snap.catalog_error||"No packs are available yet. You can still use Import a pack.");
+  renderPackList("dlpacks",more,q?"No pack matches.":"No community packs yet.");
   $("#packsub").textContent=mine0.length?(q?mine.length+" of ":"")+mine0.length+" installed":"";
   $("#dlsub").textContent=more0.length?(q?more.length+" of ":"")+more0.length+" available":"";
 }
