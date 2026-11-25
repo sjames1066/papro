@@ -4169,6 +4169,7 @@ class TrayApp(UIMixin):
         from papro_phases import PHASES as _PH
 
         engine.use_gsx = tracker.use_gsx
+        self.check_runway_exit(reading)
         engine.cruise_reached = tracker.rank == _PH.index("Cruise")   # cabin service: on reaching cruise altitude
         engine.boarding_ok = tracker.rank >= _PH.index("Boarding")   # the welcome waits for boarding to start (GSX or the button)
         engine.feed(reading)
@@ -4267,7 +4268,16 @@ class TrayApp(UIMixin):
             state.pop("main_pick", None)
             state.pop("crew_pick", None)
             save_state(state)
+            self.landing_pending = None
             return
+        if _PLAYBACK["on"] and getattr(self, "phases", None):
+            # PAPro plays this one itself: wait until the aircraft has turned off the runway
+            self.landing_pending = {"clock": clock, "t": time.time(), "hdg": getattr(self, "last_heading", None)}
+            log.info("Landed - the After Landing PA plays once the aircraft is off the runway")
+            return
+        self._landing_pa(clock)
+
+    def _landing_pa(self, clock: str | None) -> None:
         log.info("Landed: building the landing PA")
         got = self.lock.acquire(timeout=15)   # an update in progress gets a moment to finish, but never holds the landing PA up
         if not got:
@@ -4286,6 +4296,38 @@ class TrayApp(UIMixin):
             if _PLAYBACK["on"] and getattr(self, "phases", None):
                 log.info("Landed: the After Landing PA is due")
                 self.phases.landed_event(time.time())
+
+    RUNWAY_EXIT_KT = 35.0       # slow enough to be on a taxiway...
+    RUNWAY_EXIT_TURN_DEG = 30.0  # ...and pointing this far away from the way it landed
+    RUNWAY_CRAWL_KT = 10.0       # or nearly stopped (a straight-ahead exit or a short runway)
+    RUNWAY_EXIT_MAX_S = 150      # never wait longer than this after slowing down
+
+    def check_runway_exit(self, reading: dict) -> None:
+        """The After Landing PA, once the aircraft has turned off the runway."""
+        from papro_phases import position_degrees
+
+        _lat, _lon, heading = position_degrees(reading.get("lat"), reading.get("lon"), reading.get("heading"))
+        if heading is not None:
+            self.last_heading = heading
+        pending = getattr(self, "landing_pending", None)
+        if not pending or not reading.get("on_ground"):
+            return
+        gs = float(reading.get("gs") or 0.0)
+        waited = time.time() - pending["t"]
+        turned = (pending.get("hdg") is not None and heading is not None
+                  and abs((heading - pending["hdg"] + 180) % 360 - 180) >= self.RUNWAY_EXIT_TURN_DEG)
+        if (turned and gs <= self.RUNWAY_EXIT_KT) or gs <= self.RUNWAY_CRAWL_KT or waited >= self.RUNWAY_EXIT_MAX_S:
+            self.landing_pending = None
+            clock = pending.get("clock")
+            try:   # the time said in the PA moves on with the wait
+                hh, mm = (int(x) for x in str(clock).split(":")[:2])
+                from papro_sim import round_clock as clock_from_seconds
+
+                clock = clock_from_seconds((hh * 3600 + mm * 60 + waited) % 86400)
+            except (TypeError, ValueError):
+                pass
+            log.info("Off the runway (%s) - the After Landing PA", "turned off" if turned else "slowed down" if gs <= self.RUNWAY_CRAWL_KT else "waited long enough")
+            threading.Thread(target=self._landing_pa, args=(clock,), daemon=True).start()
 
     def toggle_auto(self) -> None:
         self.auto = not self.auto
