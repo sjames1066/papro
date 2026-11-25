@@ -909,7 +909,7 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
     <div class="section-head"><h2>Pack Manager</h2><span style="margin-left:auto;display:flex;gap:10px"><button class="ghost" id="refresh">Refresh list</button><button class="ghost" id="import-btn">Import a pack</button></span></div>
   <div class="section-head fold" id="packhead" role="button" tabindex="0" aria-expanded="true"><i class="chev">&#9662;</i><h2>Installed airline packs</h2><span id="packsub"></span></div>
   <div class="packs" id="packs"></div>
-    <div class="section-head"><h2>Download packs</h2><span id="dlsub"></span></div>
+    <div class="section-head" style="margin-top:32px"><h2>Download packs</h2><span id="dlsub"></span></div>
     <div class="packs" id="dlpacks"></div>
   </div>
   <div id="view-test" style="display:none">
