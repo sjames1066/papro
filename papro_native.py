@@ -74,6 +74,12 @@ class NativeWindow:
             events.loaded += self._loaded
             events.closing += self._closing
             events.minimized += self._minimized
+            try:   # its own taskbar identity, not "python"
+                import ctypes
+
+                ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("PAPro.CabinAnnouncements")
+            except Exception:
+                pass
             self.storage.mkdir(parents=True, exist_ok=True)
             kwargs = {"gui": "edgechromium", "private_mode": False, "storage_path": str(self.storage)}
             if self.icon and self.icon.is_file():
@@ -102,12 +108,14 @@ class NativeWindow:
         try:
             tools = self._window_tools()
             if tools:
-                aware, find, get_rect, set_rect, on_screen = tools
+                aware, find, get_rect, set_rect, on_screen, decorate = tools
                 aware()
                 saved = self.backend.saved_window_rect()
                 hwnd = find(self.title, os.getpid())
                 if hwnd and saved and on_screen(saved):
                     set_rect(hwnd, saved)
+                if hwnd:
+                    decorate(hwnd, self.icon)
         except Exception:
             log.exception("Could not restore the window position")
         if self.want_show:
@@ -170,7 +178,7 @@ class NativeWindow:
             tools = self._window_tools()
             if not tools:
                 return
-            aware, find, get_rect, set_rect, on_screen = tools
+            aware, find, get_rect, set_rect, on_screen, decorate = tools
             aware()
             last, written = None, self.backend.saved_window_rect()
             while not self.quitting:

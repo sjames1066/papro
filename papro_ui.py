@@ -167,11 +167,29 @@ def _window_tools():
     def set_rect(hwnd, rect) -> None:
         user32.SetWindowPos(hwnd, None, rect[0], rect[1], rect[2], rect[3], 0x0004 | 0x0010)   # SWP_NOZORDER | SWP_NOACTIVATE
 
+    def decorate(hwnd, icon_path=None) -> None:
+        """Make sure the window has its own taskbar button, with PAPro's icon (a window that starts hidden can lose both)."""
+        gl, sl = user32.GetWindowLongPtrW, user32.SetWindowLongPtrW
+        gl.argtypes, gl.restype = [wintypes.HWND, ctypes.c_int], ctypes.c_ssize_t
+        sl.argtypes, sl.restype = [wintypes.HWND, ctypes.c_int, ctypes.c_ssize_t], ctypes.c_ssize_t
+        ex = gl(hwnd, -20)
+        sl(hwnd, -20, (ex | 0x00040000) & ~0x00000080)   # WS_EX_APPWINDOW on, WS_EX_TOOLWINDOW off
+        user32.SetWindowPos(hwnd, None, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0004 | 0x0010 | 0x0020)   # re-read the frame
+        if icon_path and Path(icon_path).is_file():
+            user32.LoadImageW.restype = wintypes.HANDLE
+            user32.LoadImageW.argtypes = [wintypes.HINSTANCE, wintypes.LPCWSTR, wintypes.UINT, ctypes.c_int, ctypes.c_int, wintypes.UINT]
+            user32.SendMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+            for which, metric in ((1, 11), (0, 49)):   # ICON_BIG / ICON_SMALL
+                size = user32.GetSystemMetrics(metric)
+                icon = user32.LoadImageW(None, str(icon_path), 1, size, size, 0x0010)   # IMAGE_ICON, LR_LOADFROMFILE
+                if icon:
+                    user32.SendMessageW(hwnd, 0x0080, which, icon)   # WM_SETICON
+
     def on_screen(rect) -> bool:
         r = wintypes.RECT(rect[0], rect[1], rect[0] + rect[2], rect[1] + rect[3])
         return bool(user32.MonitorFromRect(ctypes.byref(r), 0))   # MONITOR_DEFAULTTONULL: not on any screen
 
-    return aware, find, get_rect, set_rect, on_screen
+    return aware, find, get_rect, set_rect, on_screen, decorate
 
 
 CGNAT = ipaddress.ip_network("100.64.0.0/10")   # carrier-grade NAT range: Tailscale and some VPNs use it
@@ -517,7 +535,7 @@ class UIServer:
 
         def work() -> None:
             try:
-                aware, find, get_rect, set_rect, on_screen = tools
+                aware, find, get_rect, set_rect, on_screen, _decorate = tools
                 aware()
                 hwnd, deadline = None, time.time() + 10
                 while hwnd is None and time.time() < deadline:
