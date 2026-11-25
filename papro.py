@@ -2517,14 +2517,14 @@ def airline_has_pack(cfg: dict, code: str) -> bool:
 
 FSL_PACKS_FOLDER = "fsl-a32x-airline-packs"
 # FSLabs pack file (after FSL_A320X_CABIN_PA_) -> the PAPro announcement that fills it. Files the pack doesn't have are not created,
-# and the ones not listed (DISEMBARK, emergencies...) stay as the airline pack had them.
+# and the ones not listed (emergencies...) stay as the airline pack had them.
 FSL_MAP = {
     "BOARDING": "welcome", "BOARDING_FUEL": "welcome_fuel", "BOARDING_COMPLETE": "boarding_complete",
     "DOORS_AUTO": "arm_doors", "DOORS_MANUAL": "disarm_doors", "SAFETY_BRIEFING": "safety",
     "SECURE_FOR_TAKEOFF": "takeoff_seats", "LIGHTS_DIM": "takeoff_dim", "READY_TAKEOFF": "takeoff_secured",
     "AFTER_TAKEOFF": "after_takeoff", "AFTER_TAKEOFF_MORNING": "after_takeoff", "AFTER_TAKEOFF_AFTERNOON": "after_takeoff",
     "AFTER_TAKEOFF_EVENING": "after_takeoff", "SHOP": "cabin_service", "BRIEFING": "pre_safety", "BRIEFING_MORNING": "pre_safety",
-    "BRIEFING_AFTERNOON": "pre_safety", "BRIEFING_EVENING": "pre_safety", "SEATBELTS": "descent", "TURB": "seatbelt_on",
+    "BRIEFING_AFTERNOON": "pre_safety", "BRIEFING_EVENING": "pre_safety", "SEATBELTS": "descent", "TURB": "seatbelt_on", "DISEMBARK": "deboard_start",
     "SECURE_FOR_LANDING": "landing_seats", "READY_LANDING": "landing_secured", "AFTER_LANDING": "after_landing",
 }
 
