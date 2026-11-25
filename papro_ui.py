@@ -909,7 +909,7 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
     <div class="section-head"><h2>Pack Manager</h2><span style="margin-left:auto;display:flex;gap:10px"><button class="ghost" id="refresh">Refresh list</button><button class="ghost" id="import-btn">Import a pack</button></span></div>
   <div class="section-head fold" id="packhead" role="button" tabindex="0" aria-expanded="true"><i class="chev">&#9662;</i><h2>Installed airline packs</h2><span id="packsub"></span></div>
   <div class="packs" id="packs"></div>
-    <div class="section-head" style="margin-top:32px"><h2>Download packs</h2><span id="dlsub"></span></div>
+    <div class="section-head fold" id="dlhead" role="button" tabindex="0" aria-expanded="true" style="margin-top:32px"><i class="chev">&#9662;</i><h2>Download packs</h2><span id="dlsub"></span></div>
     <div class="packs" id="dlpacks"></div>
   </div>
   <div id="view-test" style="display:none">
@@ -1257,9 +1257,9 @@ function renderPackList(boxId,list,emptyText){
     if(f!==null&&f!==undefined){pp.textContent=Math.round(f*100)+"%";pb.firstChild.style.width=(f*100)+"%"}else pp.textContent="";
   });
 }
-(function(){const h=$("#packhead"),p=$("#packs");let shut=false;try{shut=localStorage.getItem("packsShut")==="1"}catch(e){}
-  const set=s=>{shut=s;h.classList.toggle("shut",s);p.classList.toggle("shut",s);h.setAttribute("aria-expanded",!s);try{localStorage.setItem("packsShut",s?"1":"0")}catch(e){}};
-  h.onclick=()=>set(!shut);h.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();set(!shut)}};set(shut)})();
+[["#packhead","#packs","packsShut"],["#dlhead","#dlpacks","dlShut"]].forEach(([hs,ps,key])=>{const h=$(hs),p=$(ps);let shut=false;try{shut=localStorage.getItem(key)==="1"}catch(e){}
+  const set=s=>{shut=s;h.classList.toggle("shut",s);p.classList.toggle("shut",s);h.setAttribute("aria-expanded",!s);try{localStorage.setItem(key,s?"1":"0")}catch(e){}};
+  h.onclick=()=>set(!shut);h.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();set(!shut)}};set(shut)});
 function renderPacks(){
   const mine=snap.packs.filter(p=>p.installed&&!p.catalog), more=snap.packs.filter(p=>p.catalog||!p.installed);
   renderPackList("packs",mine,"No airline packs installed yet. Open the Pack Manager tab to get one.");
