@@ -1231,7 +1231,7 @@ function packCard(p,editable){
   const c=el("div","card pack"); c.id="pack-"+(p.key||p.icao);
   const top=el("div","top"); top.append(editable&&p.installed?editableLogo(p.icao,"logo"):logo(p.icao,"logo"));
   const info=el("div"); const n=el("div","name",p.name);
-  if(p.community||p.rate_id){const rid=p.rate_id||p.id,rt=el("div","stars");rt.title=p.votes?p.rating.toFixed(1)+" out of 5 from "+p.votes+(p.votes==1?" vote":" votes")+" - click to rate":"Not rated yet - click to rate";
+  if(p.community){const rid=p.id,rt=el("div","stars");rt.title=p.votes?p.rating.toFixed(1)+" out of 5 from "+p.votes+(p.votes==1?" vote":" votes")+" - click to rate":"Not rated yet - click to rate";
     for(let i=1;i<=5;i++){const s=el("span","star"+(i<=(p.my_rating||Math.round(p.rating))?" on":"")+(p.my_rating?" mine":""),"\u2605");s.onclick=async()=>{const r=await api("rate_pack",{id:rid,stars:i});if(r&&r.error)toast(r.error);else{toast("Thanks for rating");await refreshNow()}};rt.append(s)}
     if(p.votes)rt.append(el("span","vcount",p.rating.toFixed(1)+"/5"));n.append(rt)}
   if(p.installed&&p.update){n.append(el("span","chip up","Update available"))}
