@@ -1615,13 +1615,23 @@ def current_aircraft_type() -> str:
     return str((load_state().get("flight") or {}).get("aircraft", "")).upper()
 
 
+NEO_BASE = {"A19N": "A319", "A20N": "A320", "A21N": "A321"}   # a neo uses the recordings made for its ceo sibling when the pack has none of its own
+
+
+def type_candidates(ac: str) -> list[str]:
+    """The aircraft types to look for, most specific first: A21N -> ['A21N', 'A321']."""
+    ac = (ac or "").upper()
+    return [ac] + ([NEO_BASE[ac]] if ac in NEO_BASE else [])
+
+
 def typed_choice(key: str, generic: list[Path], typed: list[Path]) -> Path | None:
     """Pick the take of a PA for this aircraft. Takes made for the aircraft's own type win; takes marked ALL join the
     ordinary ones. One is chosen at random once per flight."""
     ac = current_aircraft_type()
-    specific = [p for p in typed if ac and ac in typed_info(p.name)[1]]
-    if specific:
-        return choose_variant(f"{key}@{ac}", specific)
+    for want in type_candidates(ac):   # the aircraft's own takes first, then its ceo sibling's (A21N -> A321)
+        specific = [p for p in typed if want and want in typed_info(p.name)[1]]
+        if specific:
+            return choose_variant(f"{key}@{want}", specific)
     pool = generic + [p for p in typed if "ALL" in typed_info(p.name)[1]]
     return choose_variant(key, pool) if pool else None
 
@@ -1805,7 +1815,7 @@ def build_crew_intro(voice_dir: Path, airline: str, origin: str, aircraft: str, 
     _CREW_WHY.clear()
     if not crew or not folder.is_dir() or papro_audio is None or not papro_audio.have_backend():
         return _crew_fail("the crew folder is missing from the installed voice")
-    count = int((crew.get("fa") or {}).get(aircraft.upper(), 0) or 0)
+    count = next((int((crew.get("fa") or {}).get(t, 0) or 0) for t in type_candidates(aircraft) if (crew.get("fa") or {}).get(t)), 0)   # A21N -> A321
     if not count and ("number" in crew["order"] or "names" in crew["order"]):
         return _crew_fail(f"no number of flight attendants is set for aircraft type {aircraft or '(none)'}")   # no number for this aircraft type: say the pack's ordinary briefing
     state = load_state()
