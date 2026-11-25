@@ -248,10 +248,19 @@ class SimWatcher:
                     log.info("Connected to MSFS (SimConnect)")
                     self._pmdg_setup(requests)
                     self.detector = LandingDetector(self.detector.slow_kt)
-                self._report_aircraft(classify_aircraft(self._read_title(requests)))
+                info = classify_aircraft(self._read_title(requests))
                 ground = requests.get("SIM_ON_GROUND")
                 agl = requests.get("PLANE_ALT_ABOVE_GROUND")
                 speed = requests.get("GROUND_VELOCITY")
+                # some add-on aircraft (e.g. FSLabs) never give a usable TITLE: once flight data is flowing, carry on as
+                # "an aircraft PAPro plays the PAs for" instead of waiting for a name that never comes
+                if info is None and ground is not None and agl is not None and speed is not None:
+                    self._unnamed = getattr(self, "_unnamed", 0) + 1
+                    if self._unnamed >= 8:
+                        info = {"title": "Unnamed aircraft", "supported": False}
+                else:
+                    self._unnamed = 0
+                self._report_aircraft(info)
                 if ground is None or agl is None or speed is None:
                     self.stop.wait(1)
                     continue
