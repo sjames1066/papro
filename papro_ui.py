@@ -773,7 +773,7 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
 .facts b{font-weight:600}
 .facts span{font:500 12px ui-monospace,Consolas,monospace;color:#d9b8ff;word-break:break-all}
 .facts i{font-style:normal;color:var(--muted);font-size:12.5px}
-.stars{display:flex;align-items:center;gap:1px;margin-right:6px}
+.stars{display:inline-flex;align-items:center;gap:1px;margin:0 8px;vertical-align:1px}
 .vcount{font-size:10.5px;color:var(--faint);margin-left:5px}
 .star{cursor:pointer;font-size:16px;line-height:1;color:var(--faint);padding:0 1px}
 .star.on{color:#e9a31b}.star.on.mine{color:#f5b92e}
@@ -1231,6 +1231,9 @@ function packCard(p,editable){
   const c=el("div","card pack"); c.id="pack-"+(p.key||p.icao);
   const top=el("div","top"); top.append(editable&&p.installed?editableLogo(p.icao,"logo"):logo(p.icao,"logo"));
   const info=el("div"); const n=el("div","name",p.name);
+  if(p.community||p.rate_id){const rid=p.rate_id||p.id,rt=el("div","stars");rt.title=p.votes?p.rating.toFixed(1)+" out of 5 from "+p.votes+(p.votes==1?" vote":" votes")+" - click to rate":"Not rated yet - click to rate";
+    for(let i=1;i<=5;i++){const s=el("span","star"+(i<=(p.my_rating||Math.round(p.rating))?" on":"")+(p.my_rating?" mine":""),"\u2605");s.onclick=async()=>{const r=await api("rate_pack",{id:rid,stars:i});if(r&&r.error)toast(r.error);else{toast("Thanks for rating");await refreshNow()}};rt.append(s)}
+    if(p.votes)rt.append(el("span","vcount",p.rating.toFixed(1)+"/5"));n.append(rt)}
   if(p.installed&&p.update){n.append(el("span","chip up","Update available"))}
   else if(p.catalog&&p.installed){n.append(el("span","chip ok","Installed"))}
   info.append(n);
@@ -1240,9 +1243,6 @@ function packCard(p,editable){
   if(p.community) info.append(el("div","meta","By "+(p.author||"a community member")+(p.license?"  ·  "+p.license:"")));
   top.append(info);
   const act=el("div","act");
-  if(p.community||p.rate_id){const rid=p.rate_id||p.id,rt=el("div","stars");rt.title=p.votes?p.rating.toFixed(1)+" out of 5 from "+p.votes+(p.votes==1?" vote":" votes")+" - click to rate":"Not rated yet - click to rate";
-    for(let i=1;i<=5;i++){const s=el("span","star"+(i<=(p.my_rating||Math.round(p.rating))?" on":"")+(p.my_rating?" mine":""),"\u2605");s.onclick=async()=>{const r=await api("rate_pack",{id:rid,stars:i});if(r&&r.error)toast(r.error);else{toast("Thanks for rating");await refreshNow()}};rt.append(s)}
-    if(p.votes)rt.append(el("span","vcount",String(p.votes)));act.append(rt)}
   if(!p.task){
     if(!p.installed||p.update){const b=el("button","primary",p.update?"Update":"Install");b.disabled=snap.busy;b.onclick=()=>api("install",{id:p.id||p.update_id||p.icao});act.append(b)}
     if(p.installed&&!p.catalog){const m=el("button","ghost","Manage");m.disabled=snap.busy;m.onclick=()=>openManage(p.icao);act.append(m)}
