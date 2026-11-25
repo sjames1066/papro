@@ -63,7 +63,8 @@ class SimWatcher:
     """Background thread: connects to MSFS when it is running and calls
     on_event("takeoff") or on_event("landed", "HH:MM") (local time where you landed)."""
 
-    def __init__(self, on_event, running, stop: threading.Event, slow_kt: float = 60.0, on_aircraft=None, on_telemetry=None):
+    def __init__(self, on_event, running, stop: threading.Event, slow_kt: float = 60.0, on_aircraft=None, on_telemetry=None, seatbelt_lvars=None):
+        self.seatbelt_lvars = seatbelt_lvars   # optional callable -> extra L: variable names for the seatbelt sign (config.json: seatbelt_lvars)
         self.on_event, self.running, self.stop = on_event, running, stop
         self.on_telemetry = on_telemetry
         self.on_aircraft, self._aircraft = on_aircraft, None
@@ -186,7 +187,7 @@ class SimWatcher:
             "parking_brake": g("BRAKE_PARKING_POSITION", "BRAKE_PARKING_INDICATOR"),
             "beacon": g("LIGHT_BEACON", "LIGHT_BEACON_ON"),
             "landing_light": g("LIGHT_LANDING", "LIGHT_LANDING_ON"),
-            "seatbelt": (lambda p: p if p is not None else g("CABIN_SEATBELTS_ALERT_SWITCH"))(self._pmdg_seatbelt()),
+            "seatbelt": self._seatbelt(requests, g),
             "eng_running": any(known) if known else None,
             "fmgc_phase": self._lvar(requests, "L:A32NX_FMGC_FLIGHT_PHASE"),
             "lat": g("PLANE_LATITUDE"), "lon": g("PLANE_LONGITUDE"),
@@ -195,6 +196,25 @@ class SimWatcher:
             "gsx_boarding": self._lvar(requests, "L:FSDT_GSX_BOARDING_STATE"),      # 5 = boarding, 6 = done
             "gsx_deboarding": self._lvar(requests, "L:FSDT_GSX_DEBOARDING_STATE"),  # 5 = deboarding
         }
+
+    IFLY_SEATBELT_LVAR = "L:VC_Fasten_Belts_SW_VAL"   # iFly 737 MAX overhead switch: 0 = OFF, 10 = AUTO, 20 = ON (it does not set the standard variable)
+
+    def _seatbelt(self, requests, g):
+        """The seatbelt sign: PMDG 737's selector, the iFly 737 MAX's own switch, any L: variables named in config.json
+        (seatbelt_lvars), then the standard sim variable. True / False, or None when nothing reports it."""
+        value = self._pmdg_seatbelt()
+        if value is not None:
+            return value
+        names = [self.IFLY_SEATBELT_LVAR]
+        try:
+            names += [str(n) for n in (self.seatbelt_lvars() if self.seatbelt_lvars else []) if str(n).strip()]
+        except Exception:
+            pass
+        for name in names:
+            raw = self._lvar(requests, name if name.startswith("L:") else f"L:{name}")
+            if raw is not None:
+                return float(raw) >= (15 if name == self.IFLY_SEATBELT_LVAR else 0.5)   # iFly: AUTO (10) is not "on"
+        return g("CABIN_SEATBELTS_ALERT_SWITCH")
 
     def _doors_open(self, requests):
         """True when any exit reports open; None if the aircraft reports none of them."""

@@ -26,6 +26,7 @@ DESCENT_VS_FPM = -700.0
 DESCENT_BELOW_MAX_FT = 3000.0 # this far below the highest altitude of the flight
 LANDING_PREP_AGL_FT = 10000.0 # descending through this: cabin crew take your seats for landing
 SEATBELT_ON_COOLDOWN_S = 600
+SEATBELT_ON_MAX_DESCENT_FPM = 300.0   # the turbulence PA only when not descending faster than this
 DEBOARD_AFTER_S = 5           # parked after landing for this long -> doors / deboarding
 DEBOARD_COMPLETE_AFTER_S = 120
 
@@ -198,8 +199,8 @@ class PhaseEngine:
                     self.t_last_seatbelt_on = t
                     if self.cruise_seen and "descent" in self.done:
                         pass   # the descent PA already covers it
-                    else:
-                        self.fire_cb("seatbelt_on")
+                    elif getattr(self, "cruise_reached", False) and (vs is None or vs > -SEATBELT_ON_MAX_DESCENT_FPM):
+                        self.fire_cb("seatbelt_on")   # turbulence: sign switched on at cruise, not descending
                 if self.cruise_seen and vs is not None and vs <= DESCENT_VS_FPM and alt <= self.max_alt - DESCENT_BELOW_MAX_FT:
                     self._fire("descent")
                 if self.cruise_seen and "descent" in self.done and agl <= LANDING_PREP_AGL_FT:
