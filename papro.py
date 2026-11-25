@@ -49,7 +49,7 @@ except Exception:  # missing libraries must not stop the rest of the app
 import papro_studio  # Pack Studio (record / upload, PA sound, loudness, export); imports papro_audio itself
 
 APP_NAME = "PAPro - Cabin announcements for MSFS"
-VERSION = "1.1.2"
+VERSION = "1.1.3"
 BASE_DIR = (
     Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 )
