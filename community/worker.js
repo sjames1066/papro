@@ -3,6 +3,7 @@
 //   GET  /index.json        approved packs, same format as catalog.json
 //   GET  /packs/<id>.zip    an approved pack
 //   POST /rate              json {id, stars 1-5, rater_key}                        -> one vote per install, can be changed
+//   POST /claim             json {code, author_key}                               -> a pack is handed to a new PAPro install
 //   POST /withdraw          json {id, author_key}                                 -> the author removes their own pack
 //   GET  /admin             your review page (Authorization: Bearer ADMIN_TOKEN, or ?token=)
 //   POST /admin/approve|reject|remove/<id>
@@ -176,6 +177,31 @@ async function rate(req, env) {
   return json({ ok: true, rating: entry.rating, votes: entry.votes });
 }
 
+// You hand a pack over to its author's new PC: a one-time code (good for 7 days) that the author enters in PAPro
+async function transfer(env, id) {
+  if (!await env.PACKS.get(`meta/${id}.json`)) throw new Error("not found");
+  const bytes = crypto.getRandomValues(new Uint8Array(6));
+  const code = [...bytes].map(b => "ABCDEFGHJKMNPQRSTUVWXYZ23456789"[b % 31]).join("");
+  await env.PACKS.put(`transfer/${code}.json`, JSON.stringify({ id, expires: Date.now() + 7 * 864e5 }));
+  return code;
+}
+
+async function claim(req, env) {
+  const b = await req.json(), code = String(b.code || "").toUpperCase().replace(/[^A-Z0-9]/g, ""), key = clean(b.author_key, 100);
+  if (code.length !== 6 || key.length < 16) return json({ error: "bad code" }, 400);
+  const t = await env.PACKS.get(`transfer/${code}.json`);
+  if (!t) return json({ error: "That code is not valid" }, 404);
+  const { id, expires } = await t.json();
+  await env.PACKS.delete(`transfer/${code}.json`);
+  if (Date.now() > expires) return json({ error: "That code has expired" }, 410);
+  const m = await env.PACKS.get(`meta/${id}.json`);
+  if (!m) return json({ error: "That pack no longer exists" }, 404);
+  const rec = await m.json();
+  rec.author_hash = await sha256(new TextEncoder().encode(key));
+  await env.PACKS.put(`meta/${id}.json`, JSON.stringify(rec));
+  return json({ ok: true, name: rec.name, voice: rec.voice });
+}
+
 async function remove(env, id, reject) {
   await env.PACKS.delete(`pending/${id}.zip`);
   if (!reject) await env.PACKS.delete(`packs/${id}.zip`);
@@ -195,13 +221,14 @@ async function adminPage(env) {
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const body = rows.map(r => `<tr><td><b>${esc(r.name)}</b> (${esc(r.icao)})<br><small>${esc(r.voice)} · v${esc(r.version)} · by ${esc(r.author)}</small><br><small>${esc(r.note)}</small></td>
     <td>${r.files} files<br>${(r.size / 1048576).toFixed(1)} MB</td><td>${r.status}</td>
-    <td>${r.status === "pending" ? `<button onclick="act('approve','${r.id}')">Approve</button> <button onclick="act('reject','${r.id}')">Reject</button>` : `<button onclick="act('approve','${r.id}')">Refresh</button> <button onclick="act('remove','${r.id}')">Remove</button>`}
+    <td>${r.status === "pending" ? `<button onclick="act('approve','${r.id}')">Approve</button> <button onclick="act('reject','${r.id}')">Reject</button>` : `<button onclick="act('approve','${r.id}')">Refresh</button> <button onclick="act('transfer','${r.id}')">Transfer</button> <button onclick="act('remove','${r.id}')">Remove</button>`}
     <br><a href="/admin/download/${r.id}">Download zip</a></td></tr>`).join("");
   return new Response(`<!doctype html><meta name=viewport content="width=device-width"><title>PAPro community</title>
 <style>body{font:15px system-ui;margin:24px;max-width:900px}td{padding:10px;border-bottom:1px solid #8884;vertical-align:top}button{padding:6px 12px}</style>
 <h1>Community packs</h1><table>${body || "<tr><td>Nothing submitted yet.</td></tr>"}</table>
 <script>const T=new URLSearchParams(location.search).get("token")||"";
-async function act(a,id){await fetch("/admin/"+a+"/"+id,{method:"POST",headers:{Authorization:"Bearer "+T}});location.reload()}</script>`, { headers: { "content-type": "text/html; charset=utf-8" } });
+async function act(a,id){const r=await fetch("/admin/"+a+"/"+id,{method:"POST",headers:{Authorization:"Bearer "+T}});
+if(a==="transfer"){const j=await r.json();prompt("Give the author this code (works once, for 7 days):",j.code);return}location.reload()}</script>`, { headers: { "content-type": "text/html; charset=utf-8" } });
 }
 
 export default {
@@ -216,6 +243,7 @@ export default {
       if (m) { const o = await env.PACKS.get(`logos/${m[1]}.png`); return o ? new Response(o.body, { headers: { "content-type": "image/png", "cache-control": "public, max-age=3600" } }) : json({ error: "not found" }, 404); }
       if (path === "/submit" && req.method === "POST") return await submit(req, env, ctx);
       if (path === "/rate" && req.method === "POST") return await rate(req, env);
+      if (path === "/claim" && req.method === "POST") return await claim(req, env);
       if (path === "/withdraw" && req.method === "POST") {
         const b = await req.json(), o = await env.PACKS.get(`meta/${slug(b.id)}.json`);
         if (!o) return json({ error: "not found" }, 404);
@@ -227,8 +255,9 @@ export default {
         const token = (req.headers.get("authorization") || "").replace(/^Bearer /, "") || url.searchParams.get("token") || "";
         if (!env.ADMIN_TOKEN || token !== env.ADMIN_TOKEN) return new Response("Not allowed", { status: 401 });
         if (path === "/admin") return await adminPage(env);
-        m = path.match(/^\/admin\/(approve|reject|remove|download)\/([a-z0-9-]+)$/);
+        m = path.match(/^\/admin\/(approve|reject|remove|download|transfer)\/([a-z0-9-]+)$/);
         if (m && m[1] === "download") { const o = await env.PACKS.get(`pending/${m[2]}.zip`) || await env.PACKS.get(`packs/${m[2]}.zip`); return o ? new Response(o.body, { headers: { "content-type": "application/zip" } }) : json({ error: "not found" }, 404); }
+        if (m && m[1] === "transfer" && req.method === "POST") return json({ ok: true, code: await transfer(env, m[2]) });
         if (m && req.method === "POST") { if (m[1] === "approve") await approve(env, m[2]); else await remove(env, m[2], m[1] === "reject"); return json({ ok: true }); }
       }
       return json({ error: "not found" }, 404);

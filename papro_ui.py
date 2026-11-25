@@ -1070,6 +1070,9 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
   <div class="setting pc-only"><div class="label">Fenix packs folder and log</div>
     <div style="display:flex;align-items:center;gap:12px"><button class="ghost" data-open="fenix">Open folder</button><span class="small">Where PAPro puts your announcements for the Fenix.</span></div>
     <div style="display:flex;align-items:center;gap:12px;margin-top:10px"><button class="ghost" data-open="log">View log</button><span class="small">Useful if something is not working.</span></div></div>
+  <div class="setting" style="margin-top:14px"><div class="label">Community author key</div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><button class="ghost" id="ak-copy">Copy key</button><input type="text" id="ak-val" placeholder="Paste a key or transfer code" style="flex:1;min-width:200px;font:500 12px 'Inter',sans-serif"><button class="ghost" id="ak-restore">Restore key</button><button class="ghost" id="ak-claim">Use code</button></div>
+  </div>
   </div></details>
   <div class="row"><button class="ghost" id="s-cancel">Cancel</button><button class="primary" id="s-save">Save</button></div>
 </div></div>
@@ -1390,6 +1393,9 @@ $("#settings").onclick=openSettings;
 function renderLanAddrs(lan){const box=$("#s-lan-addrs");box.replaceChildren();
   if(!(lan.addresses||[]).length){box.append(el("div","small","No network address found for this PC."));return}
   (lan.addresses||[]).forEach(a=>{const row=el("div");row.style.cssText="display:flex;gap:8px;align-items:center;margin-top:4px";const i=document.createElement("input");i.type="text";i.readOnly=true;i.value=a;i.style.cssText="flex:1;min-width:200px;font:600 12px 'Inter',sans-serif";i.onclick=()=>i.select();row.append(i);box.append(row)})}
+$("#ak-copy").onclick=async()=>{const r=await api("author_key",{do:"get"});if(!r||!r.key){toast("Could not read the key");return}try{await navigator.clipboard.writeText(r.key);toast("Key copied - keep it private")}catch(e){$("#ak-val").value=r.key;$("#ak-val").select();toast("Press Ctrl+C to copy")}};
+$("#ak-restore").onclick=async()=>{const r=await api("author_key",{do:"set",value:$("#ak-val").value});if(r&&r.ok){$("#ak-val").value="";toast("Key restored")}else toast((r&&r.error)||"Could not restore")};
+$("#ak-claim").onclick=async()=>{const r=await api("author_key",{do:"claim",value:$("#ak-val").value});if(r&&r.ok){$("#ak-val").value="";toast("Pack transferred"+(r.name?": "+r.name:""))}else toast((r&&r.error)||"Code not accepted")};
 $("#s-addr-copy").onclick=async()=>{try{await navigator.clipboard.writeText($("#s-addr").value);toast("Address copied")}catch(e){$("#s-addr").select();toast("Press Ctrl+C to copy")}};
 let audioChosen="";
 async function loadAudioDevices(){

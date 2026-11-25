@@ -3114,6 +3114,8 @@ class UIMixin:
             if not entry:
                 return {"error": "That pack is not in the catalog - refresh the list."}
             self.start_pack_task("install", entry["icao"], entry)
+        elif name == "author_key":
+            return self.author_key_action(str(data.get("do", "")), str(data.get("value", "")))
         elif name == "rate_pack":
             return self.rate_pack(str(data.get("id", "")), int(data.get("stars") or 0))
         elif name == "import_url":
@@ -3473,6 +3475,37 @@ class UIMixin:
             return path.read_bytes() if path else None
         except (papro_studio.StudioError, AppError, OSError):
             return None
+
+    def author_key_action(self, do: str, value: str) -> dict:
+        """The key that proves which community packs are yours: show it (to back it up), put one back (a new PC), or use a
+        transfer code from the reviewer (the pack is handed to this PC)."""
+        cfg = load_config()
+        key = str(cfg.get("community_author_key") or "")
+        if do == "get":
+            if len(key) < 32:
+                key = secrets.token_hex(24)
+                set_config_value("community_author_key", key)
+            return {"ok": True, "key": key}
+        if do == "set":
+            value = value.strip().lower()
+            if not re.fullmatch(r"[0-9a-f]{48}", value):
+                return {"error": "That is not an author key."}
+            set_config_value("community_author_key", value)
+            return {"ok": True}
+        if do == "claim":
+            if len(key) < 32:
+                key = secrets.token_hex(24)
+                set_config_value("community_author_key", key)
+            base = str(cfg.get("community_url", COMMUNITY_URL)).rsplit("/", 1)[0]
+            try:
+                reply = requests.post(base + "/claim", json={"code": value, "author_key": key}, timeout=20)
+                body = reply.json()
+            except (requests.RequestException, ValueError) as exc:
+                return {"error": f"Could not reach the community service: {exc}"}
+            if reply.status_code != 200 or not body.get("ok"):
+                return {"error": str(body.get("error") or "The code was not accepted.")}
+            return {"ok": True, "name": body.get("name", ""), "voice": body.get("voice", "")}
+        return {"error": "Unknown request."}
 
     def rate_pack(self, pack_id: str, stars: int) -> dict:
         """Your 1-5 star vote for a community pack (one per PAPro install; vote again to change it)."""
