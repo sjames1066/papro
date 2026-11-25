@@ -674,7 +674,7 @@ header p{margin:0;color:var(--muted);font-size:12.5px}
 .h-ac i{width:8px;height:8px;border-radius:50%;background:currentColor;flex:none}.h-ac span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .h-phase{margin-top:12px;max-width:340px}.h-ptop{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;font-size:12.5px}.h-ptop b{font-size:15px;white-space:nowrap}.h-plab{white-space:nowrap;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-size:10.5px;font-weight:700}.h-psrc{color:var(--muted);font-size:11px;margin-left:auto}
 .h-pbar{display:flex;gap:3px;margin-top:6px}.h-pbar i{flex:1;height:4px;border-radius:2px;background:rgba(160,166,178,.22)}.h-pbar i.done{background:rgba(61,220,151,.45)}.h-pbar i.now{background:var(--ok);box-shadow:0 0 6px rgba(61,220,151,.6)}
-.h-ac.ok{background:rgba(61,220,151,.14);color:var(--ok)}.h-ac.warn{background:rgba(255,180,84,.15);color:var(--warn)}
+.h-ac.wait{background:rgba(160,160,170,.14);color:var(--muted)}.h-ac.wait i{animation:hacpulse 1.4s ease-in-out infinite}@keyframes hacpulse{50%{opacity:.25}}.h-ac.ok{background:rgba(61,220,151,.14);color:var(--ok)}.h-ac.warn{background:rgba(255,180,84,.15);color:var(--warn)}
 .h-dest{font-size:15px;color:var(--muted);margin-top:4px}.h-dest b{color:var(--text);font-weight:600}.h-dest b.h-orig{color:var(--muted)}.h-arrow{color:var(--magenta);font-weight:700;white-space:pre}
 .h-nopack{font-size:15px;color:var(--muted);line-height:1.4}.h-nopack a{color:var(--text);font-weight:600;text-decoration:underline}
 .msg{margin-top:10px;font-size:13px;color:var(--muted)}
@@ -1190,6 +1190,7 @@ function renderHero(){
     const d=el("div","h-dest"); if(f.origin){const o=el("b","h-orig",f.origin),ar=el("span","h-arrow"," \u2192 ");d.append(o,ar)} d.append(el("b",null,f.dest)); if(f.name) d.append(document.createTextNode(" | "+f.name)); mid.append(d);
   }else mid.append(el("div","h-name","No flight yet"));
   if(snap.message&&!noPack){const m=el("div","msg"); m.textContent=snap.message; mid.append(m)}
+  if(!snap.aircraft){const w=el("div","h-ac wait");w.title="PAPro picks up the aircraft as soon as MSFS has one loaded";w.append(el("i"),el("span",null,"Waiting for simulator"));mid.append(w)}
   if(snap.aircraft){const ac=snap.aircraft,chip=el("div","h-ac "+(ac.supported?"ok":"warn"));chip.title=ac.supported?"PAs can be played in the sim for this aircraft":"PAPro can't play PAs inside this aircraft yet";
     chip.append(el("i"),el("span",null,ac.title+(ac.supported?" · PAs supported":" · not supported yet")));mid.append(chip)}
   if(snap.phase){const ph=snap.phase,box=el("div","h-phase");box.title="Worked out from the sim: speed, direction, altitude, lights and doors (and GSX when it is on). It only moves forward until a new flight plan is loaded.";
