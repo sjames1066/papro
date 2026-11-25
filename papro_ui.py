@@ -1062,6 +1062,9 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
     </div>
     <label class="check" id="s-quit-row" style="margin:12px 0 0"><input type="checkbox" id="s-quit"> Close PAPro when MSFS closes</label>
   </div>
+  <div class="setting pc-only" id="s-restore-box" style="display:none"><div class="label">Restore original packs</div>
+    <div class="small" style="margin-bottom:8px">PAPro saved each pack before changing it. Restoring lasts until your next flight plan change.</div>
+    <div id="s-restore"></div></div>
   <details class="grp pc-only" style="margin-bottom:18px"><summary>Advanced</summary><div style="margin-top:12px">
   <div class="setting pc-only"><div class="label">PAPro's web address</div>
     <div class="small" style="margin-bottom:10px">PAPro also runs as a local web page. This address is always the same, so another app (such as EFBx.io) can open it as an internal app. It only works on this PC while PAPro is running.</div>
@@ -1399,10 +1402,17 @@ function openSettings(){
   $("#s-quit-row").style.display=cfg.autostart==="msfs"?"flex":"none";
   $("#s-addr").value=snap.address||"";
   const lan=s.lan||{};renderLanAddrs(lan);
+  renderRestore();
   const au=s.audio||{};audioChosen=au.device||"";loadAudioDevices();
   renderSetUpd();$("#m-settings").classList.add("show");
 }
 $("#settings").onclick=openSettings;
+function renderRestore(){const box=$("#s-restore");box.replaceChildren();const bk=snap.backups||{};let any=false;
+  ["Fenix","FSLabs"].forEach(kind=>(bk[kind]||[]).forEach(code=>{any=true;
+    const row=el("div",null);row.style.cssText="display:flex;align-items:center;gap:12px;margin-top:8px";
+    const b=el("button","ghost","Restore "+code);b.onclick=async()=>{b.disabled=true;await api("restore_original",{kind,icao:code});setTimeout(()=>{b.disabled=false},1500)};
+    row.append(b,el("span","small",kind)); box.append(row)}));
+  $("#s-restore-box").style.display=any?"":"none"}
 function renderLanAddrs(lan){const box=$("#s-lan-addrs");box.replaceChildren();
   if(!(lan.addresses||[]).length){box.append(el("div","small","No network address found for this PC."));return}
   (lan.addresses||[]).forEach(a=>{const row=el("div");row.style.cssText="display:flex;gap:8px;align-items:center;margin-top:4px";const i=document.createElement("input");i.type="text";i.readOnly=true;i.value=a;i.style.cssText="flex:1;min-width:200px;font:600 12px 'Inter',sans-serif";i.onclick=()=>i.select();row.append(i);box.append(row)})}

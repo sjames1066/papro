@@ -2569,6 +2569,38 @@ def export_fslabs(cfg: dict, code: str, only_keys: set[str] | None = None) -> st
     return f"FSLabs {code} pack updated ({done} PAs)" if done else ""
 
 
+def list_backups() -> dict[str, list[str]]:
+    """The original packs PAPro has set aside: {"Fenix": [ICAO...], "FSLabs": [ICAO...]}."""
+    found: dict[str, list[str]] = {}
+    for kind in ("Fenix", "FSLabs"):
+        folder = BACKUPS_DIR / kind
+        try:
+            found[kind] = sorted(p.name[:-len("_Backup")] for p in folder.iterdir() if p.is_dir() and p.name.endswith("_Backup"))
+        except OSError:
+            found[kind] = []
+    return found
+
+
+def restore_original(cfg: dict, kind: str, code: str) -> str:
+    """Put an airline's original pack back (from backups\\<kind>\\<ICAO>_Backup). It stays until the next flight plan change."""
+    code = check_airline_code(code)
+    source = BACKUPS_DIR / kind / f"{code}_Backup"
+    if kind not in ("Fenix", "FSLabs") or not source.is_dir():
+        raise AppError(f"There is no saved original {kind} {code} pack.")
+    try:
+        if kind == "Fenix":
+            target = airline_packs_dir(cfg) / code
+            if target.exists():
+                shutil.rmtree(target)
+            shutil.copytree(source, target)
+        else:
+            shutil.copytree(source, find_community_dir(cfg) / FSL_PACKS_FOLDER / code / "Sounds", dirs_exist_ok=True)
+    except OSError as exc:
+        raise AppError(f"Could not restore {kind} {code} (is MSFS using the files?): {exc}") from exc
+    log.info("Restored the original %s %s pack", kind, code)
+    return f"Original {kind} {code} pack restored - PAPro swaps its PAs in again when the flight plan changes"
+
+
 def update(cfg: dict, force: bool = False, airline: str | None = None, dest: str | None = None,
            variant: str | None = None) -> tuple[bool, str]:
     """Look up the flight (or use the given one) and apply it. Returns (changed, message)."""
@@ -2928,6 +2960,7 @@ class UIMixin:
             "update_checked": int(getattr(self, "update_checked", 0) * 1000),
             "logo_v": self.logo_version,
             "installs_done": self.installs_done,
+            "backups": list_backups(),
             "prompt": {k: prompt[k] for k in ("id", "title", "text", "options")} if prompt else None,
         }
 
@@ -3244,6 +3277,9 @@ class UIMixin:
             if not entry:
                 return {"error": "That pack is not in the catalog - refresh the list."}
             self.start_pack_task("install", entry["icao"], entry)
+        elif name == "restore_original":
+            kind, icao = str(data.get("kind", "")), str(data.get("icao", ""))
+            self.run_task(f"Restoring {icao}", lambda: restore_original(load_config(), kind, icao))
         elif name == "author_key":
             return self.author_key_action(str(data.get("do", "")), str(data.get("value", "")))
         elif name == "rate_pack":
