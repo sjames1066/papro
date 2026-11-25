@@ -4300,7 +4300,7 @@ class TrayApp(UIMixin):
     RUNWAY_EXIT_KT = 35.0       # slow enough to be on a taxiway...
     RUNWAY_EXIT_TURN_DEG = 30.0  # ...and pointing this far away from the way it landed
     RUNWAY_CRAWL_KT = 10.0       # or nearly stopped (a straight-ahead exit or a short runway)
-    RUNWAY_EXIT_MAX_S = 150      # never wait longer than this after slowing down
+    RUNWAY_EXIT_MAX_S = 90       # never wait longer than this after slowing down
 
     def check_runway_exit(self, reading: dict) -> None:
         """The After Landing PA, once the aircraft has turned off the runway."""
