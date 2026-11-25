@@ -2159,9 +2159,9 @@ function renderStudio(){
   const saveSig=JSON.stringify([c.icao,c.voice,c.rows.map(r=>r.id+(r.done?1:0)+(r.skipped?"s":"")+(r.seconds||"")),c.crew,c.landing_order,c.landing_off,c.boarding_order,c.boarding_off,c.descent_order,c.descent_city,c.time_period,c.airports,c.extras,c.service_types]);
   const use=el("button","save"+(savedSig===saveSig?" done":""),"Save");use.title=c.origin?"Save your changes to your library so PAPro and the Test tab use them":"Add this pack to your library as a voice for "+c.icao+" so PAPro and the Test tab use it";
   use.onclick=async()=>{const r=await studio("install",pid(c));if(r.ok){savedSig=saveSig;use.classList.add("done");toast(r.finished?"Saved to your library":"Added to your library as a voice for "+c.icao)}};
-  const ex=el("button","ghost","Export pack");ex.onclick=async()=>{const r=await studio("export",pid(c));if(r.ok)toast("Exported - release tag: "+(r.tag||"")+" (the folder is open)",9000)};
+  const ex=el("button","ghost","Export");ex.onclick=async()=>{const r=await studio("export",pid(c));if(r.ok)toast("Exported - release tag: "+(r.tag||"")+" (the folder is open)",9000)};
   const sh=el("button","primary","Upload to Community");sh.onclick=()=>openShare(c);
-  bar2.append(dis,sh,fol,use,ex);root.append(bar2);syncPlayer();
+  bar2.append(dis,fol,sh,use,ex);root.append(bar2);syncPlayer();
 }
 
 let shareCard=null;
