@@ -722,6 +722,38 @@ def load_catalog(cfg: dict) -> list[dict]:
         APP_LATEST.update({"version": str(app["version"]).strip()[:20], "url": link if _is_http(link) else "",
                            "notes": str(app.get("notes", "")).strip()[:200],
                            "installer": installer if auto else "", "sha256": digest if auto else ""})
+    return _parse_packs(data, url)
+
+
+COMMUNITY_URL = "https://raw.githubusercontent.com/sjames1066/papro-community/main/index.json"
+
+
+def load_community(cfg: dict) -> list[dict]:
+    """The community index: the same entries as the catalog, but only the ones with a checksum (the zip is checked before it is
+    installed), each marked as the community's, with its author and licence."""
+    url = str(cfg.get("community_url", COMMUNITY_URL)).strip()
+    if not url or not _is_http(url):
+        return []
+    try:
+        resp = requests.get(url, timeout=20)
+        resp.raise_for_status()
+        data = resp.json()
+    except (requests.RequestException, ValueError) as exc:
+        raise AppError(f"Could not load the community packs: {exc}") from exc
+    raw = {str(e.get("id", "")).strip().lower(): e for e in data.get("packs", []) if isinstance(e, dict)}
+    packs = []
+    for entry in _parse_packs(data, url):
+        src = raw.get(entry["id"], {})
+        if not re.fullmatch(r"[0-9a-f]{64}", entry["sha256"]) or not _is_http(entry["url"]):
+            continue
+        entry.update({"community": True, "author": str(src.get("author", "")).strip()[:60],
+                      "license": str(src.get("license", "")).strip()[:40]})
+        entry["id"] = "c-" + entry["id"]
+        packs.append(entry)
+    return packs
+
+
+def _parse_packs(data: dict, url: str) -> list[dict]:
     packs = []
     for entry in data.get("packs", []):
         icao = str(entry.get("icao", "")).strip().upper()
@@ -2673,6 +2705,12 @@ class UIMixin:
                           "size_mb": round(entry["size"] / 1048576) if entry.get("size") else 0, "installed": have is not None,
                           "update": have not in (None, entry["version"]),
                           "task": self.tasks.get(entry["id"])})
+        for entry in getattr(self, "community", []):   # packs other people made (approved before they are listed)
+            packs.append({"icao": entry["icao"], "key": "dl-" + entry["id"], "id": entry["id"], "catalog": True, "community": True,
+                          "name": entry["name"], "version": entry["version"], "author": entry.get("author", ""), "license": entry.get("license", ""),
+                          "voices": [v["name"] for v in entry.get("voices", [])] or ([entry["voice"]] if entry.get("voice") else []),
+                          "size_mb": round(entry["size"] / 1048576) if entry.get("size") else 0, "installed": False, "update": False,
+                          "task": self.tasks.get(entry["id"])})
         for key, task in list(self.tasks.items()):   # a pack being imported that is not in the catalog yet
             if key not in {p["key"] for p in packs} and key not in codes and "dl-" + key not in {p["key"] for p in packs}:
                 packs.append({"icao": key, "key": key, "name": task.get("name") or key, "version": "", "size_mb": 0,
@@ -3060,7 +3098,7 @@ class UIMixin:
     def ui_action(self, name: str, data: dict) -> dict:
         if name == "install":
             wanted = str(data.get("id") or data.get("icao", "")).strip().lower()
-            entry = next((e for e in self.catalog if e["id"] == wanted), None) or \
+            entry = next((e for e in self.catalog + getattr(self, "community", []) if e["id"] == wanted), None) or \
                 next((e for e in self.catalog if e["icao"].lower() == wanted), None)
             if not entry:
                 return {"error": "That pack is not in the catalog - refresh the list."}
@@ -3896,6 +3934,7 @@ class TrayApp(UIMixin):
         self.status = "Starting..."
         self.auto = True
         self.catalog: list[dict] = []
+        self.community: list[dict] = []
         self.catalog_error = ""
         self.update_checked = 0.0
         self._ui_init()
@@ -4460,6 +4499,11 @@ class TrayApp(UIMixin):
             try:
                 self.catalog = load_catalog(load_config())
                 self.catalog_error = ""
+                try:
+                    self.community = load_community(load_config())
+                except AppError as exc:
+                    log.info("%s", exc)
+                    self.community = []
                 self.update_checked = time.time()
                 if any([cache_remote_logo(e) for e in self.catalog]):
                     self.logo_version += 1

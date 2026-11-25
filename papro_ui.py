@@ -911,6 +911,8 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
   <div class="packs" id="packs"></div>
     <div class="section-head fold" id="dlhead" role="button" tabindex="0" aria-expanded="true" style="margin-top:32px"><i class="chev">&#9662;</i><h2>Download packs</h2><span id="dlsub"></span></div>
     <div class="packs" id="dlpacks"></div>
+    <div class="section-head fold" id="chead" role="button" tabindex="0" aria-expanded="true" style="margin-top:32px"><i class="chev">&#9662;</i><h2>Community packs</h2><span id="csub"></span></div>
+    <div class="packs" id="cpacks"></div>
   </div>
   <div id="view-test" style="display:none">
     <div class="section-head"><h2>Test your packs</h2><span id="t-sub">Builds the full set of PAs for a flight in a scratch folder, so nothing in the sim changes.</span></div>
@@ -1224,6 +1226,7 @@ function packCard(p,editable){
   const ver=p.version&&p.version!=="imported"&&p.version!=="Your recordings"?(/^[0-9]/.test(p.version)?"v"+p.version:p.version):"";
   info.append(el("div","meta",[p.icao,ver,p.size_mb?p.size_mb+" MB":""].filter(Boolean).join("  ·  ")));
   if(p.voices&&p.voices.length) info.append(el("div","meta",(p.voices.length>1?"Voices: ":"Voice: ")+p.voices.join(", ")));
+  if(p.community) info.append(el("div","meta","By "+(p.author||"a community member")+(p.license?"  ·  "+p.license:"")));
   top.append(info);
   const act=el("div","act");
   if(!p.task){
@@ -1257,13 +1260,14 @@ function renderPackList(boxId,list,emptyText){
     if(f!==null&&f!==undefined){pp.textContent=Math.round(f*100)+"%";pb.firstChild.style.width=(f*100)+"%"}else pp.textContent="";
   });
 }
-[["#packhead","#packs","packsShut"],["#dlhead","#dlpacks","dlShut"]].forEach(([hs,ps,key])=>{const h=$(hs),p=$(ps);let shut=false;try{shut=localStorage.getItem(key)==="1"}catch(e){}
+[["#packhead","#packs","packsShut"],["#dlhead","#dlpacks","dlShut"],["#chead","#cpacks","cShut"]].forEach(([hs,ps,key])=>{const h=$(hs),p=$(ps);let shut=false;try{shut=localStorage.getItem(key)==="1"}catch(e){}
   const set=s=>{shut=s;h.classList.toggle("shut",s);p.classList.toggle("shut",s);h.setAttribute("aria-expanded",!s);try{localStorage.setItem(key,s?"1":"0")}catch(e){}};
   h.onclick=()=>set(!shut);h.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();set(!shut)}};set(shut)});
 function renderPacks(){
-  const mine=snap.packs.filter(p=>p.installed&&!p.catalog), more=snap.packs.filter(p=>p.catalog||!p.installed);
+  const mine=snap.packs.filter(p=>p.installed&&!p.catalog), more=snap.packs.filter(p=>!p.community&&(p.catalog||!p.installed)), crowd=snap.packs.filter(p=>p.community);
   renderPackList("packs",mine,"No airline packs installed yet. Open the Pack Manager tab to get one.");
   renderPackList("dlpacks",more,snap.catalog_error||(snap.packs.length?"Every available pack is installed.":"No airline packs are available to download yet. You can still use Import a pack."));
+  renderPackList("cpacks",crowd,"No community packs yet.");$("#csub").textContent=crowd.length?crowd.length+" available":"";
   $("#packsub").textContent=mine.length?mine.length+" installed":"";
   $("#dlsub").textContent=more.length?more.length+" available":"";
 }

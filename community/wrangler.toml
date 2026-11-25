@@ -1,0 +1,11 @@
+name = "papro-community"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+[[r2_buckets]]
+binding = "PACKS"
+bucket_name = "papro-community"
+
+[vars]
+AUTO_APPROVE = "0"                     # "1" later, to publish without reviewing first
+PUBLIC_URL = "https://papro-community.YOUR-NAME.workers.dev"
