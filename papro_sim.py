@@ -44,6 +44,7 @@ def round_clock(seconds: float, step_min: int = 5) -> str:
     return f"{minutes // 60:02d}:{minutes % 60:02d}"
 
 
+FSLABS_MARKERS = ("fslabs", "fsl a3", "fsl_a3", "flightsimlabs", "flight sim labs")   # the FSLabs A32X: its PAs are airline-pack files too, played by the aircraft
 SUPPORTED_MAKERS = ("fenix",)   # aircraft whose own PA sounds PAPro can replace (the Fenix A320 reads its announcements from a folder)
 
 
@@ -54,7 +55,8 @@ def classify_aircraft(title: str) -> dict | None:
     if not title or title.upper().startswith("ATCCOM."):   # an unresolved text key (the sim answered mid-load), not a name
         return None
     low = title.lower()
-    return {"title": title, "supported": any(m in low for m in SUPPORTED_MAKERS)}
+    maker = "fenix" if "fenix" in low else "fslabs" if any(m in low for m in FSLABS_MARKERS) else ""
+    return {"title": title, "supported": bool(maker), "maker": maker}
 
 
 class SimWatcher:
@@ -257,7 +259,7 @@ class SimWatcher:
                 if info is None and ground is not None and agl is not None and speed is not None:
                     self._unnamed = getattr(self, "_unnamed", 0) + 1
                     if self._unnamed >= 8:
-                        info = {"title": "Unnamed aircraft", "supported": False}
+                        info = {"title": "Unnamed aircraft", "supported": False, "maker": ""}
                 else:
                     self._unnamed = 0
                 self._report_aircraft(info)

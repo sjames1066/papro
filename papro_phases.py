@@ -170,7 +170,8 @@ class PhaseEngine:
             if started and "welcome" in self.done:
                 self._fire("boarding_complete")
                 self.t_boarding_done = t
-            if self.t_boarding_done is not None and t - self.t_boarding_done >= ARM_DOORS_AFTER_S:
+            if self.t_boarding_done is not None and t - self.t_boarding_done >= ARM_DOORS_AFTER_S \
+                    and (r.get("door_open") is not True or gs >= SAFETY_SPEED_KT):   # wait until every door is shut (moving: no more waiting)
                 self._fire("arm_doors")
             if "arm_doors" in self.done and gs >= SAFETY_SPEED_KT:
                 self._fire("pre_safety")

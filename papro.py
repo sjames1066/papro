@@ -1423,9 +1423,15 @@ def generic_source(cfg: dict, airline: str, fenix_dir: Path) -> Path | None:
     snapshot. The snapshot is taken from the Fenix pack the first time PAPro is about to change it.
     """
     library_main = airline_folder(cfg, airline) / MAIN_FOLDER
+    snapshot = GENERIC_DIR / airline
+    try:
+        real_pack = fenix_dir.parent == airline_packs_dir(cfg)   # not a scratch / playback folder
+    except AppError:
+        real_pack = False
+    if has_ogg(snapshot) or (real_pack and has_ogg(fenix_dir)):   # a full copy of the original pack, before the first change (once)
+        backup_original("Fenix", airline, snapshot if has_ogg(snapshot) else fenix_dir)
     if has_ogg(library_main):
         return library_main
-    snapshot = GENERIC_DIR / airline
     if not has_ogg(snapshot) and has_ogg(fenix_dir):
         snapshot.mkdir(parents=True, exist_ok=True)
         for path in fenix_dir.iterdir():
@@ -1699,7 +1705,7 @@ def pick_extra(cfg: dict, base: Path, key: str) -> Path | None:
 DETECT_PHASE_S = 8   # after connecting, PAPro watches the sim this long to work out the phase of flight before it plays anything
 BOARDING_PA_MIN_S, BOARDING_PA_MAX_S = 180, 420     # the boarding announcement repeats this often while boarding
 PLAYBACK_DIR = DATA_DIR / "playback"          # where PAs are built for aircraft that PAPro plays itself
-_PLAYBACK = {"on": False}                      # set from the sim: the loaded aircraft is not a supported (Fenix) one
+_PLAYBACK = {"on": False, "fsl": False}                      # set from the sim: the loaded aircraft is not a supported (Fenix) one
 KNOB = {"on": True, "volume": 70}              # the on-screen PA knob, mirrored here for the audio thread
 
 
@@ -1711,6 +1717,11 @@ def clear_playback() -> None:
                 path.unlink(missing_ok=True)
     except OSError:
         log.warning("Could not clear the playback folder")
+
+
+def own_playback() -> bool:
+    """PAPro itself plays the PAs (not the Fenix / FSLabs, which play their own pack files)."""
+    return bool(_PLAYBACK["on"] and not _PLAYBACK["fsl"])
 
 
 def playback_target() -> Path | None:
@@ -2448,6 +2459,8 @@ def rebuild_landing(cfg: dict, arrival: str | None, position: tuple[float, float
                                     target_dir=playback_target())
     finally:
         _DIVERSION.on = False
+    if _PLAYBACK["fsl"]:
+        export_fslabs(cfg, airline, {"after_landing"})
     stored = load_state().get("variants", {}).get(f"{airline}_{dest}")
     other = None if _PLAYBACK["on"] else callsign_airline(cfg, airline, flight.get("callsign", ""))
     if other:
@@ -2492,6 +2505,70 @@ def airline_has_pack(cfg: dict, code: str) -> bool:
         return False
 
 
+FSL_PACKS_FOLDER = "fsl-a32x-airline-packs"
+# FSLabs pack file (after FSL_A320X_CABIN_PA_) -> the PAPro announcement that fills it. Files the pack doesn't have are not created,
+# and the ones not listed (BRIEFING, SEATBELTS, TURB, DISEMBARK, emergencies...) stay as the airline pack had them.
+FSL_MAP = {
+    "BOARDING": "welcome", "BOARDING_FUEL": "welcome_fuel", "BOARDING_COMPLETE": "boarding_complete",
+    "DOORS_AUTO": "arm_doors", "DOORS_MANUAL": "disarm_doors", "SAFETY_BRIEFING": "safety",
+    "SECURE_FOR_TAKEOFF": "takeoff_seats", "LIGHTS_DIM": "takeoff_dim", "READY_TAKEOFF": "takeoff_secured",
+    "AFTER_TAKEOFF": "after_takeoff", "AFTER_TAKEOFF_MORNING": "after_takeoff", "AFTER_TAKEOFF_AFTERNOON": "after_takeoff",
+    "AFTER_TAKEOFF_EVENING": "after_takeoff", "SHOP": "cabin_service",
+    "SECURE_FOR_LANDING": "landing_seats", "READY_LANDING": "landing_secured", "AFTER_LANDING": "after_landing",
+}
+
+
+def backup_original(kind: str, code: str, source: Path) -> None:
+    """Keep a copy of an airline pack as it was before PAPro first changed it: backups\\<Fenix|FSLabs>\\<ICAO>_Backup.
+    Made once and never overwritten, so it always holds the original."""
+    dest = BACKUPS_DIR / kind / f"{code}_Backup"
+    if dest.exists() or not source.is_dir():
+        return
+    try:
+        shutil.copytree(source, dest)
+        log.info("Backed up the original %s %s pack to %s", kind, code, dest)
+    except OSError as exc:
+        shutil.rmtree(dest, ignore_errors=True)   # never leave a half copy that would pass for the original
+        log.warning("Could not back up the original %s %s pack: %s", kind, code, exc)
+
+
+def export_fslabs(cfg: dict, code: str, only_keys: set[str] | None = None) -> str:
+    """Copy the PAs just built for this flight (in PAPro's playback folder) over the matching files of the FSLabs airline
+    pack. FSLabs decides when each one plays."""
+    from papro_play import resolve
+
+    try:
+        cabin = find_community_dir(cfg) / FSL_PACKS_FOLDER / code / "Sounds" / "Cabin"
+    except AppError:
+        return ""
+    if not cabin.is_dir():
+        log.info("No FSLabs %s airline pack in %s - nothing to swap", code, cabin.parent.parent.parent)
+        return ""
+    backup_original("FSLabs", code, cabin.parent)
+    done = 0
+    for name, key in FSL_MAP.items():
+        if only_keys and key not in only_keys:
+            continue
+        target = cabin / f"FSL_A320X_CABIN_PA_{name}.ogg"
+        if not target.is_file():
+            continue
+        if key == "welcome_fuel":
+            fuel = sorted(PLAYBACK_DIR.glob("BoardingWelcome*efueling*.ogg"))
+            tagged = [f for f in fuel if clock_tag() in f.stem.lower()]
+            source = (tagged or fuel or [resolve(PLAYBACK_DIR, "welcome", clock_tag())])[0]
+        else:
+            source = resolve(PLAYBACK_DIR, key, clock_tag())
+        if not source:
+            continue
+        try:
+            shutil.copyfile(source, target)
+            done += 1
+        except OSError as exc:
+            log.warning("Could not write %s (is MSFS using it?): %s", target.name, exc)
+    log.info("FSLabs %s pack: %d PA file(s) swapped", code, done)
+    return f"FSLabs {code} pack updated ({done} PAs)" if done else ""
+
+
 def update(cfg: dict, force: bool = False, airline: str | None = None, dest: str | None = None,
            variant: str | None = None) -> tuple[bool, str]:
     """Look up the flight (or use the given one) and apply it. Returns (changed, message)."""
@@ -2524,6 +2601,9 @@ def update(cfg: dict, force: bool = False, airline: str | None = None, dest: str
         return False, f"{code} to {flight['icao']}: no {code} airline pack installed"
     message = apply_destination(cfg, code, flight["icao"], variant=variant, arrival=flight.get("arrival"),
                                 target_dir=playback_target())
+    if _PLAYBACK["fsl"]:
+        extra = export_fslabs(cfg, code)
+        message += f"; {extra}" if extra else ""
     other = None if _PLAYBACK["on"] else callsign_airline(cfg, code, flight.get("callsign", ""))
     if other:
         try:
@@ -4205,12 +4285,13 @@ class TrayApp(UIMixin):
             self.tracker.reset()
             self.tracker.current = None   # the sim is closed: no phase to show
         if info:
-            log.info("Aircraft: %s (%s)", info["title"], "PAs supported" if info["supported"] else "PAPro plays the PAs itself")
-        try:
-            _PLAYBACK["on"] = bool(info and not info["supported"])
-        except AppError:
-            _PLAYBACK["on"] = False
-        if _PLAYBACK["on"] != before:   # build the PAs where they are needed (the Fenix folder / PAPro's own playback folder)
+            log.info("Aircraft: %s (%s)", info["title"], ("PAs swapped in the aircraft's own %s pack" % ("FSLabs" if info.get("maker") == "fslabs" else "Fenix"))
+                     if info["supported"] else "PAPro plays the PAs itself")
+        fsl_before = _PLAYBACK["fsl"]
+        fsl = bool(info and info.get("maker") == "fslabs")
+        _PLAYBACK["fsl"] = fsl
+        _PLAYBACK["on"] = bool(info and (not info["supported"] or fsl))   # FSLabs: built here first, then copied into its pack
+        if _PLAYBACK["on"] != before or fsl != fsl_before:   # build the PAs where they are needed (the Fenix folder / PAPro's own playback folder)
             state = load_state()
             state.pop("last", None)   # rebuild for the new place (the landing time already taken from the sim is kept)
             save_state(state)
@@ -4223,7 +4304,7 @@ class TrayApp(UIMixin):
         if not tracker or not tracker.phase() or not getattr(self, "aircraft", None):
             return None
         name = tracker.phase()
-        playing = _PLAYBACK["on"]   # PAPro plays the PAs itself (not a Fenix): it has buttons the Fenix doesn't need
+        playing = own_playback()   # PAPro plays the PAs itself (not a Fenix): it has buttons the Fenix doesn't need
         engine = getattr(self, "phases", None)
         detecting = bool(playing and not (engine is not None and engine.joined))
         return {"name": name, "detecting": detecting, "source": tracker.source(), "index": PHASES.index(name) if name in PHASES else -1, "steps": PHASES,
@@ -4329,9 +4410,9 @@ class TrayApp(UIMixin):
         elif what == "complete" and tracker:
             tracker.complete_boarding()
             engine = getattr(self, "phases", None)
-            if engine is not None and _PLAYBACK["on"]:
+            if engine is not None and own_playback():
                 engine.boarding_done(time.time())
-        elif what == "disarm" and _PLAYBACK["on"]:
+        elif what == "disarm" and own_playback():
             engine = getattr(self, "phases", None)
             if engine is not None:
                 engine._fire("disarm_doors")
@@ -4347,7 +4428,7 @@ class TrayApp(UIMixin):
             tracker = self.tracker = PhaseTracker()
         self._sync_tracker(tracker, reading["t"])
         tracker.feed(reading)
-        if not _PLAYBACK["on"]:
+        if not own_playback():
             return
         engine = getattr(self, "phases", None)
         if engine is None:
@@ -4473,7 +4554,7 @@ class TrayApp(UIMixin):
             save_state(state)
             self.landing_pending = None
             return
-        if _PLAYBACK["on"] and getattr(self, "phases", None):
+        if own_playback() and getattr(self, "phases", None):
             # PAPro plays this one itself: wait until the aircraft has turned off the runway
             self.landing_pending = {"clock": clock, "t": time.time(), "hdg": getattr(self, "last_heading", None)}
             log.info("Landed - the After Landing PA plays once the aircraft is off the runway")
@@ -4496,7 +4577,7 @@ class TrayApp(UIMixin):
         finally:
             if got:
                 self.lock.release()
-            if _PLAYBACK["on"] and getattr(self, "phases", None):
+            if own_playback() and getattr(self, "phases", None):
                 log.info("Landed: the After Landing PA is due")
                 self.phases.landed_event(time.time())
 
