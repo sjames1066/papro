@@ -4179,6 +4179,8 @@ class TrayApp(UIMixin):
             self._reset_at = getattr(self, "_reset_at", None) or reading["t"] + 60
             if reading["t"] >= self._reset_at:
                 engine.reset()
+                engine.joined = True      # parked at the gate: the next flight starts from Preflight, nothing to catch up on
+                tracker.reset()
                 self.held_keys = []
                 self._reset_at = None
 
