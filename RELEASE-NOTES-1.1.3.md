@@ -1,5 +1,7 @@
 # PAPro 1.1.3
 
+- **Pack Manager.** Installed packs and the Community list are in one tab, both collapsible, with a search box. The tab now comes before Pack Studio.
+- **Community packs.** Share a pack from Pack Studio: the airline, voice artist and character name come from Voice details (asked for only if empty), and you agree the files are your own work. Packs are reviewed before they appear; updates to your own approved packs go live straight away. Rate packs out of 5. Authors can back up or restore their author key under Settings, Advanced. The service is in `community/`.
 - **PAPro's own window.** No more Edge window: PAPro opens in its own window with its own taskbar icon, and remembers where you left it. (Needs Microsoft WebView2, which Windows 11 has; otherwise the browser window is used.)
 - **Audio.** PAs play cleanly at your output device's own sample rate. One sound at a time: boarding music pauses during a PA and resumes where it left off. PAPro shows as "PAPro" in the Windows volume mixer. The boarding music track is random each time PAPro loads.
 - **Skip PA / Replay PA** under the volume knob. Opening PAPro part way through a flight no longer plays a PA: the one for your phase is ready on Replay.
