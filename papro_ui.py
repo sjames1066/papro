@@ -674,8 +674,10 @@ header p{margin:0;color:var(--muted);font-size:12.5px}
 .h-ac i{width:8px;height:8px;border-radius:50%;background:currentColor;flex:none}.h-ac span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .h-phase{margin-top:12px;max-width:340px}.h-ptop{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;font-size:12.5px}.h-ptop b{font-size:15px;white-space:nowrap}.h-plab{white-space:nowrap;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-size:10.5px;font-weight:700}.h-psrc{color:var(--muted);font-size:11px;margin-left:auto}
 .h-pbar{display:flex;gap:3px;margin-top:6px}.h-pbar i{flex:1;height:4px;border-radius:2px;background:rgba(160,166,178,.22)}.h-pbar i.done{background:rgba(61,220,151,.45)}.h-pbar i.now{background:var(--ok);box-shadow:0 0 6px rgba(61,220,151,.6)}
-.h-signs{display:flex;gap:8px;margin-top:10px}.h-sign{width:38px;height:30px;border-radius:7px;display:flex;align-items:center;justify-content:center;background:rgba(120,120,130,.12);color:var(--muted);border:1px solid rgba(120,120,130,.25);opacity:.7;transition:all .25s}
-.h-sign.lit{background:rgba(255,196,92,.18);color:#ffc45c;border-color:rgba(255,196,92,.6);opacity:1;box-shadow:0 0 12px rgba(255,196,92,.55)}
+.h-signs{display:flex;gap:10px;margin-top:12px}.h-sign{width:132px;height:44px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:#e4e2db;border:1px solid rgba(0,0,0,.18);box-shadow:inset 0 1px 2px rgba(0,0,0,.18);transition:all .25s}
+.h-sign svg{width:116px;height:30px}.h-sign .a{fill:#9b9da4}.h-sign .r{fill:#a58f92}.h-sign .as{stroke:#9b9da4}.h-sign .rs{stroke:#a58f92}
+.h-sign.lit{background:#f1ede2;box-shadow:inset 0 1px 2px rgba(0,0,0,.12),0 0 14px rgba(255,170,40,.55)}.h-sign.lit svg{filter:drop-shadow(0 0 3px rgba(255,150,30,.8))}
+.h-sign.lit .a{fill:#ffb52e}.h-sign.lit .r{fill:#ff3426}.h-sign.lit .as{stroke:#ffb52e}.h-sign.lit .rs{stroke:#ff3426}
 .h-ac.wait{background:rgba(160,160,170,.14);color:var(--muted)}.h-ac.wait i{animation:hacpulse 1.4s ease-in-out infinite}@keyframes hacpulse{50%{opacity:.25}}.h-ac.ok{background:rgba(61,220,151,.14);color:var(--ok)}.h-ac.warn{background:rgba(255,180,84,.15);color:var(--warn)}
 .h-dest{font-size:15px;color:var(--muted);margin-top:4px}.h-dest b{color:var(--text);font-weight:600}.h-dest b.h-orig{color:var(--muted)}.h-arrow{color:var(--magenta);font-weight:700;white-space:pre}
 .h-nopack{font-size:15px;color:var(--muted);line-height:1.4}.h-nopack a{color:var(--text);font-weight:600;text-decoration:underline}
@@ -1198,11 +1200,12 @@ function renderHero(){
   if(!snap.aircraft){const w=el("div","h-ac wait");w.title="PAPro picks up the aircraft as soon as MSFS has one loaded";w.append(el("i"),el("span",null,"Waiting for simulator"));mid.append(w)}
   if(snap.aircraft){const ac=snap.aircraft,chip=el("div","h-ac "+(ac.supported?"ok":"warn"));chip.title=ac.supported?"Native in-sim playback supported":"PAPro can't play PAs inside this aircraft yet";
     chip.append(el("i"),el("span",null,ac.title+(ac.supported?"":" · not supported yet")));mid.append(chip)}
+  let signsRow=null;
   if(snap.signs&&(snap.signs.seatbelt!==null||snap.signs.no_smoking!==null)){const row=el("div","h-signs");
     const sign=(on,title,svg)=>{const d=el("div","h-sign"+(on?" lit":""));d.title=title+(on?" - on":" - off");d.innerHTML=svg;return d};
-    if(snap.signs.seatbelt!==null)row.append(sign(snap.signs.seatbelt,"Fasten seat belts",'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2.2"/><path d="M8 21v-7l-1.5-4.5A2 2 0 0 1 8.4 7h7.2a2 2 0 0 1 1.9 2.5L16 14v7"/><path d="M7.5 12.5l9 3"/></svg>'));
-    if(snap.signs.no_smoking!==null)row.append(sign(snap.signs.no_smoking,"No smoking",'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/><path d="M7 14.5h8.5v2H7z"/><path d="M17.5 14.5v2M19 13.2c0-1-1-1-1-2"/></svg>'));
-    mid.append(row)}
+    if(snap.signs.seatbelt!==null)row.append(sign(snap.signs.seatbelt,"Fasten seat belts",'<svg viewBox="0 10 132 34"><path class="a" fill-rule="evenodd" d="M3 22h14c4 0 6-5 10-6h17v22H27c-4-1-6-6-10-6H3z M32 22h7v10h-7z"/><path class="r" d="M58 27L66 19V24H76V30H66V35Z"/><path class="a" fill-rule="evenodd" d="M129 22h-14c-4 0-6-5-10-6H88v22h17c4-1 6-6 10-6h14z M92 22h6v10h-6z"/></svg>'));
+    if(snap.signs.no_smoking!==null)row.append(sign(snap.signs.no_smoking,"No smoking",'<svg viewBox="0 10 132 34"><rect class="a" x="16" y="22" width="82" height="10" rx="2"/><path class="as" fill="none" stroke-width="2.6" stroke-linecap="round" d="M104 22c-4-4 4-6 0-10M112 22c-4-4 4-6 0-10"/><circle class="rs" cx="58" cy="27" r="15" fill="none" stroke-width="4"/><path class="rs" stroke-width="4" stroke-linecap="round" d="M47 16L69 38"/></svg>'));
+    signsRow=row}
   if(snap.phase){const ph=snap.phase,box=el("div","h-phase");box.title="Worked out from the sim: speed, direction, altitude, lights and doors (and GSX when it is on). It only moves forward until a new flight plan is loaded.";
     const top=el("div","h-ptop");top.append(el("span","h-plab","Flight phase"),el("b",ph.detecting?"detect":null,ph.detecting?"Detecting flight phase...":ph.name),el("span","h-psrc",""));
     const bar=el("div","h-pbar");ph.steps.forEach((n,i)=>{const sg=el("i",i<ph.index?"done":i===ph.index?"now":"");sg.title=n;bar.append(sg)});box.append(top,bar);
@@ -1210,6 +1213,7 @@ function renderHero(){
     if(ph.can_complete&&!ph.detecting){const bc=el("button","ghost","Boarding Complete");bc.style.marginTop="10px";bc.onclick=()=>api("phase_complete");box.append(bc)}
     if(ph.can_disarm&&!ph.detecting){const bd=el("button","ghost","Disarm Doors PA");bd.style.marginTop="10px";bd.title="Play the Disarm Doors announcement now";bd.onclick=()=>api("phase_disarm");box.append(bd)}
     mid.append(box)}
+  if(signsRow)mid.append(signsRow);
   h.append(mid);
   const side=el("div","side");
   const b=el("button","primary"); b.innerHTML='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:7px"><path d="M21 12a9 9 0 0 1-15.4 6.4L3 16"/><path d="M3 12a9 9 0 0 1 15.4-6.4L21 8"/><path d="M21 3v5h-5"/><path d="M3 21v-5h5"/></svg>Refresh'; b.title="Rebuild this flight's announcements now"; b.disabled=snap.busy||!snap.voices; b.onclick=()=>api("update");
