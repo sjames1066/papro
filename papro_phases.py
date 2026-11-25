@@ -217,9 +217,16 @@ class PhaseEngine:
             if parked:
                 self.t_parked_after = self.t_parked_after if self.t_parked_after is not None else t
                 if t - self.t_parked_after >= DEBOARD_AFTER_S:
-                    self._fire("disarm_doors")
-                    self._fire("deboard_start")
-                    self.t_deboard = self.t_deboard if self.t_deboard is not None else t
+                    self._fire("disarm_doors")   # every engine is off (one running engine, e.g. single-engine taxi, is not parked)
+                    gsx_d = r.get("gsx_deboarding") if getattr(self, "use_gsx", True) else None
+                    try:
+                        gsx_d = int(gsx_d) if gsx_d is not None else None
+                    except (TypeError, ValueError):
+                        gsx_d = None
+                    if gsx_d is None or gsx_d >= 5 or "deboard_start" in self.done \
+                            or (not self.gsx_boarding_seen and t - self.t_parked_after >= 60):   # with GSX: wait for it to begin deboarding
+                        self._fire("deboard_start")
+                        self.t_deboard = self.t_deboard if self.t_deboard is not None else t
                 if self.t_deboard is not None and t - self.t_deboard >= DEBOARD_COMPLETE_AFTER_S:
                     self._fire("deboard_complete")
             else:
