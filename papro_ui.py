@@ -110,6 +110,88 @@ def raise_window(title: str = "PAPro", wait: float = 8.0) -> None:
     threading.Thread(target=work, daemon=True).start()
 
 
+def _window_tools():
+    """Windows only: (find, get_rect, set_rect, on_screen) for the PAPro window, all in real pixels (the same units for reading and
+    placing, whatever the display scaling is). None elsewhere."""
+    if not sys.platform.startswith("win"):
+        return None
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.windll.user32
+    user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.UINT]
+    user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    user32.IsWindowVisible.argtypes = [wintypes.HWND]
+    user32.IsIconic.argtypes = [wintypes.HWND]
+    user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+    user32.MonitorFromRect.argtypes = [ctypes.POINTER(wintypes.RECT), wintypes.DWORD]
+    user32.MonitorFromRect.restype = wintypes.HANDLE
+    enum_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+    def aware() -> None:
+        try:
+            user32.SetThreadDpiAwarenessContext(ctypes.c_void_p(-4))   # per-monitor aware, for this thread only
+        except Exception:
+            pass
+
+    def find(title="PAPro", pid=None):
+        """The window with this title (visible ones, or any of this process's own when pid is given, hidden included)."""
+        found: list = []
+
+        def visit(hwnd, _l):
+            if pid is None and not user32.IsWindowVisible(hwnd):
+                return True
+            if pid is not None:
+                owner = wintypes.DWORD()
+                user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+                if owner.value != pid:
+                    return True
+            buf = ctypes.create_unicode_buffer(256)
+            user32.GetWindowTextW(hwnd, buf, 256)
+            if buf.value == title:
+                found.append(hwnd)
+            return True
+
+        user32.EnumWindows(enum_type(visit), 0)
+        return found[0] if found else None
+
+    def get_rect(hwnd):
+        if user32.IsIconic(hwnd):
+            return None
+        r = wintypes.RECT()
+        user32.GetWindowRect(hwnd, ctypes.byref(r))
+        if r.left <= -30000 or r.top <= -30000:
+            return None
+        return [r.left, r.top, r.right - r.left, r.bottom - r.top]
+
+    def set_rect(hwnd, rect) -> None:
+        user32.SetWindowPos(hwnd, None, rect[0], rect[1], rect[2], rect[3], 0x0004 | 0x0010)   # SWP_NOZORDER | SWP_NOACTIVATE
+
+    def decorate(hwnd, icon_path=None) -> None:
+        """Make sure the window has its own taskbar button, with PAPro's icon (a window that starts hidden can lose both)."""
+        gl, sl = user32.GetWindowLongPtrW, user32.SetWindowLongPtrW
+        gl.argtypes, gl.restype = [wintypes.HWND, ctypes.c_int], ctypes.c_ssize_t
+        sl.argtypes, sl.restype = [wintypes.HWND, ctypes.c_int, ctypes.c_ssize_t], ctypes.c_ssize_t
+        ex = gl(hwnd, -20)
+        sl(hwnd, -20, (ex | 0x00040000) & ~0x00000080)   # WS_EX_APPWINDOW on, WS_EX_TOOLWINDOW off
+        user32.SetWindowPos(hwnd, None, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0004 | 0x0010 | 0x0020)   # re-read the frame
+        if icon_path and Path(icon_path).is_file():
+            user32.LoadImageW.restype = wintypes.HANDLE
+            user32.LoadImageW.argtypes = [wintypes.HINSTANCE, wintypes.LPCWSTR, wintypes.UINT, ctypes.c_int, ctypes.c_int, wintypes.UINT]
+            user32.SendMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+            for which, metric in ((1, 11), (0, 49)):   # ICON_BIG / ICON_SMALL
+                size = user32.GetSystemMetrics(metric)
+                icon = user32.LoadImageW(None, str(icon_path), 1, size, size, 0x0010)   # IMAGE_ICON, LR_LOADFROMFILE
+                if icon:
+                    user32.SendMessageW(hwnd, 0x0080, which, icon)   # WM_SETICON
+
+    def on_screen(rect) -> bool:
+        r = wintypes.RECT(rect[0], rect[1], rect[0] + rect[2], rect[1] + rect[3])
+        return bool(user32.MonitorFromRect(ctypes.byref(r), 0))   # MONITOR_DEFAULTTONULL: not on any screen
+
+    return aware, find, get_rect, set_rect, on_screen, decorate
+
+
 CGNAT = ipaddress.ip_network("100.64.0.0/10")   # carrier-grade NAT range: Tailscale and some VPNs use it
 
 
@@ -397,8 +479,26 @@ class UIServer:
                 self.start()
 
     # window -------------------------------------------------------------
+    def prepare_native(self, show: bool) -> None:
+        """Use PAPro's own window (run_native later, on the main thread) instead of an Edge window."""
+        import papro_native
+
+        icon = Path(__file__).with_name("papro.ico")
+        if not icon.is_file():
+            icon = Path(sys.executable).with_name("papro.ico")
+        self.native = papro_native.NativeWindow(self.url(), "PAPro", icon, self.profile_dir.parent / "webview",
+                                                centered_geometry()[2:], self.backend)
+        self.native.want_show = show
+
+    def run_native(self) -> bool:
+        return self.native.run(self.native.want_show)
+
     def open_window(self) -> None:
         """Open the PAPro window (or leave the already open one alone)."""
+        if getattr(self, "native", None) is not None:
+            self.native.show()
+            raise_window()
+            return
         with self._lock:
             if self.httpd is None:
                 self.start()
@@ -418,13 +518,55 @@ class UIServer:
                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                         )
                         raise_window()
+                        self.remember_window()
                         return
                     except OSError:
                         log.exception("Could not start %s", exe)
             webbrowser.open(url)  # no Edge/Chrome found: the default browser still works
 
+    def remember_window(self) -> None:
+        """Put the window back where it was last time, then keep note of where it is (saved when it stops moving)."""
+        tools = _window_tools()
+        if tools is None:
+            return
+        proc = self.window
+        saved = getattr(self.backend, "saved_window_rect", lambda: None)()
+        keep = getattr(self.backend, "remember_window_rect", None)
+
+        def work() -> None:
+            try:
+                aware, find, get_rect, set_rect, on_screen, _decorate = tools
+                aware()
+                hwnd, deadline = None, time.time() + 10
+                while hwnd is None and time.time() < deadline:
+                    hwnd = find()
+                    if hwnd is None:
+                        time.sleep(0.2)
+                if hwnd is None:
+                    return
+                if saved and on_screen(saved):
+                    set_rect(hwnd, saved)
+                    time.sleep(0.5)
+                last, written = None, saved
+                while proc is not None and proc.poll() is None:
+                    time.sleep(1.0)
+                    now = find() or hwnd
+                    rect = get_rect(now)
+                    if rect and rect == last and rect != written and keep:
+                        keep(rect)
+                        written = rect
+                    if rect:
+                        last = rect
+            except Exception:
+                log.exception("Window position tracking stopped")
+
+        threading.Thread(target=work, daemon=True).start()
+
     def close_window(self) -> None:
         """Close the PAPro window (the browser process it runs in, with its helper processes)."""
+        if getattr(self, "native", None) is not None:
+            self.native.destroy()
+            return
         proc = self.window
         if proc is None or proc.poll() is not None:
             return
@@ -500,22 +642,25 @@ header p{margin:0;color:var(--muted);font-size:12.5px}
 .knobbox .kt{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#9a9ca8;font-weight:600}
 .knob{position:relative;width:132px;height:132px;border-radius:50%;cursor:pointer;user-select:none;outline:none;-webkit-tap-highlight-color:transparent}
 .knob:focus-visible{box-shadow:0 0 0 3px rgba(255,255,255,.35)}
-.kscale{position:absolute;inset:0;width:100%;height:100%}.kscale line{stroke:#6f717c;stroke-width:2;stroke-linecap:round}.kscale line.lit{stroke:#f2f2f4}
+.kscale{position:absolute;inset:0;width:100%;height:100%}.kscale line{stroke:#6f717c;stroke-width:2;stroke-linecap:round}.kscale line.lit{stroke:#ffe9a8;filter:drop-shadow(0 0 2px rgba(255,214,110,.95)) drop-shadow(0 0 6px rgba(255,176,40,.75))}
 .kscale text{fill:#c9cad2;font-size:9px;font-weight:700;text-anchor:middle}
 /* a black matte knob with a knurled skirt and a white pointer, like an audio-control-panel volume knob */
 .kcap{position:absolute;inset:25px;border-radius:50%;display:flex;align-items:center;justify-content:space-between;padding:0 6px;
   background:radial-gradient(circle at 50% 38%,#2a2b31 0 52%,#16171b 53% 100%);border:2px solid #0a0a0c;
   box-shadow:0 6px 0 #050506,0 10px 14px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.14),inset 0 0 0 5px #1c1d22,inset 0 0 0 6px #34353c;transition:transform .12s,box-shadow .12s}
 .kcap::before{content:"";position:absolute;inset:-5px;border-radius:50%;background:repeating-conic-gradient(#25262c 0 4deg,#0e0e11 4deg 8deg);z-index:-1;box-shadow:0 0 0 1px #3a3b42}
-.kptr{position:absolute;left:50%;top:6px;width:4px;height:calc(50% - 8px);margin-left:-2px;border-radius:2px;background:#f4f4f6;transform-origin:50% calc(100% + 0px);
-  box-shadow:0 0 0 1px rgba(0,0,0,.4);transition:transform .12s,background .2s,opacity .2s}
+.kptr{position:absolute;left:50%;top:6px;width:4px;height:calc(50% - 8px);margin-left:-2px;border-radius:2px;background:#fff3c4;transform-origin:50% calc(100% + 0px);
+  box-shadow:0 0 0 1px rgba(0,0,0,.4),0 0 5px 1px rgba(255,220,120,.9),0 0 14px 3px rgba(255,170,40,.55);transition:transform .12s,background .2s,opacity .2s,box-shadow .2s}
+.knob:not(.on) .kptr{box-shadow:0 0 0 1px rgba(0,0,0,.4)}
 .kcap i{position:relative;font-style:normal;font-size:18px;color:#5d5f69;line-height:1;opacity:0;transition:opacity .15s}.knob:hover .kcap i{opacity:.9}
 .knob.on .kcap{box-shadow:0 6px 0 #050506,0 10px 14px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.14),inset 0 0 0 5px #1c1d22,inset 0 0 0 6px #34353c,0 0 0 2px rgba(255,255,255,.18)}
 .knob:not(.on) .kcap{transform:translateY(5px);box-shadow:0 1px 0 #050506,0 3px 6px rgba(0,0,0,.55),inset 0 3px 9px rgba(0,0,0,.6),inset 0 0 0 5px #17181c,inset 0 0 0 6px #2a2b31}
 .knob:not(.on) .kptr{background:#8b8d98;opacity:.7}
-.knobbox .kpa{font-size:21px;font-weight:700;letter-spacing:.16em;color:#f2f2f4;line-height:1;margin-top:4px;transition:color .2s,opacity .2s}
-.knobbox:has(.knob:not(.on)) .kpa{color:#7b7d88}
-.knobbox .kv{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums;color:#e8e8ec}.knobbox .kst{font-size:12px;color:#8e909c}
+.knobbox .kpa{text-shadow:0 0 6px rgba(255,214,110,.6),0 0 16px rgba(255,170,40,.45);font-size:21px;font-weight:700;letter-spacing:.16em;color:#f2f2f4;line-height:1;margin-top:4px;transition:color .2s,opacity .2s}
+.knobbox:has(.knob:not(.on)) .kpa{color:#7b7d88;text-shadow:none}
+.knobbox .kv{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums;color:#e8e8ec}.h-ptop b.detect{color:var(--faint);font-weight:500;animation:pulse 1.2s ease-in-out infinite}@keyframes pulse{50%{opacity:.35}}
+.knobbox .kbtn{min-height:38px;margin-top:6px;display:flex;align-items:center}
+.knobbox .kst{font-size:12px;color:#8e909c;min-height:15px}
 @media(max-width:760px){.herorow{flex-direction:column}.knobbox{width:auto;flex-direction:row;gap:16px}}
 .hero.ok{border-color:rgba(80,200,140,.65);background:linear-gradient(rgba(80,200,140,.10),rgba(80,200,140,.04));box-shadow:0 0 0 1px rgba(80,200,140,.25),0 8px 30px rgba(80,200,140,.10)}
 .hero{display:flex;align-items:center;gap:20px;margin-bottom:26px}
@@ -581,6 +726,7 @@ input[type=text]:focus{border-color:var(--magenta)}
 .trow .tn{font-size:13.5px}.trow .tf{margin-left:auto;color:var(--faint);font-size:11.5px}
 .section-head{display:flex;align-items:baseline;gap:10px;margin:0 2px 12px}
 .section-head h2{margin:0;font-size:15px;font-weight:600}
+.fold{cursor:pointer;user-select:none}.fold .chev{font-style:normal;color:var(--faint);font-size:13px;width:14px;transition:transform .15s}.fold.shut .chev{transform:rotate(-90deg)}#packs.shut{display:none}
 .section-head span{color:var(--faint);font-size:12.5px}
 .tsticky{position:sticky;top:0;z-index:20;margin:16px -14px 0;padding:12px 14px;background:rgba(13,10,26,.92);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
 #t-bar{margin-top:12px}
@@ -627,6 +773,11 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
 .facts b{font-weight:600}
 .facts span{font:500 12px ui-monospace,Consolas,monospace;color:#d9b8ff;word-break:break-all}
 .facts i{font-style:normal;color:var(--muted);font-size:12.5px}
+.stars{display:inline-flex;align-items:center;gap:1px;margin:0 8px;vertical-align:1px}
+.vcount{font-size:10.5px;color:var(--faint);margin-left:5px}
+.star{cursor:pointer;font-size:16px;line-height:1;color:var(--faint);padding:0 1px}
+.star.on{color:#e9a31b}.star.on.mine{color:#f5b92e}
+.star:hover{color:#f5b92e}
 .setting{margin-bottom:18px}
 .setting .label{margin-bottom:8px}
 .radios{display:grid;gap:8px}
@@ -634,7 +785,7 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
 .radio b{font-weight:600}
 .radio span{color:var(--muted);font-size:12.5px}
 .radio.sel{border-color:transparent;background:linear-gradient(var(--surface2),var(--surface2)) padding-box,var(--grad) border-box;border:1px solid transparent;box-shadow:0 0 0 1px rgba(206,58,128,.35)}
-.modal{position:fixed;inset:0;background:rgba(5,3,14,.72);backdrop-filter:blur(5px);display:none;align-items:center;justify-content:center;z-index:5}
+.modal{position:fixed;inset:0;background:rgba(5,3,14,.72);backdrop-filter:blur(5px);display:none;align-items:center;justify-content:center;z-index:50}
 .modal.show{display:flex}
 #m-settings .row{position:sticky;bottom:-26px;background:var(--surface);padding:12px 0 2px}
 .dialog{max-height:92vh;overflow-y:auto;background:var(--surface);border:1px solid var(--line2);border-radius:20px;padding:26px;width:440px;max-width:92vw;
@@ -743,7 +894,7 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
     <button class="cog" id="settings" title="Settings" aria-label="Settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.65 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01A1.7 1.7 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01A1.7 1.7 0 0 0 20.91 10H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg></button>
   </header>
 
-  <nav class="tabs"><button id="tab-main" class="on">Dashboard</button><button id="tab-studio">Pack Studio</button><button id="tab-dl">Download Packs</button><button id="tab-test">Test</button></nav>
+  <nav class="tabs"><button id="tab-main" class="on">Dashboard</button><button id="tab-dl">Pack Manager</button><button id="tab-studio">Pack Studio</button><button id="tab-test">Test</button></nav>
   <div id="view-main">
   <div class="card updbar" id="updbar" style="display:none"><div><b id="upd-t"></b><span id="upd-s"></span></div><button class="primary" id="upd-go">Download</button></div>
   <div class="herorow"><section class="card hero" id="hero"></section>
@@ -751,19 +902,19 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
       <div class="knob on" id="knob" tabindex="0" role="slider" aria-label="PA volume" aria-valuemin="0" aria-valuemax="100" title="Click the middle to mute / unmute. Click the left or right side, or scroll, to change the volume.">
         <svg class="kscale" viewBox="0 0 140 140" id="kscale"></svg>
         <div class="kcap"><div class="kptr" id="kptr"></div><i class="kl">&#8249;</i><i class="kr">&#8250;</i></div></div>
-      <div class="kpa" id="kpa">PA</div><div class="kv" id="kvol">70%</div><div class="kst" id="kst">PAs audible</div></aside></div>
+      <div class="kpa" id="kpa">PA</div><div class="kv" id="kvol">70%</div><div class="kst" id="kst"></div><div class="kbtn"><button class="ghost" id="kskip" style="display:none">Skip PA</button><button class="ghost" id="kreplay" style="display:none">Replay last PA</button></div></aside></div>
   <div class="keepopen slim" id="keep-note"><button class="keepx" id="keep-x" title="Close this reminder" aria-label="Close this reminder">&times;</button><b>Keep PAPro running during your flight</b><span>It builds the landing announcement with the real local time once you have landed. Leave it in the tray until you have parked.</span>
     <label class="keepno"><input type="checkbox" id="keep-never"> Don't remind me again</label></div>
-
-  <div class="section-head"><h2>Installed airline packs</h2><span id="packsub"></span></div>
-  <div class="packs" id="packs"></div>
 
   <footer>
     <button class="ghost" id="aliases-btn">Airline aliases</button>
   </footer>
   </div>
   <div id="view-dl" style="display:none">
-    <div class="section-head"><h2>Download packs</h2><span id="dlsub"></span><span style="margin-left:auto;display:flex;gap:10px"><button class="ghost" id="refresh">Refresh list</button><button class="ghost" id="import-btn">Import a pack</button></span></div>
+    <div class="section-head"><h2>Pack Manager</h2><input type="search" id="packq" placeholder="Search packs" autocomplete="off" style="margin-left:14px;width:200px;font:500 13px 'Inter',sans-serif"><span style="margin-left:auto;display:flex;gap:10px"><button class="ghost" id="refresh">Refresh list</button><button class="ghost" id="import-btn">Import a pack</button></span></div>
+  <div class="section-head fold" id="packhead" role="button" tabindex="0" aria-expanded="true"><i class="chev">&#9662;</i><h2>Installed airline packs</h2><span id="packsub"></span></div>
+  <div class="packs" id="packs"></div>
+    <div class="section-head fold" id="dlhead" role="button" tabindex="0" aria-expanded="true" style="margin-top:32px"><i class="chev">&#9662;</i><h2>Community packs</h2><span id="dlsub"></span></div>
     <div class="packs" id="dlpacks"></div>
   </div>
   <div id="view-test" style="display:none">
@@ -884,11 +1035,6 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
       <div class="radio" data-v="25"><b>Now and then</b><span>About one flight in four gets a random bolt-on from your extra folder</span></div>
       <div class="radio" data-v="50"><b>Often</b><span>About one flight in two</span></div>
     </div></div>
-  <div class="setting"><div class="label">How the announcement pieces join</div>
-    <div class="radios" id="s-flow">
-      <div class="radio" data-v="flow"><b>Natural flow</b><span>The greeting, airport name and the rest are cropped tight and run into each other like one sentence</span></div>
-      <div class="radio" data-v="pauses"><b>Clear pauses</b><span>A short gap between each piece</span></div>
-    </div></div>
   <div class="setting"><div class="label">PA volume</div>
     <div class="radios" id="s-boost">
       <div class="radio" data-v="0"><b>As recorded</b><span>No change to the announcements</span></div>
@@ -904,12 +1050,7 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
       <button class="ghost" id="s-arefresh" title="Look for outputs again (e.g. after plugging in a headset)">Refresh</button>
     </div>
     <div class="small" id="s-anote" style="margin-top:8px"></div>
-    <label class="check" style="margin:12px 0 0"><input type="checkbox" id="s-aplay"> Play the announcements through PAPro when the aircraft isn't a Fenix</label>
     <div class="small" style="margin-top:6px">Volume and mute are on the PA knob on the Dashboard.</div>
-  </div>
-  <div class="setting"><div class="label">GSX integration</div>
-    <div class="small" style="margin-bottom:10px">Reads GSX's boarding and deboarding status so the Dashboard's flight phase follows the ground services. Does nothing if GSX isn't installed.</div>
-    <label class="check" style="margin:0"><input type="checkbox" id="s-gsx"> Use GSX for boarding and deboarding</label>
   </div>
   <div class="setting pc-only"><div class="label">Start PAPro automatically</div>
     <div class="radios" id="s-start">
@@ -919,6 +1060,7 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
     </div>
     <label class="check" id="s-quit-row" style="margin:12px 0 0"><input type="checkbox" id="s-quit"> Close PAPro when MSFS closes</label>
   </div>
+  <details class="grp pc-only" style="margin-bottom:18px"><summary>Advanced</summary><div style="margin-top:12px">
   <div class="setting pc-only"><div class="label">PAPro's web address</div>
     <div class="small" style="margin-bottom:10px">PAPro also runs as a local web page. This address is always the same, so another app (such as EFBx.io) can open it as an internal app. It only works on this PC while PAPro is running.</div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><input type="text" id="s-addr" readonly style="flex:1;min-width:220px;font:600 12px 'Inter',sans-serif" onclick="this.select()"><button class="ghost" id="s-addr-copy">Copy</button><button class="ghost" data-open="browser">Open in browser</button></div>
@@ -928,6 +1070,10 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
   <div class="setting pc-only"><div class="label">Fenix packs folder and log</div>
     <div style="display:flex;align-items:center;gap:12px"><button class="ghost" data-open="fenix">Open folder</button><span class="small">Where PAPro puts your announcements for the Fenix.</span></div>
     <div style="display:flex;align-items:center;gap:12px;margin-top:10px"><button class="ghost" data-open="log">View log</button><span class="small">Useful if something is not working.</span></div></div>
+  <div class="setting" style="margin-top:14px"><div class="label">Community author key</div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><button class="ghost" id="ak-copy">Copy key</button><input type="text" id="ak-val" placeholder="Paste a key or transfer code" style="flex:1;min-width:200px;font:500 12px 'Inter',sans-serif"><button class="ghost" id="ak-restore">Restore key</button><button class="ghost" id="ak-claim">Use code</button></div>
+  </div>
+  </div></details>
   <div class="row"><button class="ghost" id="s-cancel">Cancel</button><button class="primary" id="s-save">Save</button></div>
 </div></div>
 
@@ -954,6 +1100,13 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
 <div class="modal" id="m-quiet"><div class="dialog">
   <h3 id="q-t">No sound picked up</h3><p id="q-s"></p>
   <div class="row"><button id="q-close">Close</button><button class="primary" id="q-open">Open Audio settings</button></div>
+</div></div>
+<div class="modal" id="m-share"><div class="dialog">
+  <h3>Share with the community</h3>
+  <div id="sh-fields"></div>
+  <label class="check" style="margin:12px 0 0"><input type="checkbox" id="sh-rights"> I agree these files are my own work and I'm happy to share them to the community</label>
+  <div class="small" id="sh-msg" style="margin-top:10px;min-height:18px"></div>
+  <div class="row"><button class="ghost" id="sh-cancel">Cancel</button><button class="primary" id="sh-go">Share</button></div>
 </div></div>
 <div class="modal" id="m-job"><div class="dialog"><h3 id="job-t">Working...</h3><p id="job-s">Please wait - this can take a moment.</p><div class="ptrack"><i id="job-bar"></i></div></div></div>
 <div class="toast" id="toast"></div>
@@ -1003,16 +1156,18 @@ function drawKnobScale(){const sv=$("#kscale");if(sv.firstChild)return;let h="";
 function paintKnob(){const k=snap&&snap.settings&&snap.settings.pa_knob||{on:true,volume:70},st=window.knobLocal||k,on=!!st.on,v=st.volume;drawKnobScale();
   $("#knob").classList.toggle("on",on);$("#kptr").style.transform="rotate("+(-135+270*v/100)+"deg)";$("#knob").setAttribute("aria-valuenow",v);
   $("#kscale").querySelectorAll("line").forEach(l=>l.classList.toggle("lit",on&&(+l.dataset.i)*10<=v));
-  $("#kvol").textContent=v+"%";$("#kst").textContent=on?(v===0?"PAs audible (volume 0)":"PAs audible"):"Muted - playback continues"}
+  $("#kvol").textContent=v+"%";$("#kst").textContent=on?"":"Muted"}
 function knobSet(p){window.knobLocal={...(window.knobLocal||(snap.settings&&snap.settings.pa_knob)||{on:true,volume:70}),...p};paintKnob();
-  clearTimeout(knobSave);knobSave=setTimeout(async()=>{const d=window.knobLocal;await api("pa_knob",{on:d.on,volume:d.volume});try{snap=await (await fetch("/api/state",{headers:{"X-Token":TOKEN}})).json()}catch(e){}window.knobLocal=null;paintKnob()},250)}
+  clearTimeout(knobSave);knobSave=setTimeout(async()=>{const d=window.knobLocal;await api("pa_knob",{on:d.on,volume:d.volume});try{snap=await (await fetch("/api/state",{headers:{"X-Token":TOKEN}})).json()}catch(e){}window.knobLocal=null;knobSave=null;paintKnob()},250)}
 (function initKnob(){const kn=$("#knob"),cur=()=>window.knobLocal||(snap&&snap.settings&&snap.settings.pa_knob)||{on:true,volume:70};
   kn.onclick=e=>{const r=$(".kcap").getBoundingClientRect(),x=(e.clientX-r.left)/r.width,c=cur();
     if(x<0.34)knobSet({volume:Math.max(0,c.volume-5)});else if(x>0.66)knobSet({volume:Math.min(100,c.volume+5)});else knobSet({on:!c.on})};
   kn.addEventListener("wheel",e=>{e.preventDefault();const c=cur();knobSet({volume:Math.max(0,Math.min(100,c.volume+(e.deltaY<0?5:-5)))})},{passive:false});
   kn.onkeydown=e=>{const c=cur();if(e.key==="ArrowLeft"||e.key==="ArrowDown"){e.preventDefault();knobSet({volume:Math.max(0,c.volume-5)})}
     else if(e.key==="ArrowRight"||e.key==="ArrowUp"){e.preventDefault();knobSet({volume:Math.min(100,c.volume+5)})}else if(e.key===" "||e.key==="Enter"){e.preventDefault();knobSet({on:!c.on})}}})();
-function renderKnob(){const box=$("#knobbox"),show=!!(snap&&snap.aircraft&&!snap.aircraft.supported);box.style.display=show?"":"none";if(show&&!knobSave)paintKnob()}
+$("#kskip").onclick=async()=>{await api("skip_pa",{});toast("Skipped")};
+$("#kreplay").onclick=()=>api("replay_pa",{});
+function renderKnob(){const sk=$("#kskip");if(sk){const st=snap&&snap.settings||{},on=!!st.pa_playing;sk.style.display=on?"":"none";const rp=$("#kreplay");if(rp)rp.style.display=(!on&&st.pa_last)?"":"none"}const box=$("#knobbox"),show=!!(snap&&snap.aircraft&&!snap.aircraft.supported);box.style.display=show?"":"none";if(show&&!knobSave)paintKnob()}
 function renderHero(){
   const sig=JSON.stringify([snap.setup_needed,snap.company,snap.voices,snap.flight,snap.message,snap.applied,snap.updated,snap.busy,snap.logo_v,(snap.packs||[]).filter(p=>p.installed).length,snap.aircraft,snap.phase]);
   if(sig===heroSig) return; heroSig=sig;
@@ -1036,10 +1191,11 @@ function renderHero(){
   if(snap.aircraft){const ac=snap.aircraft,chip=el("div","h-ac "+(ac.supported?"ok":"warn"));chip.title=ac.supported?"PAs can be played in the sim for this aircraft":"PAPro can't play PAs inside this aircraft yet";
     chip.append(el("i"),el("span",null,ac.title+(ac.supported?" · PAs supported":" · not supported yet")));mid.append(chip)}
   if(snap.phase){const ph=snap.phase,box=el("div","h-phase");box.title="Worked out from the sim: speed, direction, altitude, lights and doors (and GSX when it is on). It only moves forward until a new flight plan is loaded.";
-    const top=el("div","h-ptop");top.append(el("span","h-plab","Flight phase"),el("b",null,ph.name),el("span","h-psrc",""));
+    const top=el("div","h-ptop");top.append(el("span","h-plab","Flight phase"),el("b",ph.detecting?"detect":null,ph.detecting?"Detecting flight phase...":ph.name),el("span","h-psrc",""));
     const bar=el("div","h-pbar");ph.steps.forEach((n,i)=>{const sg=el("i",i<ph.index?"done":i===ph.index?"now":"");sg.title=n;bar.append(sg)});box.append(top,bar);
-    if(ph.can_board){const bb=el("button","ghost","Start boarding");bb.style.marginTop="10px";bb.title="Begin the boarding phase (this aircraft has no GSX status to do it for you)";bb.onclick=()=>api("phase_boarding");box.append(bb)}
-    if(ph.can_disarm){const bd=el("button","ghost","Disarm Doors PA");bd.style.marginTop="10px";bd.title="Play the Disarm Doors announcement now";bd.onclick=()=>api("phase_disarm");box.append(bd)}
+    if(ph.can_board&&!ph.detecting){const bb=el("button","ghost","Start boarding");bb.style.marginTop="10px";bb.onclick=()=>api("phase_boarding");box.append(bb)}
+    if(ph.can_complete&&!ph.detecting){const bc=el("button","ghost","Boarding Complete");bc.style.marginTop="10px";bc.onclick=()=>api("phase_complete");box.append(bc)}
+    if(ph.can_disarm&&!ph.detecting){const bd=el("button","ghost","Disarm Doors PA");bd.style.marginTop="10px";bd.title="Play the Disarm Doors announcement now";bd.onclick=()=>api("phase_disarm");box.append(bd)}
     mid.append(box)}
   h.append(mid);
   const side=el("div","side");
@@ -1077,12 +1233,16 @@ function packCard(p,editable){
   const c=el("div","card pack"); c.id="pack-"+(p.key||p.icao);
   const top=el("div","top"); top.append(editable&&p.installed?editableLogo(p.icao,"logo"):logo(p.icao,"logo"));
   const info=el("div"); const n=el("div","name",p.name);
+  if(p.community){const rid=p.id,rt=el("div","stars");rt.title=p.votes?p.rating.toFixed(1)+" out of 5 from "+p.votes+(p.votes==1?" vote":" votes")+" - click to rate":"Not rated yet - click to rate";
+    for(let i=1;i<=5;i++){const s=el("span","star"+(i<=(p.my_rating||Math.round(p.rating))?" on":"")+(p.my_rating?" mine":""),"\u2605");s.onclick=async()=>{const r=await api("rate_pack",{id:rid,stars:i});if(r&&r.error)toast(r.error);else{toast("Thanks for rating");await refreshNow()}};rt.append(s)}
+    if(p.votes)rt.append(el("span","vcount",p.rating.toFixed(1)+"/5"));n.append(rt)}
   if(p.installed&&p.update){n.append(el("span","chip up","Update available"))}
   else if(p.catalog&&p.installed){n.append(el("span","chip ok","Installed"))}
   info.append(n);
   const ver=p.version&&p.version!=="imported"&&p.version!=="Your recordings"?(/^[0-9]/.test(p.version)?"v"+p.version:p.version):"";
   info.append(el("div","meta",[p.icao,ver,p.size_mb?p.size_mb+" MB":""].filter(Boolean).join("  ·  ")));
   if(p.voices&&p.voices.length) info.append(el("div","meta",(p.voices.length>1?"Voices: ":"Voice: ")+p.voices.join(", ")));
+  if(p.community) info.append(el("div","meta","By "+(p.author||"a community member")+(p.license?"  ·  "+p.license:"")));
   top.append(info);
   const act=el("div","act");
   if(!p.task){
@@ -1101,7 +1261,7 @@ function packCard(p,editable){
 const packSigs={};
 function renderPackList(boxId,list,emptyText){
   const box=$("#"+boxId);
-  const sig=JSON.stringify([list.map(p=>[p.key||p.icao,p.installed,p.update,!!p.task,p.name,p.version,p.voices]),snap.busy,snap.catalog_error,snap.logo_v,emptyText]);
+  const sig=JSON.stringify([list.map(p=>[p.key||p.icao,p.installed,p.update,!!p.task,p.name,p.version,p.voices,p.rating,p.votes,p.my_rating,p.rate_id]),snap.busy,snap.catalog_error,snap.logo_v,emptyText]);
   if(sig!==packSigs[boxId]){
     packSigs[boxId]=sig; box.replaceChildren();
     if(!list.length){const e=el("div","empty",emptyText); e.style.gridColumn="1/-1"; box.append(e)}
@@ -1116,20 +1276,26 @@ function renderPackList(boxId,list,emptyText){
     if(f!==null&&f!==undefined){pp.textContent=Math.round(f*100)+"%";pb.firstChild.style.width=(f*100)+"%"}else pp.textContent="";
   });
 }
+[["#packhead","#packs","packsShut"],["#dlhead","#dlpacks","dlShut"]].forEach(([hs,ps,key])=>{const h=$(hs),p=$(ps);let shut=false;try{shut=localStorage.getItem(key)==="1"}catch(e){}
+  const set=s=>{shut=s;h.classList.toggle("shut",s);p.classList.toggle("shut",s);h.setAttribute("aria-expanded",!s);try{localStorage.setItem(key,s?"1":"0")}catch(e){}};
+  h.onclick=()=>set(!shut);h.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();set(!shut)}};set(shut)});
 function renderPacks(){
-  const mine=snap.packs.filter(p=>p.installed&&!p.catalog), more=snap.packs.filter(p=>p.catalog||!p.installed);
-  renderPackList("packs",mine,"No airline packs installed yet. Open the Download Packs tab to get one.");
-  renderPackList("dlpacks",more,snap.catalog_error||(snap.packs.length?"Every available pack is installed.":"No airline packs are available to download yet. You can still use Import a pack."));
-  $("#packsub").textContent=mine.length?mine.length+" installed":"";
-  $("#dlsub").textContent=more.length?more.length+" available":"";
+  const q=(($("#packq")||{}).value||"").trim().toLowerCase(), hit=p=>!q||[p.name,p.icao,p.author,(p.voices||[]).join(" ")].join(" ").toLowerCase().includes(q);
+  const mine0=snap.packs.filter(p=>p.installed&&!p.catalog), more0=snap.packs.filter(p=>p.community);
+  const mine=mine0.filter(hit), more=more0.filter(hit);
+  renderPackList("packs",mine,q?"No installed pack matches.":"No airline packs installed yet. Open the Pack Manager tab to get one.");
+  renderPackList("dlpacks",more,q?"No pack matches.":"No community packs yet.");
+  $("#packsub").textContent=mine0.length?(q?mine.length+" of ":"")+mine0.length+" installed":"";
+  $("#dlsub").textContent=more0.length?(q?more.length+" of ":"")+more0.length+" available":"";
 }
+if($("#packq"))$("#packq").oninput=()=>{if(snap&&snap.packs)renderPacks()};
 let manageIcao=null;
 function openManage(icao){manageIcao=icao;$("#mg-msg").textContent="";renderManage();$("#m-manage").classList.add("show")}
 function renderManage(){
   const p=(snap.packs||[]).find(x=>x.icao===manageIcao&&x.installed); if(!p){$("#m-manage").classList.remove("show");return}
   $("#mg-title").textContent="Manage "+p.name; $("#mg-sub").textContent=p.icao+" - open a voice in Pack Studio to re-record or fix it, or take a voice out of the airline.";
   const box=$("#mg-voices"); const items=p.voice_items||[]; const sig=JSON.stringify(items); if(box.dataset.s===sig) return; box.dataset.s=sig; box.replaceChildren();
-  if(!items.length) box.append(el("div","empty","This airline has no voices yet. Add one in Pack Studio or Download packs."));
+  if(!items.length) box.append(el("div","empty","This airline has no voices yet. Add one in Pack Studio or Pack Manager."));
   items.forEach(v=>{
     const row=el("div","card"); row.style.cssText="display:flex;align-items:center;gap:10px;padding:10px 14px;margin-top:8px";
     const nm=el("div","name",v.key==="Default"?(v.name==="Default"?"Main recordings":v.name):v.name); nm.style.flex="1"; row.append(nm);
@@ -1153,7 +1319,7 @@ $("#i-ok").onclick=async()=>{
     let r;
     if(importFile){const q=new URLSearchParams({file:importFile.name,t:TOKEN});const x=await fetch("/import/upload?"+q,{method:"POST",headers:{"X-Token":TOKEN},body:importFile});r=await x.json()}
     else r=await api("import_url",{url});
-    if(r.error){msg.textContent=r.error}else{$("#m-import").classList.remove("show");toast("Importing - watch the Download Packs tab for progress",5000);importWatch={t0:Date.now(),seen:false,n:snap.installs_done||0};setView("dl")}
+    if(r.error){msg.textContent=r.error}else{$("#m-import").classList.remove("show");toast("Importing - watch the Pack Manager tab for progress",5000);importWatch={t0:Date.now(),seen:false,n:snap.installs_done||0};setView("dl")}
   }catch(e){msg.textContent="Import failed - could not send the file."}
   $("#i-ok").disabled=false;$("#i-ok").textContent="Import";
 };
@@ -1212,21 +1378,24 @@ function openName(){ $("#n-input").value=snap.username||""; $("#m-name").classLi
 let cfg={close:"no",autostart:"off",min:"no",time:"yes",extra:"25"};
 function pickRadio(id,val){document.querySelectorAll("#"+id+" .radio").forEach(r=>r.classList.toggle("sel",r.dataset.v===val))}
 document.querySelectorAll(".radios").forEach(g=>g.querySelectorAll(".radio").forEach(r=>r.onclick=()=>{
-  cfg[g.id==="s-close"?"close":g.id==="s-min"?"min":g.id==="s-time"?"time":g.id==="s-extra"?"extra":g.id==="s-boost"?"boost":g.id==="s-flow"?"flow":"autostart"]=r.dataset.v; pickRadio(g.id,r.dataset.v); $("#s-quit-row").style.display=cfg.autostart==="msfs"?"flex":"none"}));
+  cfg[g.id==="s-close"?"close":g.id==="s-min"?"min":g.id==="s-time"?"time":g.id==="s-extra"?"extra":g.id==="s-boost"?"boost":"autostart"]=r.dataset.v; pickRadio(g.id,r.dataset.v); $("#s-quit-row").style.display=cfg.autostart==="msfs"?"flex":"none"}));
 function openSettings(){
-  const s=snap.settings||{}; cfg={close:s.close_to_tray?"yes":"no",autostart:s.autostart||"off",min:s.minimize_to_tray?"yes":"no",time:s.local_time===false?"no":"yes",extra:String(s.extra_chance===undefined?25:s.extra_chance),boost:String(s.pa_boost===undefined?30:s.pa_boost),flow:s.join_style==="pauses"?"pauses":"flow"};
+  const s=snap.settings||{}; cfg={close:s.close_to_tray?"yes":"no",autostart:s.autostart||"off",min:s.minimize_to_tray?"yes":"no",time:s.local_time===false?"no":"yes",extra:String(s.extra_chance===undefined?25:s.extra_chance),boost:String(s.pa_boost===undefined?30:s.pa_boost)};
   $("#s-name").value=snap.username||""; $("#s-quit").checked=s.quit_with_msfs!==false;
-  pickRadio("s-start",cfg.autostart); pickRadio("s-close",cfg.close); pickRadio("s-min",cfg.min); pickRadio("s-extra",cfg.extra);pickRadio("s-boost",cfg.boost);pickRadio("s-flow",cfg.flow);
+  pickRadio("s-start",cfg.autostart); pickRadio("s-close",cfg.close); pickRadio("s-min",cfg.min); pickRadio("s-extra",cfg.extra);pickRadio("s-boost",cfg.boost);
   $("#s-quit-row").style.display=cfg.autostart==="msfs"?"flex":"none";
   $("#s-addr").value=snap.address||"";
   const lan=s.lan||{};renderLanAddrs(lan);
-  const au=s.audio||{};audioChosen=au.device||"";$("#s-aplay").checked=au.playback!==false;$("#s-gsx").checked=s.gsx!==false;loadAudioDevices();
+  const au=s.audio||{};audioChosen=au.device||"";loadAudioDevices();
   renderSetUpd();$("#m-settings").classList.add("show");
 }
 $("#settings").onclick=openSettings;
 function renderLanAddrs(lan){const box=$("#s-lan-addrs");box.replaceChildren();
   if(!(lan.addresses||[]).length){box.append(el("div","small","No network address found for this PC."));return}
   (lan.addresses||[]).forEach(a=>{const row=el("div");row.style.cssText="display:flex;gap:8px;align-items:center;margin-top:4px";const i=document.createElement("input");i.type="text";i.readOnly=true;i.value=a;i.style.cssText="flex:1;min-width:200px;font:600 12px 'Inter',sans-serif";i.onclick=()=>i.select();row.append(i);box.append(row)})}
+$("#ak-copy").onclick=async()=>{const r=await api("author_key",{do:"get"});if(!r||!r.key){toast("Could not read the key");return}try{await navigator.clipboard.writeText(r.key);toast("Key copied - keep it private")}catch(e){$("#ak-val").value=r.key;$("#ak-val").select();toast("Press Ctrl+C to copy")}};
+$("#ak-restore").onclick=async()=>{const r=await api("author_key",{do:"set",value:$("#ak-val").value});if(r&&r.ok){$("#ak-val").value="";toast("Key restored")}else toast((r&&r.error)||"Could not restore")};
+$("#ak-claim").onclick=async()=>{const r=await api("author_key",{do:"claim",value:$("#ak-val").value});if(r&&r.ok){$("#ak-val").value="";toast("Pack transferred"+(r.name?": "+r.name:""))}else toast((r&&r.error)||"Code not accepted")};
 $("#s-addr-copy").onclick=async()=>{try{await navigator.clipboard.writeText($("#s-addr").value);toast("Address copied")}catch(e){$("#s-addr").select();toast("Press Ctrl+C to copy")}};
 let audioChosen="";
 async function loadAudioDevices(){
@@ -1252,7 +1421,7 @@ $("#s-cancel").onclick=()=>$("#m-settings").classList.remove("show");
 $("#s-save").onclick=async()=>{
   const name=$("#s-name").value.trim();
   if(name&&name!==(snap.username||"")){const r=await api("username",{name}); if(r.error)return}
-  const r=await api("settings",{close_to_tray:cfg.close==="yes",autostart:cfg.autostart,minimize_to_tray:cfg.min==="yes",extra_chance:parseInt(cfg.extra,10),pa_boost:parseInt(cfg.boost,10),join_style:cfg.flow,quit_with_msfs:$("#s-quit").checked,audio_device:audioChosen,audio_playback:$("#s-aplay").checked,gsx:$("#s-gsx").checked,});
+  const r=await api("settings",{close_to_tray:cfg.close==="yes",autostart:cfg.autostart,minimize_to_tray:cfg.min==="yes",extra_chance:parseInt(cfg.extra,10),pa_boost:parseInt(cfg.boost,10),quit_with_msfs:$("#s-quit").checked,audio_device:audioChosen,});
   if(!r.error){$("#m-settings").classList.remove("show");toast("Settings saved")}
 };
 let minSent=false;
@@ -1261,7 +1430,7 @@ setInterval(()=>{ // a minimized Chromium window reports its position as far off
   if(away&&!minSent&&snap&&snap.settings&&snap.settings.minimize_to_tray){minSent=true;api("minimized")}
   if(!away)minSent=false;
 },500);
-window.addEventListener("pagehide",()=>{try{fetch("/api/closing",{method:"POST",keepalive:true,headers:{"X-Token":TOKEN,"Content-Type":"application/json"},body:"{}"})}catch(e){}});
+window.addEventListener("pagehide",()=>{if(document.body.classList.contains("remote"))return;try{fetch("/api/closing",{method:"POST",keepalive:true,headers:{"X-Token":TOKEN,"Content-Type":"application/json"},body:"{}"})}catch(e){}});
 $("#n-cancel").onclick=()=>$("#m-name").classList.remove("show");
 $("#n-ok").onclick=async()=>{const v=$("#n-input").value.trim(); if(!v)return; $("#m-name").classList.remove("show"); await api("username",{name:v}); toast("Saved - fetching your flight")};
 $("#n-input").addEventListener("keydown",e=>{if(e.key==="Enter")$("#n-ok").click()});
@@ -1284,7 +1453,7 @@ async function testInit(){
   const sig=JSON.stringify(list); if(sig===tSig&&tOpts)return; tSig=sig; tOpts=list; tAllTypes=r.all_types||[];
   const keep={air:$("#t-air").value,voice:$("#t-voice").value,dest:$("#t-dest").value,ac:$("#t-ac").value};
   const a=$("#t-air"); a.innerHTML=""; for(const x of tOpts){const o=el("option",null,x.icao+" - "+x.name);o.value=x.icao;a.appendChild(o)}
-  if(!tOpts.length){$("#t-voice").innerHTML="";$("#t-dest").innerHTML="";tMsg("No pack in your library has a recorded airport yet. Import a pack (Download Packs tab) or record one in Pack Studio and press Save.");return}
+  if(!tOpts.length){$("#t-voice").innerHTML="";$("#t-dest").innerHTML="";tMsg("No pack in your library has a recorded airport yet. Import a pack (Pack Manager tab) or record one in Pack Studio and press Save.");return}
   a.onchange=()=>testFillVoices(); $("#t-voice").onchange=()=>testFillDest(); $("#t-ac").oninput=()=>$("#t-ac").classList.remove("bad");$("#t-ac").onchange=()=>{$("#t-ac").value=$("#t-ac").value.trim().toUpperCase();if(testAcOk())testStale()}; $("#t-dest").onchange=testStale;
   $("#t-time").onchange=()=>{const m=$("#t-time").value.trim().match(/^(\d{1,2})[:.]?(\d{2})$/); if(m&&+m[1]<24&&+m[2]<60)$("#t-time").value=m[1].padStart(2,"0")+":"+m[2]; tSpoken(); testStale()};
   $("#t-time").oninput=tSpoken;
@@ -1978,9 +2147,25 @@ function renderStudio(){
   const use=el("button","save"+(savedSig===saveSig?" done":""),"Save");use.title=c.origin?"Save your changes to your library so PAPro and the Test tab use them":"Add this pack to your library as a voice for "+c.icao+" so PAPro and the Test tab use it";
   use.onclick=async()=>{const r=await studio("install",pid(c));if(r.ok){savedSig=saveSig;use.classList.add("done");toast(r.finished?"Saved to your library":"Added to your library as a voice for "+c.icao)}};
   const ex=el("button","primary","Export pack zip");ex.onclick=async()=>{const r=await studio("export",pid(c));if(r.ok)toast("Exported - release tag: "+(r.tag||"")+" (the folder is open)",9000)};
-  bar2.append(dis,fol,use,ex);root.append(bar2);syncPlayer();
+  const sh=el("button","ghost","Share with the community");sh.onclick=()=>openShare(c);
+  bar2.append(dis,fol,use,ex,sh);root.append(bar2);syncPlayer();
 }
 
+let shareCard=null;
+function openShare(c){shareCard=c;$("#sh-msg").textContent="";$("#sh-go").disabled=false;$("#sh-rights").checked=false;
+  const box=$("#sh-fields");box.replaceChildren();
+  [["airline","Airline name","Delta Air Lines"],["artist","Voice artist","Your name"]].forEach(([k,label,ph])=>{if(String(c[k]||"").trim())return;
+    const l=el("label","tlab",label);l.style.marginTop="10px";const i=el("input");i.type="text";i.id="sh-"+k;i.placeholder=ph;i.maxLength=80;l.append(i);box.append(l)});
+  $("#m-share").classList.add("show")}
+$("#sh-cancel").onclick=()=>$("#m-share").classList.remove("show");
+$("#sh-go").onclick=async()=>{const m=$("#sh-msg"),b=$("#sh-go"),c=shareCard;
+  if(!$("#sh-rights").checked){m.textContent="Please tick the box to agree.";return}
+  const fix={};if($("#sh-airline"))fix.new_airline=$("#sh-airline").value.trim();if($("#sh-artist"))fix.artist=$("#sh-artist").value.trim();
+  if(("new_airline" in fix&&!fix.new_airline)||("artist" in fix&&!fix.artist)){m.textContent="Please fill in the empty fields.";return}
+  b.disabled=true;m.textContent="Sending...";
+  if(Object.keys(fix).length){const d=await studio("details",{...pid(c),...fix,effect:c.effect});if(d&&d.error){m.textContent=d.error;b.disabled=false;return}}
+  const r=await studio("publish",{...pid(c),rights:true});
+  b.disabled=false;if(r&&r.ok){$("#m-share").classList.remove("show");toast(r.status==="approved"?"Shared - it is in the community list":"Sent for review - it appears once approved",6000)}else m.textContent=(r&&r.error)||"Could not send it"};
 function renderJob(){
   const j=snap&&snap.studio&&snap.studio.job,m=$("#m-job");m.classList.toggle("show",!!j);if(!j)return;
   $("#job-t").textContent=j.label;const bar=$("#job-bar"),pr=bar.parentElement;
@@ -1997,7 +2182,7 @@ async function tick(){
       if(!busy&&(snap.installs_done||0)>importWatch.n){importWatch=null;setView("main");toast("Pack imported",4000)}   // finished: back to the Dashboard
       else if(!busy&&(importWatch.seen||Date.now()-importWatch.t0>900000))importWatch=null}   // it failed: stay, the message says why
   }catch(e){}
-  setTimeout(tick,(snap&&(snap.busy||snap.prompt||(snap.studio&&snap.studio.job)))?400:1500);
+  setTimeout(tick,(snap&&(snap.busy||snap.prompt||(snap.studio&&snap.studio.job)))?400:(snap&&snap.settings&&snap.settings.pa_playing)?500:1500);
 }
 tick();
 </script>

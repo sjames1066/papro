@@ -21,13 +21,12 @@ LINEUP_MAX_KT = 35.0          # landing light on at or below this ground speed, 
 AFTER_TAKEOFF_AGL_FT = 1500.0
 SEATBELT_OFF_MIN_AGL_FT = 3000.0
 SEATBELT_FALLBACK_ALT_FT = 10000.0   # no seatbelt switch reading: the signs go off climbing through this
-CABIN_SERVICE_AFTER_S = 480   # after the seatbelt signs go off
 CRUISE_ALT_FT = 20000.0       # above this we count as having been at cruise
 DESCENT_VS_FPM = -700.0
 DESCENT_BELOW_MAX_FT = 3000.0 # this far below the highest altitude of the flight
 LANDING_PREP_AGL_FT = 10000.0 # descending through this: cabin crew take your seats for landing
 SEATBELT_ON_COOLDOWN_S = 600
-DEBOARD_AFTER_S = 20          # parked after landing for this long -> doors / deboarding
+DEBOARD_AFTER_S = 5           # parked after landing for this long -> doors / deboarding
 DEBOARD_COMPLETE_AFTER_S = 120
 
 
@@ -53,6 +52,7 @@ class PhaseEngine:
         self.prev_brake = None
         self.prev_seatbelt = None
         self.flight_clock = None
+        self.gsx_boarding_seen = False
         self.joined = False         # the first reading has not been looked at yet (see join())
 
     # -- helpers ---------------------------------------------------------------------------------------
@@ -89,10 +89,42 @@ class PhaseEngine:
             self.done.update(before + takeoff + ("seatbelt_off", "cabin_service", "descent", "landing_seats", "landing_dim",
                                                  "landing_secured", "after_landing"))
             self.flown = self.landed = True
+            if gs < 1.0 and r.get("eng_running") is not True:   # already parked: all of it is over, say nothing
+                self.done.update(("disarm_doors", "deboard_start", "deboard_complete"))
         elif gs >= SAFETY_SPEED_KT or phase in ("Pushback", "Taxi out"):
             self.done.update(before)    # already moving: the boarding PAs are over
+        # Opened part way through: say the announcement for the closest phase (just that one), not the ones already behind you
+        agl = float(r.get("agl") or 0.0)
+        closest: tuple[str, ...] = ()
+        if not ground:
+            if phase == "Approach" or (vs is not None and float(vs) < -300 and agl <= LANDING_PREP_AGL_FT):
+                closest = ("landing_seats", "landing_dim", "landing_secured")
+            elif phase == "Descent" or (vs is not None and float(vs) < -300):
+                closest = ("descent",)
+            elif phase == "Cruise" or alt >= CRUISE_ALT_FT:   # (a fresh start has no history, so the height says where we are)
+                closest = ("cabin_service",)
+            elif agl < SEATBELT_OFF_MIN_AGL_FT and (vs is None or float(vs) > 0):
+                closest = ("after_takeoff",)
+            else:
+                closest = ()
+        elif phase in ("Taxi in", "Deboarding"):
+            closest = () if "deboard_complete" in self.done else ("after_landing",)
+        elif phase == "Pushback":
+            closest = ("boarding_complete",)
+        elif gs >= SAFETY_SPEED_KT or phase == "Taxi out":
+            closest = ("pre_safety", "safety")
+        for key in closest:
+            self.done.discard(key)
+            self._fire(key)
 
     # -- the sim says ----------------------------------------------------------------------------------
+    def boarding_done(self, t: float) -> None:
+        """The Boarding Complete button: the announcement now, then the doors, safety briefing and so on follow as usual."""
+        if not self.flown and "boarding_complete" not in self.done:
+            self.done.add("welcome")
+            self._fire("boarding_complete")
+            self.t_boarding_done = t
+
     def landed_event(self, t: float) -> None:
         """The landing detector says we are down and slow: the landing PA, then wait to be parked."""
         if "after_landing" not in self.done and self.flown:
@@ -117,12 +149,19 @@ class PhaseEngine:
         if alt >= CRUISE_ALT_FT:
             self.cruise_seen = True
 
+        # ---- GSX boarding finished or aborted -> Boarding complete ---------------------------------------
+        gsx_b = r.get("gsx_boarding") if getattr(self, "use_gsx", True) else None
+        if gsx_b == GSX_PERFORMING:
+            self.gsx_boarding_seen = True
+        elif getattr(self, "gsx_boarding_seen", False) and gsx_b is not None and ground and not self.flown:
+            self.gsx_boarding_seen = False
+            self.boarding_done(t)
         # ---- on the ground before the flight -------------------------------------------------------------
         if ground and not self.flown:
             parked = gs < 1.0 and engines is not True
             if parked and "boarding_complete" not in self.done:
                 self.t_idle = self.t_idle if self.t_idle is not None else t
-                if t - self.t_idle >= WELCOME_AFTER_S:
+                if t - self.t_idle >= WELCOME_AFTER_S and getattr(self, "boarding_ok", True):
                     self._fire("welcome")
             else:
                 self.t_idle = None
@@ -148,11 +187,10 @@ class PhaseEngine:
                 self._fire("after_takeoff")
             if self.flown:
                 off_edge = seatbelt is False and self.prev_seatbelt is True and agl >= SEATBELT_OFF_MIN_AGL_FT
-                off_fallback = seatbelt is None and alt >= SEATBELT_FALLBACK_ALT_FT and "seatbelt_off" not in self.done
-                if off_edge or off_fallback:
+                if off_edge:   # only when the aircraft's seatbelt sign can be read (no guessing from altitude)
                     self._fire("seatbelt_off")
                     self.t_seatbelt_off = t
-                if self.t_seatbelt_off is not None and t - self.t_seatbelt_off >= CABIN_SERVICE_AFTER_S:
+                if getattr(self, "cruise_reached", False) and "descent" not in self.done:   # at cruise altitude (set from the phase tracker)
                     self._fire("cabin_service")
                 if seatbelt is True and self.prev_seatbelt is False and "seatbelt_off" in self.done \
                         and t - self.t_last_seatbelt_on >= SEATBELT_ON_COOLDOWN_S:
@@ -181,9 +219,16 @@ class PhaseEngine:
             if parked:
                 self.t_parked_after = self.t_parked_after if self.t_parked_after is not None else t
                 if t - self.t_parked_after >= DEBOARD_AFTER_S:
-                    self._fire("disarm_doors")
-                    self._fire("deboard_start")
-                    self.t_deboard = self.t_deboard if self.t_deboard is not None else t
+                    self._fire("disarm_doors")   # every engine is off (one running engine, e.g. single-engine taxi, is not parked)
+                    gsx_d = r.get("gsx_deboarding") if getattr(self, "use_gsx", True) else None
+                    try:
+                        gsx_d = int(gsx_d) if gsx_d is not None else None
+                    except (TypeError, ValueError):
+                        gsx_d = None
+                    if gsx_d is None or gsx_d >= 5 or "deboard_start" in self.done \
+                            or (not self.gsx_boarding_seen and t - self.t_parked_after >= 60):   # with GSX: wait for it to begin deboarding
+                        self._fire("deboard_start")
+                        self.t_deboard = self.t_deboard if self.t_deboard is not None else t
                 if self.t_deboard is not None and t - self.t_deboard >= DEBOARD_COMPLETE_AFTER_S:
                     self._fire("deboard_complete")
             else:
@@ -234,8 +279,10 @@ CRUISE_LEVEL_BAND_FT = 150.0
 CRUISE_MATCH_FT = 300.0
 DESCENT_DROP_FT = 3000.0
 APPROACH_NM = 25.0
+SEED_AT_DESTINATION_NM = 5.0     # opened on the ground within this of the destination airport: landed, taxiing in
 LANDED_KT = 60.0
 GSX_PERFORMING, GSX_COMPLETED = 5, 6
+PARKED_DEBOARD_S = 20.0          # stopped with the engines off this long after landing -> Deboarding, even with no GSX / door signal
 
 
 def haversine_nm(lat1, lon1, lat2, lon2) -> float:
@@ -276,6 +323,8 @@ class PhaseTracker:
         self.current = None
         self.rank = 0
         self.manual_boarding_flag = False
+        self.manual_complete_flag = False
+        self.gsx_was_boarding = False
         self.flown = False            # has been airborne at some point this flight
         self.air_since = None
         self.max_alt = 0.0
@@ -291,6 +340,39 @@ class PhaseTracker:
         """The "Start boarding" button (aircraft with no GSX to say so)."""
         self.manual_boarding_flag = True
 
+    def seed(self, r: dict) -> None:
+        """Opened part way through a flight, so there is no history to work the phase out from: take it from one reading."""
+        if r.get("on_ground"):   # no history: on the ground at the destination means we have landed (taxiing in), anywhere else it is the start
+            if self.dist_nm is not None and self.dist_nm <= SEED_AT_DESTINATION_NM and self.rank <= PHASES.index("Taxi out") and not self.flown:
+                self.flown = True
+                parked = float(r.get("gs") or 0.0) < 1.0 and r.get("eng_running") is not True
+                self.rank = PHASES.index("Deboarding" if parked else "Taxi in")
+                self.current = "Deboarding" if parked else "Taxi in"
+            return
+        if self.rank > 0:
+            return
+        alt = float(r.get("alt") or 0.0)
+        agl = float(r.get("agl") or 0.0)
+        vs = float(r.get("vs") or 0.0)
+        R = {n: i for i, n in enumerate(PHASES)}
+        self.flown, self.max_alt = True, alt
+        self.air_since = float(r.get("t", 0.0)) - INITIAL_CLIMB_AIRBORNE_S
+        if vs < -300:
+            near = self.dist_nm is not None and self.dist_nm <= APPROACH_NM
+            name = "Approach" if near else "Descent"
+        elif alt >= CRUISE_ALT_FT or (self.cruise_ft and abs(alt - self.cruise_ft) <= CRUISE_MATCH_FT):
+            name = "Cruise"
+        elif agl > 3000 or alt > 10000:
+            name = "Climb"
+        else:
+            name = "Initial climb"
+        self.rank = R[name]
+        self.current = name
+
+    def complete_boarding(self) -> None:
+        """The "Boarding Complete" button (manual boarding)."""
+        self.manual_complete_flag = True
+
     def set_flight(self, dest, cruise_ft) -> None:
         self.dest, self.cruise_ft = dest, cruise_ft
 
@@ -301,6 +383,12 @@ class PhaseTracker:
         return "estimated"
 
     # -- helpers ---------------------------------------------------------------------------------------
+    def _parked_since(self, t: float) -> float:
+        """Seconds the aircraft has been stopped with the engines off (starts counting on the first call)."""
+        if getattr(self, "parked_t", None) is None:
+            self.parked_t = t
+        return t - self.parked_t
+
     def _go(self, name: str) -> None:
         i = PHASES.index(name)
         if i > self.rank:
@@ -359,14 +447,23 @@ class PhaseTracker:
                 # landed: slow enough -> Taxi in; a door open / GSX deboarding -> Deboarding
                 if gs < LANDED_KT:
                     self._go("Taxi in")
-                if self.rank >= R["Taxi in"] and (r.get("door_open") or gsx_d == GSX_PERFORMING):
+                engines_off = r.get("eng_running") is False or (r.get("eng_running") is None and brake is True)
+                parked = gs < 1.0 and engines_off and brake is not False
+                if self.rank >= R["Taxi in"] and (r.get("door_open") or (gsx_d is not None and gsx_d >= GSX_PERFORMING)
+                                                  or (parked and self._parked_since(t) >= PARKED_DEBOARD_S)):
                     self._go("Deboarding")
+                if not parked:
+                    self.parked_t = None
             else:
                 # before the flight
+                if gsx_b == GSX_PERFORMING:
+                    self.gsx_was_boarding = True
                 if gsx_b == GSX_PERFORMING or self.manual_boarding_flag:
                     self._go("Boarding")
+                if getattr(self, "gsx_was_boarding", False) and gsx_b is not None and gsx_b != GSX_PERFORMING:
+                    self.manual_complete_flag = True   # GSX finished or aborted the boarding
                 released = self.prev_brake is True and brake is False
-                if gsx_b == GSX_COMPLETED or beacon is True or released:
+                if gsx_b == GSX_COMPLETED or beacon is True or released or self.manual_complete_flag:
                     self._go("Boarding complete")
                 if self.rank >= R["Boarding complete"]:
                     back = self._backward(r, heading, lat, lon, gs)
@@ -413,6 +510,9 @@ class PhaseTracker:
     # -- what the Dashboard may offer ------------------------------------------------------------------
     def can_start_boarding(self) -> bool:
         return self.rank < PHASES.index("Boarding") and not self.flown
+
+    def can_complete_boarding(self) -> bool:
+        return self.manual_boarding_flag and self.rank == PHASES.index("Boarding") and not self.flown
 
     def can_disarm_doors(self) -> bool:
         return self.rank == PHASES.index("Taxi in")

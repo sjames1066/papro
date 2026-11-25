@@ -29,6 +29,7 @@ import logging
 import os
 import random
 import re
+import secrets
 import shutil
 import subprocess
 import sys
@@ -49,7 +50,7 @@ except Exception:  # missing libraries must not stop the rest of the app
 import papro_studio  # Pack Studio (record / upload, PA sound, loudness, export); imports papro_audio itself
 
 APP_NAME = "PAPro - Cabin announcements for MSFS"
-VERSION = "1.1.2"
+VERSION = "1.1.3"
 BASE_DIR = (
     Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 )
@@ -722,6 +723,42 @@ def load_catalog(cfg: dict) -> list[dict]:
         APP_LATEST.update({"version": str(app["version"]).strip()[:20], "url": link if _is_http(link) else "",
                            "notes": str(app.get("notes", "")).strip()[:200],
                            "installer": installer if auto else "", "sha256": digest if auto else ""})
+    return _parse_packs(data, url)
+
+
+COMMUNITY_URL = "https://papro-community.sjames1066.workers.dev/index.json"
+
+
+def load_community(cfg: dict) -> list[dict]:
+    """The community index: the same entries as the catalog, but only the ones with a checksum (the zip is checked before it is
+    installed), each marked as the community's, with its author and licence."""
+    url = str(cfg.get("community_url", COMMUNITY_URL)).strip()
+    if not url or not _is_http(url):
+        return []
+    try:
+        resp = requests.get(url, timeout=20)
+        resp.raise_for_status()
+        data = resp.json()
+    except (requests.RequestException, ValueError) as exc:
+        raise AppError(f"Could not load the community packs: {exc}") from exc
+    raw = {str(e.get("id", "")).strip().lower(): e for e in data.get("packs", []) if isinstance(e, dict)}
+    packs = []
+    for entry in _parse_packs(data, url):
+        src = raw.get(entry["id"], {})
+        if not re.fullmatch(r"[0-9a-f]{64}", entry["sha256"]) or not _is_http(entry["url"]):
+            continue
+        try:
+            stars, votes = max(0.0, min(5.0, float(src.get("rating", 0)))), max(0, int(src.get("votes", 0)))
+        except (TypeError, ValueError):
+            stars, votes = 0.0, 0
+        entry.update({"community": True, "rating": stars, "votes": votes, "author": str(src.get("author", "")).strip()[:60],
+                      "license": str(src.get("license", "")).strip()[:40]})
+        entry["id"] = "c-" + entry["id"]
+        packs.append(entry)
+    return packs
+
+
+def _parse_packs(data: dict, url: str) -> list[dict]:
     packs = []
     for entry in data.get("packs", []):
         icao = str(entry.get("icao", "")).strip().upper()
@@ -1609,6 +1646,7 @@ def pick_extra(cfg: dict, base: Path, key: str) -> Path | None:
     return next((p for p in files if p.name == used[key]), None)
 
 
+DETECT_PHASE_S = 8   # after connecting, PAPro watches the sim this long to work out the phase of flight before it plays anything
 BOARDING_PA_MIN_S, BOARDING_PA_MAX_S = 180, 420     # the boarding announcement repeats this often while boarding
 PLAYBACK_DIR = DATA_DIR / "playback"          # where PAs are built for aircraft that PAPro plays itself
 _PLAYBACK = {"on": False}                      # set from the sim: the loaded aircraft is not a supported (Fenix) one
@@ -2064,7 +2102,7 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
         music = sorted(n for n in sources if n.startswith("BoardingMusic"))
         if music:   # all the boarding tracks become ONE BoardingMusic.ogg (it plays on repeat until boarding is complete)
             tracks = [sources.pop(n) for n in music]
-            merged = merged_music(tracks)
+            merged = None if (_PLAYBACK["on"] and len(tracks) > 1) else merged_music(tracks)   # PAPro plays one at random
             if merged:
                 sources["BoardingMusic.ogg"] = merged
             else:
@@ -2160,7 +2198,7 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
     board_order = voice_setting(voice_dir, "boarding_order") or None   # how the pack builds its welcome aboard (None: the usual order)
     land_order = voice_setting(voice_dir, "landing_order") or None   # how the pack builds its After Landing PA (None: the usual order)
     pause = int(cfg.get("segment_pause_ms", 60))
-    flow = cfg.get("join_style", "flow") != "pauses"
+    flow = True   # natural flow is the only style
     with tempfile.TemporaryDirectory(dir=DATA_DIR) as work:
         for mapping in cfg["mappings"]:
             if only and mapping["folder"] not in only:
@@ -2331,7 +2369,7 @@ def nearest_airport(lat: float, lon: float, max_km: float = NEAREST_MAX_KM) -> s
     return best
 
 
-def rebuild_landing(cfg: dict, arrival: str | None, position: tuple[float, float] | None = None) -> str:
+def rebuild_landing(cfg: dict, arrival: str | None, position: tuple[float, float] | None = None, ask: bool = True) -> str:
     """You have landed and slowed down: rebuild the landing PA with the local time the sim reported (HH:MM)."""
     state = load_state()
     flight = state.get("flight") or {}
@@ -2355,7 +2393,7 @@ def rebuild_landing(cfg: dict, arrival: str | None, position: tuple[float, float
         stored = None   # the choice made for the planned airport means nothing here
     _DIVERSION.on = diverted
     try:
-        message = apply_destination(cfg, airline, dest, choose=CHOOSER or choose_default, variant=stored, arrival=arrival, only={"dest"},
+        message = apply_destination(cfg, airline, dest, choose=(CHOOSER if ask else None) or choose_default, variant=stored, arrival=arrival, only={"dest"},
                                     voice=state.get("voice_used", {}).get(f"{airline}_{planned}") or None,
                                     target_dir=playback_target())
     finally:
@@ -2659,7 +2697,11 @@ class UIMixin:
             have = installed.get(code)
             entries = [e for e in self.catalog if e["icao"] == code]
             update = any(have_entry(e) not in (None, e["version"]) for e in entries)
+            ids = (have or {}).get("catalog") or {}
+            crowd = next((e for e in getattr(self, "community", []) if e["id"] in ids), None)   # installed from the community: it can be rated here
             packs.append({"icao": code, "key": code, "name": airline_display_name(cfg, code, have, known_names.get(code, "")),
+                          **({"rate_id": crowd["id"], "rating": crowd.get("rating", 0), "votes": crowd.get("votes", 0),
+                              "my_rating": int(cfg.get("my_ratings", {}).get(crowd["id"], 0) or 0)} if crowd else {}),
                           "version": ((have or {}).get("version") if (have or {}).get("version") not in (None, "", "imported") else "") or library_version(cfg, code) or "Your recordings",
                           "voices": library_voices(cfg, code), "voice_items": library_voice_items(cfg, code), "local_time": local_time_on(cfg, code), "size_mb": 0,
                           "installed": True, "own": not have, "update": update, "task": self.tasks.get(code),
@@ -2671,6 +2713,14 @@ class UIMixin:
                           "version": entry["version"], "voices": [v["name"] for v in entry.get("voices", [])] or ([entry["voice"]] if entry.get("voice") else []),
                           "size_mb": round(entry["size"] / 1048576) if entry.get("size") else 0, "installed": have is not None,
                           "update": have not in (None, entry["version"]),
+                          "task": self.tasks.get(entry["id"])})
+        for entry in getattr(self, "community", []):   # packs other people made (approved before they are listed)
+            packs.append({"icao": entry["icao"], "key": "dl-" + entry["id"], "id": entry["id"], "catalog": True, "community": True,
+                          "rating": entry.get("rating", 0), "votes": entry.get("votes", 0), "my_rating": int(load_config().get("my_ratings", {}).get(entry["id"], 0) or 0),
+                          "name": entry["name"], "version": entry["version"], "author": entry.get("author", ""), "license": entry.get("license", ""),
+                          "voices": [v["name"] for v in entry.get("voices", [])] or ([entry["voice"]] if entry.get("voice") else []),
+                          "size_mb": round(entry["size"] / 1048576) if entry.get("size") else 0, "installed": have_entry(entry) is not None,
+                          "update": have_entry(entry) not in (None, entry["version"]),
                           "task": self.tasks.get(entry["id"])})
         for key, task in list(self.tasks.items()):   # a pack being imported that is not in the catalog yet
             if key not in {p["key"] for p in packs} and key not in codes and "dl-" + key not in {p["key"] for p in packs}:
@@ -2721,6 +2771,8 @@ class UIMixin:
                 "lan": {"on": True, "addresses": [f"http://{ip}:{self.ui.httpd.server_address[1]}/" for ip in self.ui.private_ips()] if getattr(self.ui, "httpd", None) and self.ui.lan_on else []},
                 "gsx": bool(cfg.get("gsx_integration", True)),
                 "audio": {"device": str(cfg.get("pa_output_device") or ""), "playback": bool(cfg.get("pa_playback", True))},
+                "pa_last": bool(getattr(getattr(self, "player", None), "last", None)),
+                "pa_playing": bool(getattr(self, "player", None) is not None and not self.player.idle()),
                 "pa_knob": {"on": bool(cfg.get("pa_knob_on", True)), "volume": max(0, min(100, int(cfg.get("pa_knob_volume", 70))))},
                 "join_style": "pauses" if cfg.get("join_style") == "pauses" else "flow",
                 "autostart": current_autostart(),
@@ -2836,6 +2888,34 @@ class UIMixin:
         from papro_icon import make_icon
 
         return _png_bytes(make_icon(128))
+
+    def closing_action(self) -> str:
+        """What closing the window does: "hide" (PAPro keeps running in the tray) or "quit"."""
+        try:
+            return "hide" if load_config().get("close_to_tray") else "quit"
+        except AppError:
+            return "quit"
+
+    def wants_minimize_to_tray(self) -> bool:
+        try:
+            return bool(load_config().get("minimize_to_tray"))
+        except AppError:
+            return False
+
+    def saved_window_rect(self):
+        """[left, top, width, height] in real pixels from last time, or None."""
+        try:
+            g = [int(v) for v in load_config().get("window_rect") or []]
+        except (AppError, TypeError, ValueError):
+            return None
+        return g if len(g) == 4 and g[2] >= 400 and g[3] >= 300 else None
+
+    def remember_window_rect(self, rect) -> None:
+        try:
+            if load_config().get("window_rect") != rect:
+                set_config_value("window_rect", [int(v) for v in rect])
+        except (AppError, OSError):
+            log.exception("Could not save the window position")
 
     def window_minimized(self) -> None:
         """'Hide to the tray' on minimize: close the window (the app keeps running; the tray icon opens it again)."""
@@ -3029,11 +3109,15 @@ class UIMixin:
     def ui_action(self, name: str, data: dict) -> dict:
         if name == "install":
             wanted = str(data.get("id") or data.get("icao", "")).strip().lower()
-            entry = next((e for e in self.catalog if e["id"] == wanted), None) or \
+            entry = next((e for e in self.catalog + getattr(self, "community", []) if e["id"] == wanted), None) or \
                 next((e for e in self.catalog if e["icao"].lower() == wanted), None)
             if not entry:
                 return {"error": "That pack is not in the catalog - refresh the list."}
             self.start_pack_task("install", entry["icao"], entry)
+        elif name == "author_key":
+            return self.author_key_action(str(data.get("do", "")), str(data.get("value", "")))
+        elif name == "rate_pack":
+            return self.rate_pack(str(data.get("id", "")), int(data.get("stars") or 0))
         elif name == "import_url":
             try:
                 zip_url = resolve_pack_url(str(data.get("url", "")))
@@ -3124,6 +3208,15 @@ class UIMixin:
             save_state(state)
             self.set_status(f"{alias} {'now uses ' + aliases[alias] + ' recordings' if name == 'alias_add' else 'alias removed'}")
             self.wake.set()
+        elif name == "replay_pa":   # the Replay button: the last announcement again
+            player = getattr(self, "player", None)
+            if player is not None and getattr(player, "last", None):
+                player.play(player.last)
+        elif name == "skip_pa":   # the Skip button: cut the announcement in progress and drop the ones queued behind it
+            player = getattr(self, "player", None)
+            if player is not None:
+                player.clear()
+            self.held_keys = []
         elif name == "pa_knob":   # the on-screen PA knob: push (audible / muted) and volume
             if "on" in data:
                 set_config_value("pa_knob_on", bool(data["on"]))
@@ -3133,7 +3226,7 @@ class UIMixin:
                 except (TypeError, ValueError):
                     return {"error": "The volume must be a number from 0 to 100."}
             self.sync_knob()
-        elif name in ("phase_boarding", "phase_disarm"):
+        elif name in ("phase_boarding", "phase_complete", "phase_disarm"):
             self.phase_action(name.split("_", 1)[1])
         elif name == "audio_devices":   # the sound outputs on this PC (listed when Settings opens, not with every refresh)
             import papro_play
@@ -3382,6 +3475,91 @@ class UIMixin:
             return path.read_bytes() if path else None
         except (papro_studio.StudioError, AppError, OSError):
             return None
+
+    def author_key_action(self, do: str, value: str) -> dict:
+        """The key that proves which community packs are yours: show it (to back it up), put one back (a new PC), or use a
+        transfer code from the reviewer (the pack is handed to this PC)."""
+        cfg = load_config()
+        key = str(cfg.get("community_author_key") or "")
+        if do == "get":
+            if len(key) < 32:
+                key = secrets.token_hex(24)
+                set_config_value("community_author_key", key)
+            return {"ok": True, "key": key}
+        if do == "set":
+            value = value.strip().lower()
+            if not re.fullmatch(r"[0-9a-f]{48}", value):
+                return {"error": "That is not an author key."}
+            set_config_value("community_author_key", value)
+            return {"ok": True}
+        if do == "claim":
+            if len(key) < 32:
+                key = secrets.token_hex(24)
+                set_config_value("community_author_key", key)
+            base = str(cfg.get("community_url", COMMUNITY_URL)).rsplit("/", 1)[0]
+            try:
+                reply = requests.post(base + "/claim", json={"code": value, "author_key": key}, timeout=20)
+                body = reply.json()
+            except (requests.RequestException, ValueError) as exc:
+                return {"error": f"Could not reach the community service: {exc}"}
+            if reply.status_code != 200 or not body.get("ok"):
+                return {"error": str(body.get("error") or "The code was not accepted.")}
+            return {"ok": True, "name": body.get("name", ""), "voice": body.get("voice", "")}
+        return {"error": "Unknown request."}
+
+    def rate_pack(self, pack_id: str, stars: int) -> dict:
+        """Your 1-5 star vote for a community pack (one per PAPro install; vote again to change it)."""
+        cfg = load_config()
+        entry = next((e for e in getattr(self, "community", []) if e["id"] == pack_id), None)
+        if not entry or not 1 <= stars <= 5:
+            return {"error": "That pack can't be rated."}
+        key = str(cfg.get("community_author_key") or "")
+        if len(key) < 32:
+            key = secrets.token_hex(24)
+            set_config_value("community_author_key", key)
+        base = str(cfg.get("community_url", COMMUNITY_URL)).rsplit("/", 1)[0]
+        try:
+            reply = requests.post(base + "/rate", json={"id": pack_id[2:], "stars": stars, "rater_key": key}, timeout=20)
+            body = reply.json()
+        except (requests.RequestException, ValueError) as exc:
+            return {"error": f"Could not send your rating: {exc}"}
+        if reply.status_code != 200 or not body.get("ok"):
+            return {"error": str(body.get("error") or "The rating was not accepted.")}
+        mine = dict(cfg.get("my_ratings") or {})
+        mine[pack_id] = stars
+        set_config_value("my_ratings", mine)
+        entry["rating"], entry["votes"] = float(body.get("rating", 0)), int(body.get("votes", 0))
+        return {"ok": True}
+
+    def publish_pack(self, cfg: dict, project: dict, rights: bool) -> dict:
+        """Send a finished pack to the community service. It waits there until it has been approved. The airline, code, character
+        and voice artist are the ones in the pack's Voice details."""
+        if not rights:
+            return {"error": "Please tick the box to agree."}
+        author = str(project.get("artist", "")).strip()[:60]
+        if not str(project.get("airline", "")).strip() or not author:
+            return {"error": "The airline name and voice artist are needed."}
+        base = str(cfg.get("community_url", COMMUNITY_URL)).rsplit("/", 1)[0]
+        if not _is_http(base):
+            return {"error": "No community service is set up."}
+        result = papro_studio.export(STUDIO_DIR, project, EXPORTS_DIR, load_languages(airline_folder(cfg, project["icao"])))
+        key = str(cfg.get("community_author_key") or "")
+        if len(key) < 32:   # proves later that a pack is yours (to update or withdraw it); stays on this PC
+            key = secrets.token_hex(24)
+            set_config_value("community_author_key", key)
+        meta = {"icao": project["icao"], "name": project.get("airline") or project["icao"], "voice": project.get("voice", ""),
+                "version": str(project.get("version", "1.0.0")), "author": author, "rights": True}
+        try:
+            with open(result["zip"], "rb") as handle:
+                reply = requests.post(base + "/submit", data={"meta": json.dumps(meta), "author_key": key},
+                                      files={"pack": (Path(result["zip"]).name, handle, "application/zip")}, timeout=300)
+            body = reply.json() if reply.content else {}
+        except (requests.RequestException, OSError, ValueError) as exc:
+            return {"error": f"Could not reach the community service: {exc}"}
+        if reply.status_code != 200 or not body.get("ok"):
+            return {"error": str(body.get("error") or f"The community service said no ({reply.status_code}).")}
+        log.info("Pack shared with the community: %s (%s)", body.get("id"), body.get("status"))
+        return {"ok": True, "status": body.get("status", "pending")}
 
     def studio_action(self, name: str, data: dict) -> dict:
         try:
@@ -3683,6 +3861,8 @@ class UIMixin:
                                              load_languages(airline_folder(cfg, project["icao"])))
                 open_path(Path(result["zip"]).parent)
                 return {"ok": True, **result}
+            elif name == "publish":
+                return self.publish_pack(cfg, project, bool(data.get("rights")))
             elif name == "install":
                 lib = airline_folder(cfg, project["icao"])
                 dest = papro_studio.install_to_library(STUDIO_DIR, project, lib)
@@ -3843,6 +4023,11 @@ class TrayApp(UIMixin):
         import pystray
 
         self.show_window = show_window
+        try:
+            stamps = [Path(__file__).with_name(n).stat().st_mtime for n in ("papro.py", "papro_phases.py", "papro_play.py", "papro_sim.py", "papro_ui.py")]
+            log.info("PAPro %s started - code saved %s", VERSION, time.strftime("%H:%M:%S", time.localtime(max(stamps))))
+        except OSError:
+            pass
         self.aircraft = None   # {"title", "supported"} of the aircraft loaded in MSFS, or None
         self.pystray = pystray
         self.stop = threading.Event()
@@ -3851,6 +4036,7 @@ class TrayApp(UIMixin):
         self.status = "Starting..."
         self.auto = True
         self.catalog: list[dict] = []
+        self.community: list[dict] = []
         self.catalog_error = ""
         self.update_checked = 0.0
         self._ui_init()
@@ -3968,7 +4154,7 @@ class TrayApp(UIMixin):
         if info:
             log.info("Aircraft: %s (%s)", info["title"], "PAs supported" if info["supported"] else "PAPro plays the PAs itself")
         try:
-            _PLAYBACK["on"] = bool(info and not info["supported"] and load_config().get("pa_playback", True))
+            _PLAYBACK["on"] = bool(info and not info["supported"])
         except AppError:
             _PLAYBACK["on"] = False
         if _PLAYBACK["on"] != before:   # build the PAs where they are needed (the Fenix folder / PAPro's own playback folder)
@@ -3985,8 +4171,10 @@ class TrayApp(UIMixin):
             return None
         name = tracker.phase()
         playing = _PLAYBACK["on"]   # PAPro plays the PAs itself (not a Fenix): it has buttons the Fenix doesn't need
-        return {"name": name, "source": tracker.source(), "index": PHASES.index(name) if name in PHASES else -1, "steps": PHASES,
-                "can_board": bool(playing and tracker.can_start_boarding()), "can_disarm": bool(playing and tracker.can_disarm_doors())}
+        engine = getattr(self, "phases", None)
+        detecting = bool(playing and not (engine is not None and engine.joined))
+        return {"name": name, "detecting": detecting, "source": tracker.source(), "index": PHASES.index(name) if name in PHASES else -1, "steps": PHASES,
+                "can_board": bool(playing and tracker.can_start_boarding()), "can_complete": bool(playing and tracker.can_complete_boarding()), "can_disarm": bool(playing and tracker.can_disarm_doors())}
 
     def sync_knob(self) -> None:
         try:
@@ -4038,6 +4226,10 @@ class TrayApp(UIMixin):
         if not path:
             log.info("PA due: %s - no recording in the pack", key)
             return
+        if getattr(self, "_joining", False):
+            log.info("Opened mid-flight: %s ready to replay (%s)", key, path.name)
+            self.player_for().last = path
+            return
         log.info("PA due: %s -> %s", key, path.name)
         self.player_for().play(path)
         if key == "welcome":
@@ -4064,7 +4256,7 @@ class TrayApp(UIMixin):
             return
         self._tracker_sync = now
         try:
-            tracker.use_gsx = bool(load_config().get("gsx_integration", True))
+            tracker.use_gsx = True   # GSX is read whenever it is there; without it the timers and the Boarding button take over
             flight = load_state().get("flight") or {}
         except (AppError, OSError):
             return
@@ -4081,6 +4273,11 @@ class TrayApp(UIMixin):
         tracker = getattr(self, "tracker", None)
         if what == "boarding" and tracker:
             tracker.start_boarding()
+        elif what == "complete" and tracker:
+            tracker.complete_boarding()
+            engine = getattr(self, "phases", None)
+            if engine is not None and _PLAYBACK["on"]:
+                engine.boarding_done(time.time())
         elif what == "disarm" and _PLAYBACK["on"]:
             engine = getattr(self, "phases", None)
             if engine is not None:
@@ -4104,9 +4301,26 @@ class TrayApp(UIMixin):
             from papro_phases import PhaseEngine
 
             engine = self.phases = PhaseEngine(self.play_key)
+        if not engine.joined:   # PAPro opened part way through a flight: look for a few seconds first, then play nothing that is behind you
+            if getattr(self, "_detect_t0", None) is None:
+                self._detect_t0 = reading["t"]
+            if reading["t"] - self._detect_t0 < DETECT_PHASE_S:
+                self.track_flight_lock(reading)
+                return
+            self._detect_t0 = None
+            tracker.seed(reading)
+            self._joining = True      # opened part way through: the closest PA is made ready for the Replay button, not played
+            try:
+                engine.join(reading, tracker.phase())
+            finally:
+                self._joining = False
         self.release_held()
-        if not engine.joined:   # PAPro opened part way through a flight: don't play what is already behind you
-            engine.join(reading, tracker.phase())
+        from papro_phases import PHASES as _PH
+
+        engine.use_gsx = tracker.use_gsx
+        self.check_runway_exit(reading)
+        engine.cruise_reached = tracker.rank == _PH.index("Cruise")   # cabin service: on reaching cruise altitude
+        engine.boarding_ok = _PH.index("Boarding") <= tracker.rank <= _PH.index("Taxi out") and not tracker.flown   # the welcome waits for boarding to start (GSX or the button)
         engine.feed(reading)
         self.track_flight_lock(reading)
         self.boarding_music(engine, tracker)
@@ -4114,7 +4328,8 @@ class TrayApp(UIMixin):
             self._reset_at = getattr(self, "_reset_at", None) or reading["t"] + 60
             if reading["t"] >= self._reset_at:
                 engine.reset()
-                self.held_keys = []
+                engine.joined = True      # parked at the gate: the next flight starts from Preflight, nothing to catch up on
+                self.held_keys = []       # the phase stays Deboarding until a different flight plan is loaded
                 self._reset_at = None
 
     def track_flight_lock(self, reading: dict) -> None:
@@ -4177,6 +4392,7 @@ class TrayApp(UIMixin):
             self.sync_knob()
             music = self.music = MusicLoop(knob_gain, SoundDeviceBackend(device))
             self.music_device = device
+        music.duck = lambda: getattr(self, "player", None) is not None and not self.player.idle()   # quiet during a PA
         music.ping()
         track = music_file(PLAYBACK_DIR)
         if track and not music.running():
@@ -4202,17 +4418,66 @@ class TrayApp(UIMixin):
             state.pop("main_pick", None)
             state.pop("crew_pick", None)
             save_state(state)
+            self.landing_pending = None
             return
-        with self.lock:  # wait for any update in progress
+        if _PLAYBACK["on"] and getattr(self, "phases", None):
+            # PAPro plays this one itself: wait until the aircraft has turned off the runway
+            self.landing_pending = {"clock": clock, "t": time.time(), "hdg": getattr(self, "last_heading", None)}
+            log.info("Landed - the After Landing PA plays once the aircraft is off the runway")
+            return
+        self._landing_pa(clock)
+
+    def _landing_pa(self, clock: str | None) -> None:
+        log.info("Landed: building the landing PA")
+        got = self.lock.acquire(timeout=15)   # an update in progress gets a moment to finish, but never holds the landing PA up
+        if not got:
+            log.warning("An update was still running - building the landing PA anyway")
+        try:
             try:
-                self.set_status(rebuild_landing(load_config(), clock, getattr(self, "touchdown_pos", None)), notify=True)
+                self.set_status(rebuild_landing(load_config(), clock, getattr(self, "touchdown_pos", None), ask=False), notify=True)
             except AppError as exc:
                 self.set_status(str(exc), notify=True)
             except Exception as exc:
                 log.exception("Landing PA error")
                 self.set_status(f"Error: {exc}", notify=True)
+        finally:
+            if got:
+                self.lock.release()
             if _PLAYBACK["on"] and getattr(self, "phases", None):
+                log.info("Landed: the After Landing PA is due")
                 self.phases.landed_event(time.time())
+
+    RUNWAY_EXIT_KT = 35.0       # slow enough to be on a taxiway...
+    RUNWAY_EXIT_TURN_DEG = 30.0  # ...and pointing this far away from the way it landed
+    RUNWAY_CRAWL_KT = 10.0       # or nearly stopped (a straight-ahead exit or a short runway)
+    RUNWAY_EXIT_MAX_S = 90       # never wait longer than this after slowing down
+
+    def check_runway_exit(self, reading: dict) -> None:
+        """The After Landing PA, once the aircraft has turned off the runway."""
+        from papro_phases import position_degrees
+
+        _lat, _lon, heading = position_degrees(reading.get("lat"), reading.get("lon"), reading.get("heading"))
+        if heading is not None:
+            self.last_heading = heading
+        pending = getattr(self, "landing_pending", None)
+        if not pending or not reading.get("on_ground"):
+            return
+        gs = float(reading.get("gs") or 0.0)
+        waited = time.time() - pending["t"]
+        turned = (pending.get("hdg") is not None and heading is not None
+                  and abs((heading - pending["hdg"] + 180) % 360 - 180) >= self.RUNWAY_EXIT_TURN_DEG)
+        if (turned and gs <= self.RUNWAY_EXIT_KT) or gs <= self.RUNWAY_CRAWL_KT or waited >= self.RUNWAY_EXIT_MAX_S:
+            self.landing_pending = None
+            clock = pending.get("clock")
+            try:   # the time said in the PA moves on with the wait
+                hh, mm = (int(x) for x in str(clock).split(":")[:2])
+                from papro_sim import round_clock as clock_from_seconds
+
+                clock = clock_from_seconds((hh * 3600 + mm * 60 + waited) % 86400)
+            except (TypeError, ValueError):
+                pass
+            log.info("Off the runway (%s) - the After Landing PA", "turned off" if turned else "slowed down" if gs <= self.RUNWAY_CRAWL_KT else "waited long enough")
+            threading.Thread(target=self._landing_pa, args=(clock,), daemon=True).start()
 
     def toggle_auto(self) -> None:
         self.auto = not self.auto
@@ -4336,8 +4601,13 @@ class TrayApp(UIMixin):
             try:
                 self.catalog = load_catalog(load_config())
                 self.catalog_error = ""
+                try:
+                    self.community = load_community(load_config())
+                except AppError as exc:
+                    log.info("%s", exc)
+                    self.community = []
                 self.update_checked = time.time()
-                if any([cache_remote_logo(e) for e in self.catalog]):
+                if any([cache_remote_logo(e) for e in self.catalog + self.community]):
                     self.logo_version += 1
                 if notify:
                     self.set_status(f"Pack list refreshed ({len(self.catalog)} available)", notify=True)
@@ -4397,8 +4667,17 @@ class TrayApp(UIMixin):
             needs_name = not (str(cfg.get("simbrief_username", "")).strip() or str(cfg.get("simbrief_userid", "")).strip())
         except AppError:
             needs_name = True  # first run: config.json was just created
-        if self.show_window or needs_name or not load_state().get("welcomed"):
-            self.open_window()  # started by hand, or first run: explain what PAPro changes, ask for the SimBrief username
+        show = bool(self.show_window or needs_name or not load_state().get("welcomed"))   # by hand, or first run: explain what PAPro changes, ask for the SimBrief username
+        import papro_native
+
+        native = papro_native.available()
+        if native:
+            self.ui.prepare_native(show)
+            log.info("Window: PAPro's own (WebView2)")
+        else:
+            log.info("Window: browser app window")
+            if show:
+                self.open_window()
         threading.Thread(target=self.poll_loop, daemon=True).start()
         threading.Thread(target=self.msfs_watch, daemon=True).start()
         threading.Thread(target=_listen_for_show, args=(self,), daemon=True).start()
@@ -4410,7 +4689,19 @@ class TrayApp(UIMixin):
                                 on_telemetry=self.telemetry).start()
         except Exception:
             log.exception("Could not start the landing watcher")
-        self.icon.run()
+        if not native:
+            self.icon.run()
+            return
+        self.icon.run_detached()   # the tray icon on its own thread: the window loop needs this one
+        if not self.ui.run_native():   # could not start: the browser window instead
+            log.warning("Falling back to the browser window")
+            self.ui.native = None
+            if show:
+                self.open_window()
+            self.stop.wait()
+            return
+        if not self.stop.is_set():   # the window loop ended without PAPro being asked to quit
+            self.quit()
 
 
 # --------------------------------------------------------------------------- entry point

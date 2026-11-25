@@ -92,14 +92,75 @@ class SoundDeviceBackend:
 
         index = find_device(self.device) if isinstance(self.device, str) else self.device
         try:
-            stream = sd.OutputStream(samplerate=rate, channels=channels, dtype="float32", device=index)
+            return self._open(sd, rate, channels, index)
         except Exception:
             if index is None:
                 raise
             log.warning("Could not open the chosen output - using the default instead")
-            stream = sd.OutputStream(samplerate=rate, channels=channels, dtype="float32")
+            return self._open(sd, rate, channels, None)
+
+    @staticmethod
+    def _open(sd, rate, channels, index):
+        """Opens the device at its own rate and channel count; the clip is converted to that (see _Converting)."""
+        info = sd.query_devices(index if index is not None else sd.default.device[1])
+        dev_rate = int(info.get("default_samplerate") or rate)
+        dev_ch = max(1, min(2, int(info.get("max_output_channels") or 2)))
+        stream = sd.OutputStream(samplerate=dev_rate, channels=dev_ch, dtype="float32", device=index)
         stream.start()
-        return stream
+        _name_session()
+        log.info("Audio output: %s at %d Hz, %d ch (clip %d Hz, %d ch)", info.get("name"), dev_rate, dev_ch, rate, channels)
+        return _Converting(stream, rate, channels, dev_rate, dev_ch)
+
+
+def _name_session() -> None:
+    """Windows' volume mixer shows this process as "PAPro" (it would say Python otherwise). Needs pycaw; skipped without it."""
+    try:
+        import os
+        import sys
+        from pycaw.pycaw import AudioUtilities
+
+        icon = Path(sys.executable).with_name("papro.ico") if not getattr(sys, "frozen", False) else Path(sys.executable)
+        for session in AudioUtilities.GetAllSessions():
+            if session.Process and session.Process.pid == os.getpid():
+                ctl = session._ctl
+                ctl.SetDisplayName("PAPro", None)
+                if icon.is_file():
+                    ctl.SetIconPath(str(icon) + (",0" if icon.suffix == ".exe" else ""), None)
+    except Exception as exc:
+        log.debug("Could not name the audio session: %s", exc)
+
+
+class _Converting:
+    """An output stream plus convert_all(): a whole clip in the device's rate and channels."""
+
+    def __init__(self, stream, rate, channels, dev_rate, dev_ch):
+        self.stream, self.rate, self.channels, self.dev_rate, self.dev_ch = stream, rate, channels, dev_rate, dev_ch
+
+    def convert_all(self, data):
+        data = np.asarray(data, dtype="float32")
+        if self.rate != self.dev_rate and len(data):
+            n = len(data)
+            m = max(1, int(round(n * self.dev_rate / self.rate)))
+            spec = np.fft.rfft(data, axis=0)
+            out = np.zeros((m // 2 + 1, data.shape[1]), dtype=spec.dtype)
+            k = min(len(spec), len(out))
+            out[:k] = spec[:k]
+            data = (np.fft.irfft(out, n=m, axis=0) * (m / n)).astype("float32")
+        if data.shape[1] != self.dev_ch:
+            data = np.repeat(data[:, :1], self.dev_ch, axis=1) if data.shape[1] == 1 else data[:, :self.dev_ch]
+        return np.ascontiguousarray(data)
+
+    def write(self, data):
+        return self.stream.write(np.ascontiguousarray(data, dtype="float32"))
+
+    def stop(self):
+        self.stream.stop()
+
+    def abort(self):
+        self.stream.abort()
+
+    def close(self):
+        self.stream.close()
 
 
 def load_clip(path: Path) -> tuple[np.ndarray, int]:
@@ -118,7 +179,10 @@ class Player:
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
 
+    last: Path | None = None   # the last announcement queued (for the Replay button)
+
     def play(self, path: Path) -> None:
+        self.last = Path(path)
         self.q.put(Path(path))
 
     def play_data(self, name: str, data: np.ndarray, rate: int) -> None:
@@ -158,6 +222,8 @@ class Player:
     def _play_one(self, path) -> None:
         data, rate = (path[1], path[2]) if isinstance(path, tuple) else self.loader(path)
         stream = self.backend.open(rate, data.shape[1])
+        if hasattr(stream, "convert_all"):
+            data = stream.convert_all(data)
         try:
             for start in range(0, len(data), CHUNK):
                 if self.stop_flag.is_set():
@@ -167,7 +233,10 @@ class Player:
                 stream.write(np.ascontiguousarray(np.clip(chunk, -1.0, 1.0), dtype="float32"))
         finally:
             try:
-                stream.stop()
+                if self.stop_flag.is_set() and hasattr(stream, "abort"):
+                    stream.abort()   # skipped: cut the sound now instead of letting the buffered audio play out
+                else:
+                    stream.stop()
                 stream.close()
             except Exception:
                 pass
@@ -184,6 +253,8 @@ class MusicLoop:
         self.stop_flag = threading.Event()
         self.thread: threading.Thread | None = None
         self.pinged = time.monotonic()
+        self.duck: Callable[[], bool] | None = None   # True while an announcement is playing: the music goes quiet for it
+        self._duck_level = 1.0
 
     def ping(self) -> None:
         """Called about once a second while the sim is sending data; the music stops by itself if the calls stop (sim closed)."""
@@ -211,16 +282,35 @@ class MusicLoop:
             if not len(data):
                 return
             stream = self.backend.open(rate, data.shape[1])
+            if hasattr(stream, "convert_all"):
+                data, rate = stream.convert_all(data), stream.dev_rate
         except Exception:
             log.exception("Could not start the boarding music %s", path)
             return
         fade_total = int(rate * self.FADE_S)
         faded = 0
         try:
+            pos = 0
             while True:
-                for start in range(0, len(data), CHUNK):
+                pos = 0 if pos >= len(data) else pos
+                while pos < len(data):
+                    start = pos
                     level = max(0.0, min(2.0, float(self.gain())))
-                    chunk = data[start:start + CHUNK] * level
+                    try:
+                        ducked = bool(self.duck()) if self.duck else False
+                    except Exception:
+                        ducked = False
+                    now = time.monotonic()
+                    if ducked:   # one sound at a time: the music is silent the moment an announcement is playing
+                        self._duck_level, self._duck_until = 0.0, now + 0.8   # ...and stays silent through the gap between queued clips
+                    elif now >= getattr(self, "_duck_until", 0.0):
+                        self._duck_level = min(1.0, self._duck_level + CHUNK / rate / 1.5)   # then comes back gently
+                    paused = ducked or now < getattr(self, "_duck_until", 0.0)   # paused for a PA: hold the place in the track
+                    if paused and not stop.is_set():
+                        stream.write(np.zeros((CHUNK, data.shape[1]), dtype="float32"))
+                        continue
+                    chunk = data[start:start + CHUNK] * (level * self._duck_level)
+                    pos += CHUNK
                     if not stop.is_set() and time.monotonic() - self.pinged > 8.0:
                         stop.set()
                     if stop.is_set():
@@ -267,7 +357,12 @@ KEY_FILES = {
 
 
 def music_file(folder: Path) -> Path | None:
-    """The merged boarding music in the built pack, if there is one."""
+    """The boarding music in the built pack: one of its tracks at random, or the merged BoardingMusic.ogg."""
+    import random
+
+    tracks = sorted(Path(folder).glob("BoardingMusic~*.ogg")) if Path(folder).is_dir() else []
+    if tracks:
+        return random.choice(tracks)
     p = Path(folder) / "BoardingMusic.ogg"
     return p if p.is_file() else None
 
