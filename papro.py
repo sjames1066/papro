@@ -4569,7 +4569,7 @@ class TrayApp(UIMixin):
                     log.info("%s", exc)
                     self.community = []
                 self.update_checked = time.time()
-                if any([cache_remote_logo(e) for e in self.catalog]):
+                if any([cache_remote_logo(e) for e in self.catalog + self.community]):
                     self.logo_version += 1
                 if notify:
                     self.set_status(f"Pack list refreshed ({len(self.catalog)} available)", notify=True)

@@ -35,6 +35,31 @@ function zipNames(buf) {
   return names;
 }
 
+// the pack's logo.png, if it has one (stored or deflated), so the Community list can show it
+async function zipLogo(buf) {
+  const v = new DataView(buf), n = buf.byteLength;
+  let end = -1;
+  for (let i = n - 22; i >= Math.max(0, n - 65557); i--) if (v.getUint32(i, true) === 0x06054b50) { end = i; break; }
+  if (end < 0) return null;
+  const count = v.getUint16(end + 10, true);
+  let p = v.getUint32(end + 16, true);
+  for (let i = 0; i < count; i++) {
+    if (v.getUint32(p, true) !== 0x02014b50) return null;
+    const method = v.getUint16(p + 10, true), csize = v.getUint32(p + 20, true), usize = v.getUint32(p + 24, true);
+    const nl = v.getUint16(p + 28, true), xl = v.getUint16(p + 30, true), cl = v.getUint16(p + 32, true), off = v.getUint32(p + 42, true);
+    const name = new TextDecoder().decode(new Uint8Array(buf, p + 46, nl));
+    if (name === "logo.png" && usize > 0 && usize <= 3 * 1024 * 1024) {
+      const start = off + 30 + v.getUint16(off + 26, true) + v.getUint16(off + 28, true);
+      const raw = new Uint8Array(buf, start, csize);
+      if (method === 0) return raw.slice().buffer;
+      if (method === 8) return await new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer();
+      return null;
+    }
+    p += 46 + nl + xl + cl;
+  }
+  return null;
+}
+
 function checkNames(names) {
   let oggs = 0, hasMain = false;
   for (const raw of names) {
@@ -90,7 +115,11 @@ async function approve(env, id) {
   const m = await env.PACKS.get(`meta/${id}.json`), z = await env.PACKS.get(`pending/${id}.zip`) || await env.PACKS.get(`packs/${id}.zip`);
   if (!m || !z) throw new Error("not found");
   const rec = await m.json();
-  await env.PACKS.put(`packs/${id}.zip`, await z.arrayBuffer());
+  const zbuf = await z.arrayBuffer();
+  await env.PACKS.put(`packs/${id}.zip`, zbuf);
+  let logo = null;
+  try { logo = await zipLogo(zbuf); } catch { /* no logo is fine */ }
+  if (logo) await env.PACKS.put(`logos/${id}.png`, logo); else await env.PACKS.delete(`logos/${id}.png`);
   await env.PACKS.delete(`pending/${id}.zip`);
   rec.status = "approved";
   await env.PACKS.put(`meta/${id}.json`, JSON.stringify(rec));
@@ -98,7 +127,7 @@ async function approve(env, id) {
   idx.packs = idx.packs.filter(p => p.id !== id);
   idx.packs.push({
     id, icao: rec.icao, name: rec.name, voice: rec.voice, version: rec.version, author: rec.author, license: rec.license,
-    sha256: rec.sha256, size: rec.size, url: `${env.PUBLIC_URL}/packs/${id}.zip`, ...(await ratingOf(env, id)),
+    sha256: rec.sha256, size: rec.size, url: `${env.PUBLIC_URL}/packs/${id}.zip`, ...(logo ? { logo: `${env.PUBLIC_URL}/logos/${id}.png` } : {}), ...(await ratingOf(env, id)),
   });
   await writeIndex(env, idx);
 }
@@ -130,6 +159,7 @@ async function remove(env, id, reject) {
   if (!reject) await env.PACKS.delete(`packs/${id}.zip`);
   await env.PACKS.delete(`meta/${id}.json`);
   await env.PACKS.delete(`ratings/${id}.json`);
+  await env.PACKS.delete(`logos/${id}.png`);
   const idx = await readIndex(env);
   idx.packs = idx.packs.filter(p => p.id !== id);
   await writeIndex(env, idx);
@@ -143,7 +173,7 @@ async function adminPage(env) {
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const body = rows.map(r => `<tr><td><b>${esc(r.name)}</b> (${esc(r.icao)})<br><small>${esc(r.voice)} · v${esc(r.version)} · by ${esc(r.author)}</small><br><small>${esc(r.note)}</small></td>
     <td>${r.files} files<br>${(r.size / 1048576).toFixed(1)} MB</td><td>${r.status}</td>
-    <td>${r.status === "pending" ? `<button onclick="act('approve','${r.id}')">Approve</button> <button onclick="act('reject','${r.id}')">Reject</button>` : `<button onclick="act('remove','${r.id}')">Remove</button>`}
+    <td>${r.status === "pending" ? `<button onclick="act('approve','${r.id}')">Approve</button> <button onclick="act('reject','${r.id}')">Reject</button>` : `<button onclick="act('approve','${r.id}')">Refresh</button> <button onclick="act('remove','${r.id}')">Remove</button>`}
     <br><a href="/admin/download/${r.id}">Download zip</a></td></tr>`).join("");
   return new Response(`<!doctype html><meta name=viewport content="width=device-width"><title>PAPro community</title>
 <style>body{font:15px system-ui;margin:24px;max-width:900px}td{padding:10px;border-bottom:1px solid #8884;vertical-align:top}button{padding:6px 12px}</style>
@@ -160,6 +190,8 @@ export default {
       if (path === "/index.json") return json(await readIndex(env));
       let m = path.match(/^\/packs\/([a-z0-9-]+)\.zip$/);
       if (m) { const o = await env.PACKS.get(`packs/${m[1]}.zip`); return o ? new Response(o.body, { headers: { "content-type": "application/zip" } }) : json({ error: "not found" }, 404); }
+      m = path.match(/^\/logos\/([a-z0-9-]+)\.png$/);
+      if (m) { const o = await env.PACKS.get(`logos/${m[1]}.png`); return o ? new Response(o.body, { headers: { "content-type": "image/png", "cache-control": "public, max-age=3600" } }) : json({ error: "not found" }, 404); }
       if (path === "/submit" && req.method === "POST") return await submit(req, env);
       if (path === "/rate" && req.method === "POST") return await rate(req, env);
       if (path === "/withdraw" && req.method === "POST") {
