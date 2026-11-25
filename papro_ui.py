@@ -1237,7 +1237,7 @@ function playSample(url,btn){
   if(sampleAudio){sampleAudio.pause();sampleAudio=null}
   if(sampleBtn){sampleBtn.textContent="\u25B6 Sample";sampleBtn=null}
   if(was)return;
-  const a=new Audio(url);sampleAudio=a;sampleBtn=btn;btn.textContent="\u25A0 Stop";
+  const a=new Audio(url+(url.includes("?")?"&":"?")+"t="+Date.now());sampleAudio=a;sampleBtn=btn;btn.textContent="\u25A0 Stop";
   const done=()=>{if(sampleAudio===a){sampleAudio=null;sampleBtn=null}btn.textContent="\u25B6 Sample"};
   a.onended=done;a.onerror=()=>{done();toast("Could not play the sample")};a.play().catch(()=>{done();toast("Could not play the sample")})}
 function packCard(p,editable){

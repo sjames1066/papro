@@ -250,7 +250,7 @@ export default {
       m = path.match(/^\/logos\/([a-z0-9-]+)\.png$/);
       if (m) { const o = await env.PACKS.get(`logos/${m[1]}.png`); return o ? new Response(o.body, { headers: { "content-type": "image/png", "cache-control": "public, max-age=3600" } }) : json({ error: "not found" }, 404); }
       m = path.match(/^\/samples\/([a-z0-9-]+)\.ogg$/);
-      if (m) { const o = await env.PACKS.get(`samples/${m[1]}.ogg`); return o ? new Response(o.body, { headers: { "content-type": "audio/ogg", "cache-control": "public, max-age=3600", "access-control-allow-origin": "*" } }) : json({ error: "not found" }, 404); }
+      if (m) { const o = await env.PACKS.get(`samples/${m[1]}.ogg`); return o ? new Response(o.body, { headers: { "content-type": "audio/ogg", "cache-control": "no-cache", "access-control-allow-origin": "*" } }) : json({ error: "not found" }, 404); }
       if (path === "/submit" && req.method === "POST") return await submit(req, env, ctx);
       if (path === "/rate" && req.method === "POST") return await rate(req, env);
       if (path === "/claim" && req.method === "POST") return await claim(req, env);

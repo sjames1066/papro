@@ -811,7 +811,8 @@ def make_sample(pack_folder: Path, out: Path, project: dict | None = None, secon
         lead = part_file(pack_folder, "WelcomeTo")
         if airports and (lead or order):
             pieces, _note = landing_pieces(pack_folder, airports[0], "15:45", project is None or project.get("local_time") is not False,
-                                           lead, order, landing_base_clip(pack_folder, (project or {}).get("airline", "")) if order and "base" in order else None)
+                                           lead, order, next(iter(sorted((pack_folder / "crew").glob("Base_*.ogg"))), None) if order and "base" in order else None)
+            log.info("Sample clip: %s", " + ".join(x.stem for x in pieces) if pieces else "the pieces were not all there - using the generic After Landing")
             if pieces:
                 with _tmp.TemporaryDirectory(dir=DATA_DIR) as work:
                     built = Path(work) / "sample.ogg"
