@@ -29,6 +29,7 @@ import logging
 import os
 import random
 import re
+import secrets
 import shutil
 import subprocess
 import sys
@@ -3461,6 +3462,36 @@ class UIMixin:
         except (papro_studio.StudioError, AppError, OSError):
             return None
 
+    def publish_pack(self, cfg: dict, project: dict, author: str, note: str, rights: bool) -> dict:
+        """Send a finished pack to the community service. It waits there until it has been approved."""
+        if not rights:
+            return {"error": "Please tick the box to say you may share these recordings."}
+        author = author.strip()[:60]
+        if not author:
+            return {"error": "Please enter the name to show as the author."}
+        base = str(cfg.get("community_url", COMMUNITY_URL)).rsplit("/", 1)[0]
+        if not _is_http(base):
+            return {"error": "No community service is set up."}
+        result = papro_studio.export(STUDIO_DIR, project, EXPORTS_DIR, load_languages(airline_folder(cfg, project["icao"])))
+        key = str(cfg.get("community_author_key") or "")
+        if len(key) < 32:   # proves later that a pack is yours (to update or withdraw it); stays on this PC
+            key = secrets.token_hex(24)
+            set_config_value("community_author_key", key)
+        set_config_value("community_author", author)
+        meta = {"icao": project["icao"], "name": project.get("airline") or project["icao"], "voice": project.get("voice", ""),
+                "version": str(project.get("version", "1.0.0")), "author": author, "note": note.strip()[:300], "rights": True}
+        try:
+            with open(result["zip"], "rb") as handle:
+                reply = requests.post(base + "/submit", data={"meta": json.dumps(meta), "author_key": key},
+                                      files={"pack": (Path(result["zip"]).name, handle, "application/zip")}, timeout=300)
+            body = reply.json() if reply.content else {}
+        except (requests.RequestException, OSError, ValueError) as exc:
+            return {"error": f"Could not reach the community service: {exc}"}
+        if reply.status_code != 200 or not body.get("ok"):
+            return {"error": str(body.get("error") or f"The community service said no ({reply.status_code}).")}
+        log.info("Pack shared with the community: %s (%s)", body.get("id"), body.get("status"))
+        return {"ok": True, "status": body.get("status", "pending")}
+
     def studio_action(self, name: str, data: dict) -> dict:
         try:
             if name == "create":
@@ -3761,6 +3792,8 @@ class UIMixin:
                                              load_languages(airline_folder(cfg, project["icao"])))
                 open_path(Path(result["zip"]).parent)
                 return {"ok": True, **result}
+            elif name == "publish":
+                return self.publish_pack(cfg, project, str(data.get("author", "")), str(data.get("note", "")), bool(data.get("rights")))
             elif name == "install":
                 lib = airline_folder(cfg, project["icao"])
                 dest = papro_studio.install_to_library(STUDIO_DIR, project, lib)

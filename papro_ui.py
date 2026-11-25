@@ -1093,6 +1093,14 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
   <h3 id="q-t">No sound picked up</h3><p id="q-s"></p>
   <div class="row"><button id="q-close">Close</button><button class="primary" id="q-open">Open Audio settings</button></div>
 </div></div>
+<div class="modal" id="m-share"><div class="dialog">
+  <h3>Share this pack</h3>
+  <label class="tlab">Your name, shown as the author<input type="text" id="sh-author" maxlength="60"></label>
+  <label class="tlab" style="margin-top:10px">A note for the reviewer (optional)<input type="text" id="sh-note" maxlength="300"></label>
+  <label class="check" style="margin:12px 0 0"><input type="checkbox" id="sh-rights"> I made these recordings, or may share them</label>
+  <div class="small" id="sh-msg" style="margin-top:10px;min-height:18px"></div>
+  <div class="row"><button class="ghost" id="sh-cancel">Cancel</button><button class="primary" id="sh-go">Share</button></div>
+</div></div>
 <div class="modal" id="m-job"><div class="dialog"><h3 id="job-t">Working...</h3><p id="job-s">Please wait - this can take a moment.</p><div class="ptrack"><i id="job-bar"></i></div></div></div>
 <div class="toast" id="toast"></div>
 
@@ -2126,9 +2134,16 @@ function renderStudio(){
   const use=el("button","save"+(savedSig===saveSig?" done":""),"Save");use.title=c.origin?"Save your changes to your library so PAPro and the Test tab use them":"Add this pack to your library as a voice for "+c.icao+" so PAPro and the Test tab use it";
   use.onclick=async()=>{const r=await studio("install",pid(c));if(r.ok){savedSig=saveSig;use.classList.add("done");toast(r.finished?"Saved to your library":"Added to your library as a voice for "+c.icao)}};
   const ex=el("button","primary","Export pack zip");ex.onclick=async()=>{const r=await studio("export",pid(c));if(r.ok)toast("Exported - release tag: "+(r.tag||"")+" (the folder is open)",9000)};
-  bar2.append(dis,fol,use,ex);root.append(bar2);syncPlayer();
+  const sh=el("button","ghost","Share with the community");sh.onclick=()=>openShare(c);
+  bar2.append(dis,fol,use,ex,sh);root.append(bar2);syncPlayer();
 }
 
+let shareCard=null;
+function openShare(c){shareCard=c;$("#sh-msg").textContent="";$("#sh-go").disabled=false;$("#sh-rights").checked=false;try{$("#sh-author").value=localStorage.getItem("shareAuthor")||""}catch(e){}$("#m-share").classList.add("show")}
+$("#sh-cancel").onclick=()=>$("#m-share").classList.remove("show");
+$("#sh-go").onclick=async()=>{const m=$("#sh-msg"),b=$("#sh-go");b.disabled=true;m.textContent="Sending...";
+  const r=await studio("publish",{...pid(shareCard),author:$("#sh-author").value,note:$("#sh-note").value,rights:$("#sh-rights").checked});
+  b.disabled=false;if(r&&r.ok){try{localStorage.setItem("shareAuthor",$("#sh-author").value)}catch(e){}$("#m-share").classList.remove("show");toast(r.status==="approved"?"Shared - it is in the community list":"Sent for review - it appears once approved",6000)}else m.textContent=(r&&r.error)||"Could not send it"};
 function renderJob(){
   const j=snap&&snap.studio&&snap.studio.job,m=$("#m-job");m.classList.toggle("show",!!j);if(!j)return;
   $("#job-t").textContent=j.label;const bar=$("#job-bar"),pr=bar.parentElement;
