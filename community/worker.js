@@ -83,7 +83,25 @@ async function readIndex(env) {
 }
 const writeIndex = (env, idx) => env.PACKS.put("index.json", JSON.stringify(idx, null, 1));
 
-async function submit(req, env) {
+// an email to you when a pack arrives (Resend, resend.com): needs RESEND_API_KEY and NOTIFY_EMAIL, otherwise nothing is sent
+async function notify(env, rec) {
+  if (!env.RESEND_API_KEY || !env.NOTIFY_EMAIL) return;
+  const esc = s => String(s || "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  try {
+    await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        from: env.NOTIFY_FROM || "PAPro <onboarding@resend.dev>", to: [env.NOTIFY_EMAIL],
+        subject: `New PAPro community pack: ${rec.name} (${rec.icao})`,
+        html: `<p><b>${esc(rec.name)}</b> (${esc(rec.icao)}) - voice ${esc(rec.voice)}, v${esc(rec.version)}<br>By ${esc(rec.author)}<br>${rec.files} recordings, ${(rec.size / 1048576).toFixed(1)} MB</p>` +
+          (rec.note ? `<p>"${esc(rec.note)}"</p>` : "") + `<p><a href="${env.PUBLIC_URL}/admin">Open the review page</a> (add ?token=your password)</p>`,
+      }),
+    });
+  } catch { /* the pack is saved either way */ }
+}
+
+async function submit(req, env, ctx) {
   const form = await req.formData();
   const file = form.get("pack"), authorKey = clean(form.get("author_key"), 100);
   let meta;
@@ -108,6 +126,8 @@ async function submit(req, env) {
   await env.PACKS.put(`pending/${id}.zip`, buf);
   await env.PACKS.put(`meta/${id}.json`, JSON.stringify(record));
   if (env.AUTO_APPROVE === "1") await approve(env, id);
+  const mail = notify(env, record);
+  if (ctx && ctx.waitUntil) ctx.waitUntil(mail); else await mail;
   return json({ ok: true, id, status: env.AUTO_APPROVE === "1" ? "approved" : "pending" });
 }
 
@@ -183,7 +203,7 @@ async function act(a,id){await fetch("/admin/"+a+"/"+id,{method:"POST",headers:{
 }
 
 export default {
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
     const url = new URL(req.url), path = url.pathname;
     if (req.method === "OPTIONS") return new Response(null, { headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "*" } });
     try {
@@ -192,7 +212,7 @@ export default {
       if (m) { const o = await env.PACKS.get(`packs/${m[1]}.zip`); return o ? new Response(o.body, { headers: { "content-type": "application/zip" } }) : json({ error: "not found" }, 404); }
       m = path.match(/^\/logos\/([a-z0-9-]+)\.png$/);
       if (m) { const o = await env.PACKS.get(`logos/${m[1]}.png`); return o ? new Response(o.body, { headers: { "content-type": "image/png", "cache-control": "public, max-age=3600" } }) : json({ error: "not found" }, 404); }
-      if (path === "/submit" && req.method === "POST") return await submit(req, env);
+      if (path === "/submit" && req.method === "POST") return await submit(req, env, ctx);
       if (path === "/rate" && req.method === "POST") return await rate(req, env);
       if (path === "/withdraw" && req.method === "POST") {
         const b = await req.json(), o = await env.PACKS.get(`meta/${slug(b.id)}.json`);
