@@ -2840,6 +2840,19 @@ class UIMixin:
 
         return _png_bytes(make_icon(128))
 
+    def closing_action(self) -> str:
+        """What closing the window does: "hide" (PAPro keeps running in the tray) or "quit"."""
+        try:
+            return "hide" if load_config().get("close_to_tray") else "quit"
+        except AppError:
+            return "quit"
+
+    def wants_minimize_to_tray(self) -> bool:
+        try:
+            return bool(load_config().get("minimize_to_tray"))
+        except AppError:
+            return False
+
     def saved_window_rect(self):
         """[left, top, width, height] in real pixels from last time, or None."""
         try:
@@ -4456,8 +4469,17 @@ class TrayApp(UIMixin):
             needs_name = not (str(cfg.get("simbrief_username", "")).strip() or str(cfg.get("simbrief_userid", "")).strip())
         except AppError:
             needs_name = True  # first run: config.json was just created
-        if self.show_window or needs_name or not load_state().get("welcomed"):
-            self.open_window()  # started by hand, or first run: explain what PAPro changes, ask for the SimBrief username
+        show = bool(self.show_window or needs_name or not load_state().get("welcomed"))   # by hand, or first run: explain what PAPro changes, ask for the SimBrief username
+        import papro_native
+
+        native = papro_native.available()
+        if native:
+            self.ui.prepare_native(show)
+            log.info("Window: PAPro's own (WebView2)")
+        else:
+            log.info("Window: browser app window")
+            if show:
+                self.open_window()
         threading.Thread(target=self.poll_loop, daemon=True).start()
         threading.Thread(target=self.msfs_watch, daemon=True).start()
         threading.Thread(target=_listen_for_show, args=(self,), daemon=True).start()
@@ -4469,7 +4491,19 @@ class TrayApp(UIMixin):
                                 on_telemetry=self.telemetry).start()
         except Exception:
             log.exception("Could not start the landing watcher")
-        self.icon.run()
+        if not native:
+            self.icon.run()
+            return
+        self.icon.run_detached()   # the tray icon on its own thread: the window loop needs this one
+        if not self.ui.run_native():   # could not start: the browser window instead
+            log.warning("Falling back to the browser window")
+            self.ui.native = None
+            if show:
+                self.open_window()
+            self.stop.wait()
+            return
+        if not self.stop.is_set():   # the window loop ended without PAPro being asked to quit
+            self.quit()
 
 
 # --------------------------------------------------------------------------- entry point

@@ -134,15 +134,22 @@ def _window_tools():
         except Exception:
             pass
 
-    def find(title="PAPro"):
+    def find(title="PAPro", pid=None):
+        """The window with this title (visible ones, or any of this process's own when pid is given, hidden included)."""
         found: list = []
 
         def visit(hwnd, _l):
-            if user32.IsWindowVisible(hwnd):
-                buf = ctypes.create_unicode_buffer(256)
-                user32.GetWindowTextW(hwnd, buf, 256)
-                if buf.value == title:
-                    found.append(hwnd)
+            if pid is None and not user32.IsWindowVisible(hwnd):
+                return True
+            if pid is not None:
+                owner = wintypes.DWORD()
+                user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+                if owner.value != pid:
+                    return True
+            buf = ctypes.create_unicode_buffer(256)
+            user32.GetWindowTextW(hwnd, buf, 256)
+            if buf.value == title:
+                found.append(hwnd)
             return True
 
         user32.EnumWindows(enum_type(visit), 0)
@@ -454,8 +461,26 @@ class UIServer:
                 self.start()
 
     # window -------------------------------------------------------------
+    def prepare_native(self, show: bool) -> None:
+        """Use PAPro's own window (run_native later, on the main thread) instead of an Edge window."""
+        import papro_native
+
+        icon = Path(__file__).with_name("papro.ico")
+        if not icon.is_file():
+            icon = Path(sys.executable).with_name("papro.ico")
+        self.native = papro_native.NativeWindow(self.url(), "PAPro", icon, self.profile_dir.parent / "webview",
+                                                centered_geometry()[2:], self.backend)
+        self.native.want_show = show
+
+    def run_native(self) -> bool:
+        return self.native.run(self.native.want_show)
+
     def open_window(self) -> None:
         """Open the PAPro window (or leave the already open one alone)."""
+        if getattr(self, "native", None) is not None:
+            self.native.show()
+            raise_window()
+            return
         with self._lock:
             if self.httpd is None:
                 self.start()
@@ -521,6 +546,9 @@ class UIServer:
 
     def close_window(self) -> None:
         """Close the PAPro window (the browser process it runs in, with its helper processes)."""
+        if getattr(self, "native", None) is not None:
+            self.native.destroy()
+            return
         proc = self.window
         if proc is None or proc.poll() is not None:
             return
