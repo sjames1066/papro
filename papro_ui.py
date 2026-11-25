@@ -1231,6 +1231,15 @@ function renderHero(){
   h.append(side);
 }
 
+let sampleAudio=null,sampleBtn=null;
+function playSample(url,btn){
+  const was=sampleBtn===btn&&sampleAudio&&!sampleAudio.paused;
+  if(sampleAudio){sampleAudio.pause();sampleAudio=null}
+  if(sampleBtn){sampleBtn.textContent="\u25B6 Sample";sampleBtn=null}
+  if(was)return;
+  const a=new Audio(url);sampleAudio=a;sampleBtn=btn;btn.textContent="\u25A0 Stop";
+  const done=()=>{if(sampleAudio===a){sampleAudio=null;sampleBtn=null}btn.textContent="\u25B6 Sample"};
+  a.onended=done;a.onerror=()=>{done();toast("Could not play the sample")};a.play().catch(()=>{done();toast("Could not play the sample")})}
 function packCard(p,editable){
   const c=el("div","card pack"); c.id="pack-"+(p.key||p.icao);
   const top=el("div","top"); top.append(editable&&p.installed?editableLogo(p.icao,"logo"):logo(p.icao,"logo"));
@@ -1247,6 +1256,7 @@ function packCard(p,editable){
   if(p.community) info.append(el("div","meta","By "+(p.author||"a community member")+(p.license?"  ·  "+p.license:"")));
   top.append(info);
   const act=el("div","act");
+  if(p.community&&p.sample){const sb=el("button","ghost samp","\u25B6 Sample");sb.title="Hear 10 seconds of the After Landing announcement";sb.onclick=()=>playSample(p.sample,sb);act.append(sb)}
   if(!p.task){
     if(!p.installed||p.update){const b=el("button","primary",p.update?"Update":"Install");b.disabled=snap.busy;b.onclick=()=>api("install",{id:p.id||p.update_id||p.icao});act.append(b)}
     if(p.installed&&!p.catalog){const m=el("button","ghost","Manage");m.disabled=snap.busy;m.onclick=()=>openManage(p.icao);act.append(m)}
@@ -1263,7 +1273,7 @@ function packCard(p,editable){
 const packSigs={};
 function renderPackList(boxId,list,emptyText){
   const box=$("#"+boxId);
-  const sig=JSON.stringify([list.map(p=>[p.key||p.icao,p.installed,p.update,!!p.task,p.name,p.version,p.voices,p.rating,p.votes,p.my_rating,p.rate_id]),snap.busy,snap.catalog_error,snap.logo_v,emptyText]);
+  const sig=JSON.stringify([list.map(p=>[p.key||p.icao,p.installed,p.update,!!p.task,p.name,p.version,p.voices,p.rating,p.votes,p.my_rating,p.rate_id,p.sample]),snap.busy,snap.catalog_error,snap.logo_v,emptyText]);
   if(sig!==packSigs[boxId]){
     packSigs[boxId]=sig; box.replaceChildren();
     if(!list.length){const e=el("div","empty",emptyText); e.style.gridColumn="1/-1"; box.append(e)}
