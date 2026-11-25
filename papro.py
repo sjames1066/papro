@@ -795,15 +795,33 @@ def _parse_packs(data: dict, url: str) -> list[dict]:
     return sorted(packs, key=lambda p: p["icao"])
 
 
-def make_sample(pack_folder: Path, out: Path, seconds: float = 10.0) -> Path | None:
-    """The first ten seconds of the pack's After Landing announcement, with a short fade, for the Community list's Sample button."""
+def make_sample(pack_folder: Path, out: Path, project: dict | None = None, seconds: float = 10.0) -> Path | None:
+    """A short clip of the pack's After Landing announcement for the Community list's Sample button: built the way the real PA
+    is (first airport recorded in the pack, local time 3:45 PM), then the first ten seconds with a short fade."""
     try:
+        import tempfile as _tmp
+
         import papro_audio
 
-        found = sorted(pack_folder.glob("main/AfterLanding*.ogg")) or sorted(pack_folder.glob("main/Modular_Landing*.ogg"))
-        if not found:
-            return None
-        data, rate = papro_audio._read(found[0])
+        data = None
+        airports = sorted((pack_folder / AIRPORTS_FOLDER).glob("*.ogg")) if (pack_folder / AIRPORTS_FOLDER).is_dir() else []
+        order = None
+        if project is not None and not project.get("landing_off"):
+            order = papro_studio.landing_order(project)
+        lead = part_file(pack_folder, "WelcomeTo")
+        if airports and (lead or order):
+            pieces, _note = landing_pieces(pack_folder, airports[0], "15:45", project is None or project.get("local_time") is not False,
+                                           lead, order, landing_base_clip(pack_folder, (project or {}).get("airline", "")) if order and "base" in order else None)
+            if pieces:
+                with _tmp.TemporaryDirectory(dir=DATA_DIR) as work:
+                    built = Path(work) / "sample.ogg"
+                    papro_audio.join(pieces, built, 60, True)
+                    data, rate = papro_audio._read(built)
+        if data is None:   # no way to build it: the pack's own generic After Landing
+            found = sorted(pack_folder.glob("main/AfterLanding*.ogg")) or sorted(pack_folder.glob("main/Modular_Landing*.ogg"))
+            if not found:
+                return None
+            data, rate = papro_audio._read(found[0])
         data = data[: int(rate * seconds)]
         fade = min(len(data), int(rate * 0.5))
         if fade > 0:
@@ -3572,7 +3590,7 @@ class UIMixin:
             set_config_value("community_author_key", key)
         meta = {"icao": project["icao"], "name": project.get("airline") or project["icao"], "voice": project.get("voice", ""),
                 "version": str(project.get("version", "1.0.0")), "author": author, "rights": True}
-        clip = make_sample(papro_studio.project_dir(STUDIO_DIR, project["icao"], project["voice"]) / "pack", Path(result["zip"]).with_suffix(".sample.ogg"))
+        clip = make_sample(papro_studio.project_dir(STUDIO_DIR, project["icao"], project["voice"]) / "pack", Path(result["zip"]).with_suffix(".sample.ogg"), project)
         try:
             with open(result["zip"], "rb") as handle, (open(clip, "rb") if clip else contextlib.nullcontext()) as clip_handle:
                 files = {"pack": (Path(result["zip"]).name, handle, "application/zip")}
