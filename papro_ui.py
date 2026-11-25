@@ -1030,11 +1030,6 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
       <div class="radio" data-v="25"><b>Now and then</b><span>About one flight in four gets a random bolt-on from your extra folder</span></div>
       <div class="radio" data-v="50"><b>Often</b><span>About one flight in two</span></div>
     </div></div>
-  <div class="setting"><div class="label">How the announcement pieces join</div>
-    <div class="radios" id="s-flow">
-      <div class="radio" data-v="flow"><b>Natural flow</b><span>The greeting, airport name and the rest are cropped tight and run into each other like one sentence</span></div>
-      <div class="radio" data-v="pauses"><b>Clear pauses</b><span>A short gap between each piece</span></div>
-    </div></div>
   <div class="setting"><div class="label">PA volume</div>
     <div class="radios" id="s-boost">
       <div class="radio" data-v="0"><b>As recorded</b><span>No change to the announcements</span></div>
@@ -1051,10 +1046,6 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
     </div>
     <div class="small" id="s-anote" style="margin-top:8px"></div>
     <div class="small" style="margin-top:6px">Volume and mute are on the PA knob on the Dashboard.</div>
-  </div>
-  <div class="setting"><div class="label">GSX integration</div>
-    <div class="small" style="margin-bottom:10px">Reads GSX's boarding and deboarding status so the Dashboard's flight phase follows the ground services. Does nothing if GSX isn't installed.</div>
-    <label class="check" style="margin:0"><input type="checkbox" id="s-gsx"> Use GSX for boarding and deboarding</label>
   </div>
   <div class="setting pc-only"><div class="label">Start PAPro automatically</div>
     <div class="radios" id="s-start">
@@ -1363,15 +1354,15 @@ function openName(){ $("#n-input").value=snap.username||""; $("#m-name").classLi
 let cfg={close:"no",autostart:"off",min:"no",time:"yes",extra:"25"};
 function pickRadio(id,val){document.querySelectorAll("#"+id+" .radio").forEach(r=>r.classList.toggle("sel",r.dataset.v===val))}
 document.querySelectorAll(".radios").forEach(g=>g.querySelectorAll(".radio").forEach(r=>r.onclick=()=>{
-  cfg[g.id==="s-close"?"close":g.id==="s-min"?"min":g.id==="s-time"?"time":g.id==="s-extra"?"extra":g.id==="s-boost"?"boost":g.id==="s-flow"?"flow":"autostart"]=r.dataset.v; pickRadio(g.id,r.dataset.v); $("#s-quit-row").style.display=cfg.autostart==="msfs"?"flex":"none"}));
+  cfg[g.id==="s-close"?"close":g.id==="s-min"?"min":g.id==="s-time"?"time":g.id==="s-extra"?"extra":g.id==="s-boost"?"boost":"autostart"]=r.dataset.v; pickRadio(g.id,r.dataset.v); $("#s-quit-row").style.display=cfg.autostart==="msfs"?"flex":"none"}));
 function openSettings(){
-  const s=snap.settings||{}; cfg={close:s.close_to_tray?"yes":"no",autostart:s.autostart||"off",min:s.minimize_to_tray?"yes":"no",time:s.local_time===false?"no":"yes",extra:String(s.extra_chance===undefined?25:s.extra_chance),boost:String(s.pa_boost===undefined?30:s.pa_boost),flow:s.join_style==="pauses"?"pauses":"flow"};
+  const s=snap.settings||{}; cfg={close:s.close_to_tray?"yes":"no",autostart:s.autostart||"off",min:s.minimize_to_tray?"yes":"no",time:s.local_time===false?"no":"yes",extra:String(s.extra_chance===undefined?25:s.extra_chance),boost:String(s.pa_boost===undefined?30:s.pa_boost)};
   $("#s-name").value=snap.username||""; $("#s-quit").checked=s.quit_with_msfs!==false;
-  pickRadio("s-start",cfg.autostart); pickRadio("s-close",cfg.close); pickRadio("s-min",cfg.min); pickRadio("s-extra",cfg.extra);pickRadio("s-boost",cfg.boost);pickRadio("s-flow",cfg.flow);
+  pickRadio("s-start",cfg.autostart); pickRadio("s-close",cfg.close); pickRadio("s-min",cfg.min); pickRadio("s-extra",cfg.extra);pickRadio("s-boost",cfg.boost);
   $("#s-quit-row").style.display=cfg.autostart==="msfs"?"flex":"none";
   $("#s-addr").value=snap.address||"";
   const lan=s.lan||{};renderLanAddrs(lan);
-  const au=s.audio||{};audioChosen=au.device||"";$("#s-gsx").checked=s.gsx!==false;loadAudioDevices();
+  const au=s.audio||{};audioChosen=au.device||"";loadAudioDevices();
   renderSetUpd();$("#m-settings").classList.add("show");
 }
 $("#settings").onclick=openSettings;
@@ -1403,7 +1394,7 @@ $("#s-cancel").onclick=()=>$("#m-settings").classList.remove("show");
 $("#s-save").onclick=async()=>{
   const name=$("#s-name").value.trim();
   if(name&&name!==(snap.username||"")){const r=await api("username",{name}); if(r.error)return}
-  const r=await api("settings",{close_to_tray:cfg.close==="yes",autostart:cfg.autostart,minimize_to_tray:cfg.min==="yes",extra_chance:parseInt(cfg.extra,10),pa_boost:parseInt(cfg.boost,10),join_style:cfg.flow,quit_with_msfs:$("#s-quit").checked,audio_device:audioChosen,gsx:$("#s-gsx").checked,});
+  const r=await api("settings",{close_to_tray:cfg.close==="yes",autostart:cfg.autostart,minimize_to_tray:cfg.min==="yes",extra_chance:parseInt(cfg.extra,10),pa_boost:parseInt(cfg.boost,10),quit_with_msfs:$("#s-quit").checked,audio_device:audioChosen,});
   if(!r.error){$("#m-settings").classList.remove("show");toast("Settings saved")}
 };
 let minSent=false;

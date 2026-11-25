@@ -2161,7 +2161,7 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
     board_order = voice_setting(voice_dir, "boarding_order") or None   # how the pack builds its welcome aboard (None: the usual order)
     land_order = voice_setting(voice_dir, "landing_order") or None   # how the pack builds its After Landing PA (None: the usual order)
     pause = int(cfg.get("segment_pause_ms", 60))
-    flow = cfg.get("join_style", "flow") != "pauses"
+    flow = True   # natural flow is the only style
     with tempfile.TemporaryDirectory(dir=DATA_DIR) as work:
         for mapping in cfg["mappings"]:
             if only and mapping["folder"] not in only:
@@ -4115,7 +4115,7 @@ class TrayApp(UIMixin):
             return
         self._tracker_sync = now
         try:
-            tracker.use_gsx = bool(load_config().get("gsx_integration", True))
+            tracker.use_gsx = True   # GSX is read whenever it is there; without it the timers and the Boarding button take over
             flight = load_state().get("flight") or {}
         except (AppError, OSError):
             return
