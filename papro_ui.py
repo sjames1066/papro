@@ -1067,9 +1067,9 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
     </div>
     <label class="check" id="s-quit-row" style="margin:12px 0 0"><input type="checkbox" id="s-quit"> Close PAPro when MSFS closes</label>
   </div>
-  <div class="setting pc-only" id="s-restore-box" style="display:none"><div class="label">Restore original packs</div>
-    <div class="small" style="margin-bottom:8px">PAPro saved each pack before changing it. Restoring lasts until your next flight plan change.</div>
-    <div id="s-restore"></div></div>
+  <details class="grp pc-only" id="s-restore-box" style="margin-bottom:18px;display:none"><summary>Restore original packs</summary><div style="margin-top:12px">
+    <div class="small" style="margin-bottom:10px">PAPro saved each pack before changing it. Restoring lasts until your next flight plan change.</div>
+    <div id="s-restore"></div></div></details>
   <details class="grp pc-only" style="margin-bottom:18px"><summary>Advanced</summary><div style="margin-top:12px">
   <div class="setting pc-only"><div class="label">PAPro's web address</div>
     <div class="small" style="margin-bottom:10px">PAPro also runs as a local web page. This address is always the same, so another app (such as EFBx.io) can open it as an internal app. It only works on this PC while PAPro is running.</div>
@@ -1419,11 +1419,12 @@ function openSettings(){
   renderSetUpd();$("#m-settings").classList.add("show");
 }
 $("#settings").onclick=openSettings;
-function renderRestore(){const box=$("#s-restore");box.replaceChildren();const bk=snap.backups||{};let any=false;
-  ["Fenix","FSLabs"].forEach(kind=>(bk[kind]||[]).forEach(code=>{any=true;
-    const row=el("div",null);row.style.cssText="display:flex;align-items:center;gap:12px;margin-top:8px";
-    const b=el("button","ghost","Restore "+code);b.onclick=async()=>{b.disabled=true;await api("restore_original",{kind,icao:code});setTimeout(()=>{b.disabled=false},1500)};
-    row.append(b,el("span","small",kind)); box.append(row)}));
+function renderRestore(){const box=$("#s-restore");const open=new Set([...box.querySelectorAll("details[open]")].map(d=>d.dataset.kind));box.replaceChildren();const bk=snap.backups||{};let any=false;
+  ["Fenix","FSLabs"].forEach(kind=>{const codes=bk[kind]||[];if(!codes.length)return;any=true;
+    const d=el("details","grp");d.dataset.kind=kind;d.style.marginBottom="10px";if(open.has(kind))d.open=true;d.append(el("summary",null,kind+" ("+codes.length+")"));
+    const inner=el("div");inner.style.marginTop="8px";
+    codes.forEach(code=>{const b=el("button","ghost","Restore "+code);b.style.marginRight="8px";b.style.marginBottom="8px";b.onclick=async()=>{b.disabled=true;await api("restore_original",{kind,icao:code});setTimeout(()=>{b.disabled=false},1500)};inner.append(b)});
+    d.append(inner);box.append(d)});
   $("#s-restore-box").style.display=any?"":"none"}
 function renderLanAddrs(lan){const box=$("#s-lan-addrs");box.replaceChildren();
   if(!(lan.addresses||[]).length){box.append(el("div","small","No network address found for this PC."));return}
