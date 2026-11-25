@@ -97,6 +97,8 @@ class SimWatcher:
             if isinstance(value, (bytes, bytearray)):
                 value = bytes(value).decode("utf-8", "replace")
             if value and str(value).strip():
+                if name == "TITLE":
+                    self._title_low = str(value).lower()
                 return str(value)
         return ""
 
@@ -211,24 +213,35 @@ class SimWatcher:
         value = self._pmdg_seatbelt()
         if value is not None:
             return value
-        names = [self.IFLY_SEATBELT_LVAR, *self.FSL_SEATBELT_LVARS]
+        title = getattr(self, "_title_low", "")
+        # an L: variable the aircraft doesn't have reads as 0, not "missing", so only look at the ones that belong to this aircraft
+        if "fsl" in title or "flightsimlabs" in title:   # FSLabs: the name's spelling is not certain, so take the larger of the two
+            raws = [self._lvar(requests, n) for n in self.FSL_SEATBELT_LVARS]
+            raws = [float(r) for r in raws if r is not None]
+            if raws:
+                raw = max(raws)
+                if self.__dict__.setdefault("_sb_seen", {}).get("fsl") != raw:
+                    log.info("FSLabs seatbelt switch = %s", raw)
+                    self._sb_seen["fsl"] = raw
+                return raw >= 15   # 0 = OFF, 10 = AUTO, 20 = ON
+        elif "ifly" in title:
+            raw = self._lvar(requests, self.IFLY_SEATBELT_LVAR)
+            if raw is not None:
+                return float(raw) >= 15
         try:
-            names += [str(n) for n in (self.seatbelt_lvars() if self.seatbelt_lvars else []) if str(n).strip()]
+            extra = [str(n) for n in (self.seatbelt_lvars() if self.seatbelt_lvars else []) if str(n).strip()]
         except Exception:
-            pass
-        for name in names:
+            extra = []
+        for name in extra:
             raw = self._lvar(requests, name if name.startswith("L:") else f"L:{name}")
             if raw is not None:
-                seen = self.__dict__.setdefault("_sb_seen", {})
-                if seen.get(name) != raw:   # log changes, so a wrong variable name or scale shows in the log
-                    log.info("Seatbelt switch %s = %s", name, raw)
-                    seen[name] = raw
-                return float(raw) >= (15 if name == self.IFLY_SEATBELT_LVAR or name in self.FSL_SEATBELT_LVARS else 0.5)   # 0 = OFF, 10 = AUTO, 20 = ON
+                return float(raw) >= 0.5
         return g("CABIN_SEATBELTS_ALERT_SWITCH")
 
     def _no_smoking(self, requests, g):
         """The no-smoking sign: the FSLabs switch (20 = ON, 10 = AUTO, which is still lit, 0 = OFF), else the standard variable."""
-        raw = self._lvar(requests, self.FSL_NOSMOKING_LVAR)
+        title = getattr(self, "_title_low", "")
+        raw = self._lvar(requests, self.FSL_NOSMOKING_LVAR) if ("fsl" in title or "flightsimlabs" in title) else None   # other aircraft read 0 here
         if raw is not None:
             seen = self.__dict__.setdefault("_sb_seen", {})
             if seen.get("ns") != raw:
