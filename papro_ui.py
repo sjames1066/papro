@@ -110,6 +110,63 @@ def raise_window(title: str = "PAPro", wait: float = 8.0) -> None:
     threading.Thread(target=work, daemon=True).start()
 
 
+def _window_tools():
+    """Windows only: (find, get_rect, set_rect, on_screen) for the PAPro window, all in real pixels (the same units for reading and
+    placing, whatever the display scaling is). None elsewhere."""
+    if not sys.platform.startswith("win"):
+        return None
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.windll.user32
+    user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.UINT]
+    user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    user32.IsWindowVisible.argtypes = [wintypes.HWND]
+    user32.IsIconic.argtypes = [wintypes.HWND]
+    user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+    user32.MonitorFromRect.argtypes = [ctypes.POINTER(wintypes.RECT), wintypes.DWORD]
+    user32.MonitorFromRect.restype = wintypes.HANDLE
+    enum_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+    def aware() -> None:
+        try:
+            user32.SetThreadDpiAwarenessContext(ctypes.c_void_p(-4))   # per-monitor aware, for this thread only
+        except Exception:
+            pass
+
+    def find(title="PAPro"):
+        found: list = []
+
+        def visit(hwnd, _l):
+            if user32.IsWindowVisible(hwnd):
+                buf = ctypes.create_unicode_buffer(256)
+                user32.GetWindowTextW(hwnd, buf, 256)
+                if buf.value == title:
+                    found.append(hwnd)
+            return True
+
+        user32.EnumWindows(enum_type(visit), 0)
+        return found[0] if found else None
+
+    def get_rect(hwnd):
+        if user32.IsIconic(hwnd):
+            return None
+        r = wintypes.RECT()
+        user32.GetWindowRect(hwnd, ctypes.byref(r))
+        if r.left <= -30000 or r.top <= -30000:
+            return None
+        return [r.left, r.top, r.right - r.left, r.bottom - r.top]
+
+    def set_rect(hwnd, rect) -> None:
+        user32.SetWindowPos(hwnd, None, rect[0], rect[1], rect[2], rect[3], 0x0004 | 0x0010)   # SWP_NOZORDER | SWP_NOACTIVATE
+
+    def on_screen(rect) -> bool:
+        r = wintypes.RECT(rect[0], rect[1], rect[0] + rect[2], rect[1] + rect[3])
+        return bool(user32.MonitorFromRect(ctypes.byref(r), 0))   # MONITOR_DEFAULTTONULL: not on any screen
+
+    return aware, find, get_rect, set_rect, on_screen
+
+
 CGNAT = ipaddress.ip_network("100.64.0.0/10")   # carrier-grade NAT range: Tailscale and some VPNs use it
 
 
@@ -411,9 +468,6 @@ class UIServer:
                     try:
                         self.profile_dir.mkdir(parents=True, exist_ok=True)
                         x, y, w, h = centered_geometry()
-                        saved = getattr(self, "saved_window_geometry", lambda: None)()
-                        if saved:
-                            x, y, w, h = saved
                         self.window = subprocess.Popen(
                             [str(exe), f"--app={url}", f"--user-data-dir={self.profile_dir}", f"--window-size={w},{h}",
                              f"--window-position={x},{y}",
@@ -421,10 +475,49 @@ class UIServer:
                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                         )
                         raise_window()
+                        self.remember_window()
                         return
                     except OSError:
                         log.exception("Could not start %s", exe)
             webbrowser.open(url)  # no Edge/Chrome found: the default browser still works
+
+    def remember_window(self) -> None:
+        """Put the window back where it was last time, then keep note of where it is (saved when it stops moving)."""
+        tools = _window_tools()
+        if tools is None:
+            return
+        proc = self.window
+        saved = getattr(self.backend, "saved_window_rect", lambda: None)()
+        keep = getattr(self.backend, "remember_window_rect", None)
+
+        def work() -> None:
+            try:
+                aware, find, get_rect, set_rect, on_screen = tools
+                aware()
+                hwnd, deadline = None, time.time() + 10
+                while hwnd is None and time.time() < deadline:
+                    hwnd = find()
+                    if hwnd is None:
+                        time.sleep(0.2)
+                if hwnd is None:
+                    return
+                if saved and on_screen(saved):
+                    set_rect(hwnd, saved)
+                    time.sleep(0.5)
+                last, written = None, saved
+                while proc is not None and proc.poll() is None:
+                    time.sleep(1.0)
+                    now = find() or hwnd
+                    rect = get_rect(now)
+                    if rect and rect == last and rect != written and keep:
+                        keep(rect)
+                        written = rect
+                    if rect:
+                        last = rect
+            except Exception:
+                log.exception("Window position tracking stopped")
+
+        threading.Thread(target=work, daemon=True).start()
 
     def close_window(self) -> None:
         """Close the PAPro window (the browser process it runs in, with its helper processes)."""
@@ -1268,15 +1361,6 @@ $("#s-save").onclick=async()=>{
   const r=await api("settings",{close_to_tray:cfg.close==="yes",autostart:cfg.autostart,minimize_to_tray:cfg.min==="yes",extra_chance:parseInt(cfg.extra,10),pa_boost:parseInt(cfg.boost,10),join_style:cfg.flow,quit_with_msfs:$("#s-quit").checked,audio_device:audioChosen,audio_playback:$("#s-aplay").checked,gsx:$("#s-gsx").checked,});
   if(!r.error){$("#m-settings").classList.remove("show");toast("Settings saved")}
 };
-let geomLast="",geomSent="";
-setInterval(()=>{ // remember where the window is (PC window only), once it has stopped moving
-  if(document.body.classList.contains("remote")||document.hidden)return;
-  const x=Math.round(window.screenX),y=Math.round(window.screenY),w=Math.round(window.outerWidth),h=Math.round(window.outerHeight);
-  if(x<=-30000||y<=-30000||w<400||h<300)return;
-  const g=[x,y,w,h].join(",");
-  if(g===geomLast&&g!==geomSent){geomSent=g;api("window_geom",{x,y,w,h})}
-  geomLast=g;
-},1000);
 let minSent=false;
 setInterval(()=>{ // a minimized Chromium window reports its position as far off screen
   const away=window.screenX<=-30000||window.screenY<=-30000;

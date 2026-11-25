@@ -2840,17 +2840,20 @@ class UIMixin:
 
         return _png_bytes(make_icon(128))
 
-    def saved_window_geometry(self):
-        """[x, y, w, h] from last time, if the window would still be on a screen; otherwise None (centered)."""
+    def saved_window_rect(self):
+        """[left, top, width, height] in real pixels from last time, or None."""
         try:
-            g = [int(v) for v in load_config().get("window_geom") or []]
+            g = [int(v) for v in load_config().get("window_rect") or []]
         except (AppError, TypeError, ValueError):
             return None
-        if len(g) != 4 or g[2] < 400 or g[3] < 300:
-            return None
-        if abs(g[0]) > 30000 or abs(g[1]) > 30000:   # (a window on a screen that has gone is moved onto a visible one by the browser itself)
-            return None
-        return g
+        return g if len(g) == 4 and g[2] >= 400 and g[3] >= 300 else None
+
+    def remember_window_rect(self, rect) -> None:
+        try:
+            if load_config().get("window_rect") != rect:
+                set_config_value("window_rect", [int(v) for v in rect])
+        except (AppError, OSError):
+            log.exception("Could not save the window position")
 
     def window_minimized(self) -> None:
         """'Hide to the tray' on minimize: close the window (the app keeps running; the tray icon opens it again)."""
@@ -3220,13 +3223,6 @@ class UIMixin:
             except (AppError, OSError) as exc:
                 return {"error": str(exc)}
             self.set_status("Settings saved")
-        elif name == "window_geom":   # where the PC window is: reopened there next time
-            try:
-                geom = [int(data[k]) for k in ("x", "y", "w", "h")]
-            except (KeyError, TypeError, ValueError):
-                return {}
-            if geom[2] >= 400 and geom[3] >= 300 and load_config().get("window_geom") != geom:
-                set_config_value("window_geom", geom)
         elif name == "hide_reminder":
             set_config_value("hide_reminder", bool(data.get("hide", True)))
         elif name == "welcomed":
