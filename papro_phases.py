@@ -271,6 +271,7 @@ CRUISE_LEVEL_BAND_FT = 150.0
 CRUISE_MATCH_FT = 300.0
 DESCENT_DROP_FT = 3000.0
 APPROACH_NM = 25.0
+SEED_AT_DESTINATION_NM = 5.0     # opened on the ground within this of the destination airport: landed, taxiing in
 LANDED_KT = 60.0
 GSX_PERFORMING, GSX_COMPLETED = 5, 6
 PARKED_DEBOARD_S = 20.0          # stopped with the engines off this long after landing -> Deboarding, even with no GSX / door signal
@@ -333,7 +334,13 @@ class PhaseTracker:
 
     def seed(self, r: dict) -> None:
         """Opened part way through a flight, so there is no history to work the phase out from: take it from one reading."""
-        if self.rank > 0 or r.get("on_ground"):
+        if r.get("on_ground"):   # no history: on the ground at the destination means we have landed (taxiing in), anywhere else it is the start
+            if self.dist_nm is not None and self.dist_nm <= SEED_AT_DESTINATION_NM and self.rank <= PHASES.index("Taxi out") and not self.flown:
+                self.flown = True
+                self.rank = PHASES.index("Taxi in")
+                self.current = "Taxi in"
+            return
+        if self.rank > 0:
             return
         alt = float(r.get("alt") or 0.0)
         agl = float(r.get("agl") or 0.0)

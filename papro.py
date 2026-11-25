@@ -2848,16 +2848,8 @@ class UIMixin:
             return None
         if len(g) != 4 or g[2] < 400 or g[3] < 300:
             return None
-        if sys.platform.startswith("win"):
-            try:
-                import ctypes
-
-                m = ctypes.windll.user32.GetSystemMetrics
-                left, top, width, height = m(76), m(77), m(78), m(79)   # all screens together
-                if g[0] + 100 > left + width or g[1] + 50 > top + height or g[0] + g[2] - 100 < left or g[1] + 50 < top:
-                    return None
-            except Exception:
-                return None
+        if abs(g[0]) > 30000 or abs(g[1]) > 30000:   # (a window on a screen that has gone is moved onto a visible one by the browser itself)
+            return None
         return g
 
     def window_minimized(self) -> None:
