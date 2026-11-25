@@ -676,9 +676,9 @@ header p{margin:0;color:var(--muted);font-size:12.5px}
 .h-pbar{display:flex;gap:3px;margin-top:6px}.h-pbar i{flex:1;height:4px;border-radius:2px;background:rgba(160,166,178,.22)}.h-pbar i.done{background:rgba(61,220,151,.45)}.h-pbar i.now{background:var(--ok);box-shadow:0 0 6px rgba(61,220,151,.6)}
 .h-signs{display:flex;gap:10px;margin-top:12px}.h-sign{width:160px;height:64px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:#dedad0;border:1px solid rgba(0,0,0,.22);box-shadow:inset 0 1px 3px rgba(0,0,0,.2);transition:all .25s}
 .h-sign .belt{width:140px;height:auto}.h-sign .cig{height:46px;width:auto}
-.h-sign .a{fill:#8f9298}.h-sign .e{fill:#a9acb2}.h-sign .r{fill:#8e7076}.h-sign .as{stroke:#8f9298}.h-sign .rs{stroke:#8e7076}
+.h-sign .a{fill:#8f9298}.h-sign .e{fill:#a9acb2}.h-sign .r{fill:#8e7076}.h-sign .as{stroke:#a9acb2}.h-sign .rs{stroke:#8e7076}
 .h-sign.lit{background:linear-gradient(#4a5565,#343c4a);border-color:rgba(0,0,0,.5);box-shadow:inset 0 1px 3px rgba(0,0,0,.5),0 0 14px rgba(255,170,40,.35)}.h-sign.lit svg{filter:drop-shadow(0 0 4px rgba(255,150,30,.85))}
-.h-sign.lit .a{fill:#ffc030}.h-sign.lit .e{fill:#fff0b0}.h-sign.lit .r{fill:#ff2f1f}.h-sign.lit .as{stroke:#ff9a45}.h-sign.lit .rs{stroke:#ff2a3c}
+.h-sign.lit .a{fill:#ffc030}.h-sign.lit .e{fill:#fff0b0}.h-sign.lit .r{fill:#ff2f1f}.h-sign.lit .as{stroke:#fff0b0}.h-sign.lit .rs{stroke:#ff2a3c}
 .h-ac.wait{background:rgba(160,160,170,.14);color:var(--muted)}.h-ac.wait i{animation:hacpulse 1.4s ease-in-out infinite}@keyframes hacpulse{50%{opacity:.25}}.h-ac.ok{background:rgba(61,220,151,.14);color:var(--ok)}.h-ac.warn{background:rgba(255,180,84,.15);color:var(--warn)}
 .h-dest{font-size:15px;color:var(--muted);margin-top:4px}.h-dest b{color:var(--text);font-weight:600}.h-dest b.h-orig{color:var(--muted)}.h-arrow{color:var(--magenta);font-weight:700;white-space:pre}
 .h-nopack{font-size:15px;color:var(--muted);line-height:1.4}.h-nopack a{color:var(--text);font-weight:600;text-decoration:underline}
