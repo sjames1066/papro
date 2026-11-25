@@ -4013,7 +4013,7 @@ class TrayApp(UIMixin):
         if info:
             log.info("Aircraft: %s (%s)", info["title"], "PAs supported" if info["supported"] else "PAPro plays the PAs itself")
         try:
-            _PLAYBACK["on"] = bool(info and not info["supported"] and load_config().get("pa_playback", True))
+            _PLAYBACK["on"] = bool(info and not info["supported"])
         except AppError:
             _PLAYBACK["on"] = False
         if _PLAYBACK["on"] != before:   # build the PAs where they are needed (the Fenix folder / PAPro's own playback folder)
