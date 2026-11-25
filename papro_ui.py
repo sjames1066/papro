@@ -906,13 +906,11 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
   </footer>
   </div>
   <div id="view-dl" style="display:none">
-    <div class="section-head"><h2>Pack Manager</h2><span style="margin-left:auto;display:flex;gap:10px"><button class="ghost" id="refresh">Refresh list</button><button class="ghost" id="import-btn">Import a pack</button></span></div>
+    <div class="section-head"><h2>Pack Manager</h2><input type="search" id="packq" placeholder="Search packs" autocomplete="off" style="margin-left:14px;width:200px;font:500 13px 'Inter',sans-serif"><span style="margin-left:auto;display:flex;gap:10px"><button class="ghost" id="refresh">Refresh list</button><button class="ghost" id="import-btn">Import a pack</button></span></div>
   <div class="section-head fold" id="packhead" role="button" tabindex="0" aria-expanded="true"><i class="chev">&#9662;</i><h2>Installed airline packs</h2><span id="packsub"></span></div>
   <div class="packs" id="packs"></div>
-    <div class="section-head fold" id="dlhead" role="button" tabindex="0" aria-expanded="true" style="margin-top:32px"><i class="chev">&#9662;</i><h2>Download packs</h2><span id="dlsub"></span></div>
+    <div class="section-head fold" id="dlhead" role="button" tabindex="0" aria-expanded="true" style="margin-top:32px"><i class="chev">&#9662;</i><h2>Community packs</h2><span id="dlsub"></span></div>
     <div class="packs" id="dlpacks"></div>
-    <div class="section-head fold" id="chead" role="button" tabindex="0" aria-expanded="true" style="margin-top:32px"><i class="chev">&#9662;</i><h2>Community packs</h2><span id="csub"></span></div>
-    <div class="packs" id="cpacks"></div>
   </div>
   <div id="view-test" style="display:none">
     <div class="section-head"><h2>Test your packs</h2><span id="t-sub">Builds the full set of PAs for a flight in a scratch folder, so nothing in the sim changes.</span></div>
@@ -1260,17 +1258,19 @@ function renderPackList(boxId,list,emptyText){
     if(f!==null&&f!==undefined){pp.textContent=Math.round(f*100)+"%";pb.firstChild.style.width=(f*100)+"%"}else pp.textContent="";
   });
 }
-[["#packhead","#packs","packsShut"],["#dlhead","#dlpacks","dlShut"],["#chead","#cpacks","cShut"]].forEach(([hs,ps,key])=>{const h=$(hs),p=$(ps);let shut=false;try{shut=localStorage.getItem(key)==="1"}catch(e){}
+[["#packhead","#packs","packsShut"],["#dlhead","#dlpacks","dlShut"]].forEach(([hs,ps,key])=>{const h=$(hs),p=$(ps);let shut=false;try{shut=localStorage.getItem(key)==="1"}catch(e){}
   const set=s=>{shut=s;h.classList.toggle("shut",s);p.classList.toggle("shut",s);h.setAttribute("aria-expanded",!s);try{localStorage.setItem(key,s?"1":"0")}catch(e){}};
   h.onclick=()=>set(!shut);h.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();set(!shut)}};set(shut)});
 function renderPacks(){
-  const mine=snap.packs.filter(p=>p.installed&&!p.catalog), more=snap.packs.filter(p=>!p.community&&(p.catalog||!p.installed)), crowd=snap.packs.filter(p=>p.community);
-  renderPackList("packs",mine,"No airline packs installed yet. Open the Pack Manager tab to get one.");
-  renderPackList("dlpacks",more,snap.catalog_error||(snap.packs.length?"Every available pack is installed.":"No airline packs are available to download yet. You can still use Import a pack."));
-  renderPackList("cpacks",crowd,"No community packs yet.");$("#csub").textContent=crowd.length?crowd.length+" available":"";
-  $("#packsub").textContent=mine.length?mine.length+" installed":"";
-  $("#dlsub").textContent=more.length?more.length+" available":"";
+  const q=(($("#packq")||{}).value||"").trim().toLowerCase(), hit=p=>!q||[p.name,p.icao,p.author,(p.voices||[]).join(" ")].join(" ").toLowerCase().includes(q);
+  const mine0=snap.packs.filter(p=>p.installed&&!p.catalog), more0=snap.packs.filter(p=>p.community||p.catalog||!p.installed);
+  const mine=mine0.filter(hit), more=more0.filter(hit);
+  renderPackList("packs",mine,q?"No installed pack matches.":"No airline packs installed yet. Open the Pack Manager tab to get one.");
+  renderPackList("dlpacks",more,q?"No pack matches.":snap.catalog_error||"No packs are available yet. You can still use Import a pack.");
+  $("#packsub").textContent=mine0.length?(q?mine.length+" of ":"")+mine0.length+" installed":"";
+  $("#dlsub").textContent=more0.length?(q?more.length+" of ":"")+more0.length+" available":"";
 }
+if($("#packq"))$("#packq").oninput=()=>{if(snap&&snap.packs)renderPacks()};
 let manageIcao=null;
 function openManage(icao){manageIcao=icao;$("#mg-msg").textContent="";renderManage();$("#m-manage").classList.add("show")}
 function renderManage(){
