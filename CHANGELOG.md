@@ -5,7 +5,10 @@ FCAC is now **PAPro**. Fenix A320 still gets its PAs by file swap; other aircraf
 ## 1.1.3
 ### New
 - **Community packs.** Pack Manager has a Community list of packs made by other users. Share your own from Pack Studio (Share with the community): the airline, code, character name and voice artist come from Voice details, and you only fill in what is empty and agree that the files are your own work. New packs are reviewed before they appear. Updates to a pack you already had approved go live straight away.
+- **Sample.** Community packs have a Sample button that plays 10 seconds of the pack's After Landing PA, built with its first airport and a local time of 3:45 PM.
 - **Ratings.** Rate community packs out of 5 stars; the average shows beside the pack name.
+- **After Landing parts.** New packs build After Landing from Part 1, Airport, Part 2, Time and Part 3, and more parts can be added.
+- **Pack Studio buttons.** Delete (with a red confirm), Open project folder, Upload to Community, Save, Export.
 - **Author key.** Settings, Advanced: copy your author key as a backup and restore it on a new PC, or use a transfer code from the reviewer to move a pack to a new PC.
 - **Pack Manager.** Your installed packs and the Community list are on one tab, both collapsible, with a search box. The tab now comes before Pack Studio.
 - **PAPro's own window.** No more Edge window: PAPro opens in its own window with its own taskbar icon and remembers where you left it. (Needs Microsoft WebView2, built into Windows 11; otherwise the browser window is used.)
