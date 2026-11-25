@@ -26,7 +26,7 @@ DESCENT_VS_FPM = -700.0
 DESCENT_BELOW_MAX_FT = 3000.0 # this far below the highest altitude of the flight
 LANDING_PREP_AGL_FT = 10000.0 # descending through this: cabin crew take your seats for landing
 SEATBELT_ON_COOLDOWN_S = 600
-DEBOARD_AFTER_S = 20          # parked after landing for this long -> doors / deboarding
+DEBOARD_AFTER_S = 5           # parked after landing for this long -> doors / deboarding
 DEBOARD_COMPLETE_AFTER_S = 120
 
 
