@@ -520,6 +520,7 @@ header p{margin:0;color:var(--muted);font-size:12.5px}
 .knobbox .kpa{text-shadow:0 0 6px rgba(255,214,110,.6),0 0 16px rgba(255,170,40,.45);font-size:21px;font-weight:700;letter-spacing:.16em;color:#f2f2f4;line-height:1;margin-top:4px;transition:color .2s,opacity .2s}
 .knobbox:has(.knob:not(.on)) .kpa{color:#7b7d88;text-shadow:none}
 .knobbox .kv{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums;color:#e8e8ec}.h-ptop b.detect{color:var(--faint);font-weight:500;animation:pulse 1.2s ease-in-out infinite}@keyframes pulse{50%{opacity:.35}}
+.knobbox .kbtn{min-height:38px;margin-top:6px;display:flex;align-items:center}
 .knobbox .kst{font-size:12px;color:#8e909c;min-height:15px}
 @media(max-width:760px){.herorow{flex-direction:column}.knobbox{width:auto;flex-direction:row;gap:16px}}
 .hero.ok{border-color:rgba(80,200,140,.65);background:linear-gradient(rgba(80,200,140,.10),rgba(80,200,140,.04));box-shadow:0 0 0 1px rgba(80,200,140,.25),0 8px 30px rgba(80,200,140,.10)}
@@ -757,7 +758,7 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
       <div class="knob on" id="knob" tabindex="0" role="slider" aria-label="PA volume" aria-valuemin="0" aria-valuemax="100" title="Click the middle to mute / unmute. Click the left or right side, or scroll, to change the volume.">
         <svg class="kscale" viewBox="0 0 140 140" id="kscale"></svg>
         <div class="kcap"><div class="kptr" id="kptr"></div><i class="kl">&#8249;</i><i class="kr">&#8250;</i></div></div>
-      <div class="kpa" id="kpa">PA</div><div class="kv" id="kvol">70%</div><div class="kst" id="kst"></div><button class="ghost" id="kskip" style="margin-top:6px;visibility:hidden" disabled>Skip PA</button></aside></div>
+      <div class="kpa" id="kpa">PA</div><div class="kv" id="kvol">70%</div><div class="kst" id="kst"></div><div class="kbtn"><button class="ghost" id="kskip" style="display:none">Skip PA</button><button class="ghost" id="kreplay" style="display:none">Replay last PA</button></div></aside></div>
   <div class="keepopen slim" id="keep-note"><button class="keepx" id="keep-x" title="Close this reminder" aria-label="Close this reminder">&times;</button><b>Keep PAPro running during your flight</b><span>It builds the landing announcement with the real local time once you have landed. Leave it in the tray until you have parked.</span>
     <label class="keepno"><input type="checkbox" id="keep-never"> Don't remind me again</label></div>
 
@@ -1019,7 +1020,8 @@ function knobSet(p){window.knobLocal={...(window.knobLocal||(snap.settings&&snap
   kn.onkeydown=e=>{const c=cur();if(e.key==="ArrowLeft"||e.key==="ArrowDown"){e.preventDefault();knobSet({volume:Math.max(0,c.volume-5)})}
     else if(e.key==="ArrowRight"||e.key==="ArrowUp"){e.preventDefault();knobSet({volume:Math.min(100,c.volume+5)})}else if(e.key===" "||e.key==="Enter"){e.preventDefault();knobSet({on:!c.on})}}})();
 $("#kskip").onclick=async()=>{await api("skip_pa",{});toast("Skipped")};
-function renderKnob(){const sk=$("#kskip");if(sk){const on=!!(snap&&snap.settings&&snap.settings.pa_playing);sk.disabled=!on;sk.style.visibility=on?"visible":"hidden"}const box=$("#knobbox"),show=!!(snap&&snap.aircraft&&!snap.aircraft.supported);box.style.display=show?"":"none";if(show&&!knobSave)paintKnob()}
+$("#kreplay").onclick=()=>api("replay_pa",{});
+function renderKnob(){const sk=$("#kskip");if(sk){const st=snap&&snap.settings||{},on=!!st.pa_playing;sk.style.display=on?"":"none";const rp=$("#kreplay");if(rp)rp.style.display=(!on&&st.pa_last)?"":"none"}const box=$("#knobbox"),show=!!(snap&&snap.aircraft&&!snap.aircraft.supported);box.style.display=show?"":"none";if(show&&!knobSave)paintKnob()}
 function renderHero(){
   const sig=JSON.stringify([snap.setup_needed,snap.company,snap.voices,snap.flight,snap.message,snap.applied,snap.updated,snap.busy,snap.logo_v,(snap.packs||[]).filter(p=>p.installed).length,snap.aircraft,snap.phase]);
   if(sig===heroSig) return; heroSig=sig;

@@ -179,7 +179,10 @@ class Player:
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
 
+    last: Path | None = None   # the last announcement queued (for the Replay button)
+
     def play(self, path: Path) -> None:
+        self.last = Path(path)
         self.q.put(Path(path))
 
     def play_data(self, name: str, data: np.ndarray, rate: int) -> None:

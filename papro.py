@@ -2722,6 +2722,7 @@ class UIMixin:
                 "lan": {"on": True, "addresses": [f"http://{ip}:{self.ui.httpd.server_address[1]}/" for ip in self.ui.private_ips()] if getattr(self.ui, "httpd", None) and self.ui.lan_on else []},
                 "gsx": bool(cfg.get("gsx_integration", True)),
                 "audio": {"device": str(cfg.get("pa_output_device") or ""), "playback": bool(cfg.get("pa_playback", True))},
+                "pa_last": bool(getattr(getattr(self, "player", None), "last", None)),
                 "pa_playing": bool(getattr(self, "player", None) is not None and not self.player.idle()),
                 "pa_knob": {"on": bool(cfg.get("pa_knob_on", True)), "volume": max(0, min(100, int(cfg.get("pa_knob_volume", 70))))},
                 "join_style": "pauses" if cfg.get("join_style") == "pauses" else "flow",
@@ -3146,6 +3147,10 @@ class UIMixin:
             save_state(state)
             self.set_status(f"{alias} {'now uses ' + aliases[alias] + ' recordings' if name == 'alias_add' else 'alias removed'}")
             self.wake.set()
+        elif name == "replay_pa":   # the Replay button: the last announcement again
+            player = getattr(self, "player", None)
+            if player is not None and getattr(player, "last", None):
+                player.play(player.last)
         elif name == "skip_pa":   # the Skip button: cut the announcement in progress and drop the ones queued behind it
             player = getattr(self, "player", None)
             if player is not None:
@@ -4261,7 +4266,11 @@ class TrayApp(UIMixin):
             state.pop("crew_pick", None)
             save_state(state)
             return
-        with self.lock:  # wait for any update in progress
+        log.info("Landed: building the landing PA")
+        got = self.lock.acquire(timeout=15)   # an update in progress gets a moment to finish, but never holds the landing PA up
+        if not got:
+            log.warning("An update was still running - building the landing PA anyway")
+        try:
             try:
                 self.set_status(rebuild_landing(load_config(), clock, getattr(self, "touchdown_pos", None), ask=False), notify=True)
             except AppError as exc:
@@ -4269,7 +4278,11 @@ class TrayApp(UIMixin):
             except Exception as exc:
                 log.exception("Landing PA error")
                 self.set_status(f"Error: {exc}", notify=True)
+        finally:
+            if got:
+                self.lock.release()
             if _PLAYBACK["on"] and getattr(self, "phases", None):
+                log.info("Landed: the After Landing PA is due")
                 self.phases.landed_event(time.time())
 
     def toggle_auto(self) -> None:
