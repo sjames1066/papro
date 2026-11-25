@@ -778,6 +778,8 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
 .star{cursor:pointer;font-size:16px;line-height:1;color:var(--faint);padding:0 1px}
 .star.on{color:#e9a31b}.star.on.mine{color:#f5b92e}
 .star:hover{color:#f5b92e}
+html,body,*{scrollbar-width:none}
+*::-webkit-scrollbar{display:none;width:0;height:0}
 .setting{margin-bottom:18px}
 .setting .label{margin-bottom:8px}
 .radios{display:grid;gap:8px}
