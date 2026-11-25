@@ -809,6 +809,28 @@ def make_sample(pack_folder: Path, out: Path, project: dict | None = None, secon
         if project is not None and not project.get("landing_off"):
             order = papro_studio.landing_order(project)
         lead = part_file(pack_folder, "WelcomeTo")
+        if airports and (lead or order) and order:   # a part that is not recorded yet is left out of the sample, not a reason to give up
+            def there(item: str) -> bool:
+                if item.startswith("part:") and item[5:].isdigit():
+                    n = int(item[5:])
+                    return bool(modular_piece(pack_folder, "Landing") if n == 1 else _find_piece(pack_folder, [f"Modular_LandingPart{n}"], (MAIN_FOLDER,)))
+                return item != "base" or any((pack_folder / "crew").glob("Base_*.ogg"))
+            order = [i for i in order if there(i)]
+
+            def length_of(item: str) -> float:
+                piece = modular_piece(pack_folder, "Landing") if item == "part:1" else _find_piece(pack_folder, [f"Modular_LandingPart{item[5:]}"], (MAIN_FOLDER,))
+                try:
+                    clip_data, clip_rate = papro_audio._read(piece)
+                    return len(clip_data) / clip_rate
+                except Exception:
+                    return 0.0
+            if "airport" in order:   # a long first part would eat the whole ten seconds: let the airport and the time come first
+                at = order.index("airport")
+                long_lead = [i for i in order[:at] if i.startswith("part:") and length_of(i) > 5.0]
+                if long_lead:
+                    rest = [i for i in order if i not in long_lead]
+                    after = rest.index("time") + 1 if "time" in rest else rest.index("airport") + 1
+                    order = rest[:after] + long_lead + rest[after:]
         if airports and (lead or order):
             pieces, _note = landing_pieces(pack_folder, airports[0], "15:45", project is None or project.get("local_time") is not False,
                                            lead, order, next(iter(sorted((pack_folder / "crew").glob("Base_*.ogg"))), None) if order and "base" in order else None)
