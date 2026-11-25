@@ -188,7 +188,7 @@ class SimWatcher:
             "beacon": g("LIGHT_BEACON", "LIGHT_BEACON_ON"),
             "landing_light": g("LIGHT_LANDING", "LIGHT_LANDING_ON"),
             "seatbelt": self._seatbelt(requests, g),
-            "no_smoking": g("CABIN_NO_SMOKING_ALERT_SWITCH"),   # 0 = off, 1 = on, 2 = auto (None: the aircraft does not report it)
+            "no_smoking": self._no_smoking(requests, g),   # 0 = off, 1 = on, 2 = auto (None: the aircraft does not report it)
             "eng_running": any(known) if known else None,
             "fmgc_phase": self._lvar(requests, "L:A32NX_FMGC_FLIGHT_PHASE"),
             "lat": g("PLANE_LATITUDE"), "lon": g("PLANE_LONGITUDE"),
@@ -200,7 +200,10 @@ class SimWatcher:
 
     IFLY_SEATBELT_LVAR = "L:VC_Fasten_Belts_SW_VAL"   # iFly 737 MAX overhead switch: 0 = OFF, 10 = AUTO, 20 = ON (it does not set the standard variable)
 
-    FSL_SEATBELT_LVAR = "L:VC_OVHD_SIGNS_SEATBELTS_SWITCH"   # FSLabs A32X overhead switch (part id from the behaviours debugger): 0 = OFF, 20 = ON
+    # FSLabs A32X overhead switches (0 = OFF, 10 = AUTO, 20 = ON). The no-smoking name is read off the aircraft in the behaviours
+    # debugger; the seatbelt one follows the same pattern (both spellings are tried).
+    FSL_SEATBELT_LVARS = ("L:VC_OVHD_SIGNS_Seatbelts_Switch", "L:VC_OVHD_SIGNS_SEATBELTS_SWITCH")
+    FSL_NOSMOKING_LVAR = "L:VC_OVHD_SIGNS_NoSmoking_Switch"
 
     def _seatbelt(self, requests, g):
         """The seatbelt sign: PMDG 737's selector, the iFly 737 MAX's own switch, any L: variables named in config.json
@@ -208,7 +211,7 @@ class SimWatcher:
         value = self._pmdg_seatbelt()
         if value is not None:
             return value
-        names = [self.IFLY_SEATBELT_LVAR, self.FSL_SEATBELT_LVAR]
+        names = [self.IFLY_SEATBELT_LVAR, *self.FSL_SEATBELT_LVARS]
         try:
             names += [str(n) for n in (self.seatbelt_lvars() if self.seatbelt_lvars else []) if str(n).strip()]
         except Exception:
@@ -220,8 +223,19 @@ class SimWatcher:
                 if seen.get(name) != raw:   # log changes, so a wrong variable name or scale shows in the log
                     log.info("Seatbelt switch %s = %s", name, raw)
                     seen[name] = raw
-                return float(raw) >= (15 if name in (self.IFLY_SEATBELT_LVAR, self.FSL_SEATBELT_LVAR) else 0.5)   # 0 = OFF, 10 = AUTO, 20 = ON
+                return float(raw) >= (15 if name == self.IFLY_SEATBELT_LVAR or name in self.FSL_SEATBELT_LVARS else 0.5)   # 0 = OFF, 10 = AUTO, 20 = ON
         return g("CABIN_SEATBELTS_ALERT_SWITCH")
+
+    def _no_smoking(self, requests, g):
+        """The no-smoking sign: the FSLabs switch (20 = ON, 10 = AUTO, which is still lit, 0 = OFF), else the standard variable."""
+        raw = self._lvar(requests, self.FSL_NOSMOKING_LVAR)
+        if raw is not None:
+            seen = self.__dict__.setdefault("_sb_seen", {})
+            if seen.get("ns") != raw:
+                log.info("No-smoking switch %s = %s", self.FSL_NOSMOKING_LVAR, raw)
+                seen["ns"] = raw
+            return float(raw) >= 5
+        return g("CABIN_NO_SMOKING_ALERT_SWITCH")
 
     def _doors_open(self, requests):
         """True when any exit reports open; None if the aircraft reports none of them."""
