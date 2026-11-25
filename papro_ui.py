@@ -1104,11 +1104,11 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
   <div class="row"><button id="q-close">Close</button><button class="primary" id="q-open">Open Audio settings</button></div>
 </div></div>
 <div class="modal" id="m-share"><div class="dialog">
-  <h3>Share with the community</h3>
+  <h3>Upload to Community</h3>
   <div id="sh-fields"></div>
   <label class="check" style="margin:12px 0 0"><input type="checkbox" id="sh-rights"> I agree these files are my own work and I'm happy to share them to the community</label>
   <div class="small" id="sh-msg" style="margin-top:10px;min-height:18px"></div>
-  <div class="row"><button class="ghost" id="sh-cancel">Cancel</button><button class="primary" id="sh-go">Share</button></div>
+  <div class="row"><button class="ghost" id="sh-cancel">Cancel</button><button class="primary" id="sh-go">Upload</button></div>
 </div></div>
 <div class="modal" id="m-job"><div class="dialog"><h3 id="job-t">Working...</h3><p id="job-s">Please wait - this can take a moment.</p><div class="ptrack"><i id="job-bar"></i></div></div></div>
 <div class="toast" id="toast"></div>
@@ -2152,15 +2152,16 @@ function renderStudio(){
     else{master(c,true);if(c.secondary)master(c.secondary,false)}
   }
   const bar2=el("div","sdbar");
-  const dis=el("button","ghost danger",c.in_library?"Remove from packs in progress":"Abandon this pack");dis.title=c.in_library?"Removes this working copy only. The pack in your Airlines library stays.":"Deletes this project's recordings and details. Your Airlines library is not touched.";
-  dis.onclick=()=>confirmDiscard(c);
+  const dis=el("button","ghost danger","Delete");dis.title="Deletes this project's recordings and details"+(c.in_library?". The pack in your Airlines library is kept.":".");
+  let disArm=null;dis.onclick=async()=>{if(!dis.classList.contains("arm")){dis.classList.add("arm");dis.textContent="Confirm delete";disArm=setTimeout(()=>{dis.classList.remove("arm");dis.textContent="Delete"},4000);return}
+    clearTimeout(disArm);const r=await studio("discard",{icao:c.icao,voice:c.voice});if(r.ok)toast("Deleted")};
   const fol=el("button","ghost","Open project folder");fol.onclick=()=>api("studio_folder",pid(c));
   const saveSig=JSON.stringify([c.icao,c.voice,c.rows.map(r=>r.id+(r.done?1:0)+(r.skipped?"s":"")+(r.seconds||"")),c.crew,c.landing_order,c.landing_off,c.boarding_order,c.boarding_off,c.descent_order,c.descent_city,c.time_period,c.airports,c.extras,c.service_types]);
   const use=el("button","save"+(savedSig===saveSig?" done":""),"Save");use.title=c.origin?"Save your changes to your library so PAPro and the Test tab use them":"Add this pack to your library as a voice for "+c.icao+" so PAPro and the Test tab use it";
   use.onclick=async()=>{const r=await studio("install",pid(c));if(r.ok){savedSig=saveSig;use.classList.add("done");toast(r.finished?"Saved to your library":"Added to your library as a voice for "+c.icao)}};
-  const ex=el("button","primary","Export pack zip");ex.onclick=async()=>{const r=await studio("export",pid(c));if(r.ok)toast("Exported - release tag: "+(r.tag||"")+" (the folder is open)",9000)};
-  const sh=el("button","ghost","Share with the community");sh.onclick=()=>openShare(c);
-  bar2.append(dis,fol,use,ex,sh);root.append(bar2);syncPlayer();
+  const ex=el("button","ghost","Export pack");ex.onclick=async()=>{const r=await studio("export",pid(c));if(r.ok)toast("Exported - release tag: "+(r.tag||"")+" (the folder is open)",9000)};
+  const sh=el("button","primary","Upload to Community");sh.onclick=()=>openShare(c);
+  bar2.append(dis,sh,fol,use,ex);root.append(bar2);syncPlayer();
 }
 
 let shareCard=null;
