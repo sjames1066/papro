@@ -1055,6 +1055,7 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
     </div>
     <label class="check" id="s-quit-row" style="margin:12px 0 0"><input type="checkbox" id="s-quit"> Close PAPro when MSFS closes</label>
   </div>
+  <details class="grp pc-only" style="margin-bottom:18px"><summary>Advanced</summary><div style="margin-top:12px">
   <div class="setting pc-only"><div class="label">PAPro's web address</div>
     <div class="small" style="margin-bottom:10px">PAPro also runs as a local web page. This address is always the same, so another app (such as EFBx.io) can open it as an internal app. It only works on this PC while PAPro is running.</div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><input type="text" id="s-addr" readonly style="flex:1;min-width:220px;font:600 12px 'Inter',sans-serif" onclick="this.select()"><button class="ghost" id="s-addr-copy">Copy</button><button class="ghost" data-open="browser">Open in browser</button></div>
@@ -1064,6 +1065,7 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
   <div class="setting pc-only"><div class="label">Fenix packs folder and log</div>
     <div style="display:flex;align-items:center;gap:12px"><button class="ghost" data-open="fenix">Open folder</button><span class="small">Where PAPro puts your announcements for the Fenix.</span></div>
     <div style="display:flex;align-items:center;gap:12px;margin-top:10px"><button class="ghost" data-open="log">View log</button><span class="small">Useful if something is not working.</span></div></div>
+  </div></details>
   <div class="row"><button class="ghost" id="s-cancel">Cancel</button><button class="primary" id="s-save">Save</button></div>
 </div></div>
 
