@@ -89,6 +89,8 @@ class PhaseEngine:
             self.done.update(before + takeoff + ("seatbelt_off", "cabin_service", "descent", "landing_seats", "landing_dim",
                                                  "landing_secured", "after_landing"))
             self.flown = self.landed = True
+            if gs < 1.0 and r.get("eng_running") is not True:   # already parked: all of it is over, say nothing
+                self.done.update(("disarm_doors", "deboard_start", "deboard_complete"))
         elif gs >= SAFETY_SPEED_KT or phase in ("Pushback", "Taxi out"):
             self.done.update(before)    # already moving: the boarding PAs are over
         # Opened part way through: say the announcement for the closest phase (just that one), not the ones already behind you
@@ -106,7 +108,7 @@ class PhaseEngine:
             else:
                 closest = ()
         elif phase in ("Taxi in", "Deboarding"):
-            closest = ("after_landing",)
+            closest = () if "deboard_complete" in self.done else ("after_landing",)
         elif phase == "Pushback":
             closest = ("boarding_complete",)
         elif gs >= SAFETY_SPEED_KT or phase == "Taxi out":
@@ -343,8 +345,9 @@ class PhaseTracker:
         if r.get("on_ground"):   # no history: on the ground at the destination means we have landed (taxiing in), anywhere else it is the start
             if self.dist_nm is not None and self.dist_nm <= SEED_AT_DESTINATION_NM and self.rank <= PHASES.index("Taxi out") and not self.flown:
                 self.flown = True
-                self.rank = PHASES.index("Taxi in")
-                self.current = "Taxi in"
+                parked = float(r.get("gs") or 0.0) < 1.0 and r.get("eng_running") is not True
+                self.rank = PHASES.index("Deboarding" if parked else "Taxi in")
+                self.current = "Deboarding" if parked else "Taxi in"
             return
         if self.rank > 0:
             return
