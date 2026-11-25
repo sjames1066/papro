@@ -2524,7 +2524,7 @@ FSL_MAP = {
     "SECURE_FOR_TAKEOFF": "takeoff_seats", "LIGHTS_DIM": "takeoff_dim", "READY_TAKEOFF": "takeoff_secured",
     "AFTER_TAKEOFF": "after_takeoff", "AFTER_TAKEOFF_MORNING": "after_takeoff", "AFTER_TAKEOFF_AFTERNOON": "after_takeoff",
     "AFTER_TAKEOFF_EVENING": "after_takeoff", "SHOP": "cabin_service", "BRIEFING": "pre_safety", "BRIEFING_MORNING": "pre_safety",
-    "BRIEFING_AFTERNOON": "pre_safety", "BRIEFING_EVENING": "pre_safety", "SEATBELTS": "descent", "TURB": "seatbelt_on", "DISEMBARK": "deboard_start",
+    "BRIEFING_AFTERNOON": "pre_safety", "BRIEFING_EVENING": "pre_safety", "SEATBELTS": "descent", "TURB": "seatbelt_on", "DISEMBARK": "deboard_start", "BOARDING_MUSIC": "music",
     "SECURE_FOR_LANDING": "landing_seats", "READY_LANDING": "landing_secured", "AFTER_LANDING": "after_landing",
 }
 
@@ -2563,7 +2563,11 @@ def export_fslabs(cfg: dict, code: str, only_keys: set[str] | None = None) -> st
         target = cabin / f"FSL_A320X_CABIN_PA_{name}.ogg"
         if not target.is_file():
             continue
-        if key == "welcome_fuel":
+        if key == "music":   # the pack's boarding music (one of its tracks at random when there are several)
+            from papro_play import music_file
+
+            source = music_file(PLAYBACK_DIR)
+        elif key == "welcome_fuel":
             fuel = sorted(PLAYBACK_DIR.glob("BoardingWelcome*efueling*.ogg"))
             tagged = [f for f in fuel if clock_tag() in f.stem.lower()]
             source = (tagged or fuel or [resolve(PLAYBACK_DIR, "welcome", clock_tag())])[0]
