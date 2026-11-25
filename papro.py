@@ -725,7 +725,7 @@ def load_catalog(cfg: dict) -> list[dict]:
     return _parse_packs(data, url)
 
 
-COMMUNITY_URL = "https://raw.githubusercontent.com/sjames1066/papro-community/main/index.json"
+COMMUNITY_URL = "https://papro-community.sjames1066.workers.dev/index.json"
 
 
 def load_community(cfg: dict) -> list[dict]:
