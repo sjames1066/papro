@@ -200,13 +200,15 @@ class SimWatcher:
 
     IFLY_SEATBELT_LVAR = "L:VC_Fasten_Belts_SW_VAL"   # iFly 737 MAX overhead switch: 0 = OFF, 10 = AUTO, 20 = ON (it does not set the standard variable)
 
+    FSL_SEATBELT_LVAR = "L:VC_OVHD_SIGNS_SEATBELTS_SWITCH"   # FSLabs A32X overhead switch (part id from the behaviours debugger): 0 = OFF, 20 = ON
+
     def _seatbelt(self, requests, g):
         """The seatbelt sign: PMDG 737's selector, the iFly 737 MAX's own switch, any L: variables named in config.json
         (seatbelt_lvars), then the standard sim variable. True / False, or None when nothing reports it."""
         value = self._pmdg_seatbelt()
         if value is not None:
             return value
-        names = [self.IFLY_SEATBELT_LVAR]
+        names = [self.IFLY_SEATBELT_LVAR, self.FSL_SEATBELT_LVAR]
         try:
             names += [str(n) for n in (self.seatbelt_lvars() if self.seatbelt_lvars else []) if str(n).strip()]
         except Exception:
@@ -214,7 +216,11 @@ class SimWatcher:
         for name in names:
             raw = self._lvar(requests, name if name.startswith("L:") else f"L:{name}")
             if raw is not None:
-                return float(raw) >= (15 if name == self.IFLY_SEATBELT_LVAR else 0.5)   # iFly: AUTO (10) is not "on"
+                seen = self.__dict__.setdefault("_sb_seen", {})
+                if seen.get(name) != raw:   # log changes, so a wrong variable name or scale shows in the log
+                    log.info("Seatbelt switch %s = %s", name, raw)
+                    seen[name] = raw
+                return float(raw) >= (15 if name in (self.IFLY_SEATBELT_LVAR, self.FSL_SEATBELT_LVAR) else 0.5)   # 0 = OFF, 10 = AUTO, 20 = ON
         return g("CABIN_SEATBELTS_ALERT_SWITCH")
 
     def _doors_open(self, requests):
