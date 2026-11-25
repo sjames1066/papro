@@ -2719,7 +2719,8 @@ class UIMixin:
                           "rating": entry.get("rating", 0), "votes": entry.get("votes", 0), "my_rating": int(load_config().get("my_ratings", {}).get(entry["id"], 0) or 0),
                           "name": entry["name"], "version": entry["version"], "author": entry.get("author", ""), "license": entry.get("license", ""),
                           "voices": [v["name"] for v in entry.get("voices", [])] or ([entry["voice"]] if entry.get("voice") else []),
-                          "size_mb": round(entry["size"] / 1048576) if entry.get("size") else 0, "installed": False, "update": False,
+                          "size_mb": round(entry["size"] / 1048576) if entry.get("size") else 0, "installed": have_entry(entry) is not None,
+                          "update": have_entry(entry) not in (None, entry["version"]),
                           "task": self.tasks.get(entry["id"])})
         for key, task in list(self.tasks.items()):   # a pack being imported that is not in the catalog yet
             if key not in {p["key"] for p in packs} and key not in codes and "dl-" + key not in {p["key"] for p in packs}:

@@ -93,7 +93,7 @@ async function notify(env, rec) {
       headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, "content-type": "application/json" },
       body: JSON.stringify({
         from: env.NOTIFY_FROM || "PAPro <onboarding@resend.dev>", to: [env.NOTIFY_EMAIL],
-        subject: `New PAPro community pack: ${rec.name} (${rec.icao})`,
+        subject: `${rec.updated ? "Updated" : "New"} PAPro community pack: ${rec.name} (${rec.icao})`,
         html: `<p><b>${esc(rec.name)}</b> (${esc(rec.icao)}) - voice ${esc(rec.voice)}, v${esc(rec.version)}<br>By ${esc(rec.author)}<br>${rec.files} recordings, ${(rec.size / 1048576).toFixed(1)} MB</p>` +
           (rec.note ? `<p>"${esc(rec.note)}"</p>` : "") + `<p><a href="${env.PUBLIC_URL}/admin">Open the review page</a> (add ?token=your password)</p>`,
       }),
@@ -117,18 +117,20 @@ async function submit(req, env, ctx) {
   const id = slug(`${icao}-${meta.voice || meta.author || "pack"}`);
   const prior = await env.PACKS.get(`meta/${id}.json`);
   const authorHash = await sha256(new TextEncoder().encode(authorKey));
-  if (prior && (await prior.json()).author_hash !== authorHash) return json({ error: "a pack with this name already exists" }, 409);
+  const before = prior ? await prior.json() : null;
+  if (before && before.author_hash !== authorHash) return json({ error: "a pack with this name already exists" }, 409);
+  const update = !!before && before.status === "approved";   // the author's own, already approved pack: an update goes live without review
   const record = {
     id, icao, name: clean(meta.name, 60) || icao, voice: clean(meta.voice, 40), version: clean(meta.version, 20) || "1.0.0",
     author: clean(meta.author, 60), license: "", note: clean(meta.note, 300), files: oggs, size: buf.byteLength,
-    sha256: await sha256(buf), author_hash: authorHash, submitted: new Date().toISOString(), status: "pending",
+    sha256: await sha256(buf), author_hash: authorHash, submitted: new Date().toISOString(), status: "pending", updated: update,
   };
   await env.PACKS.put(`pending/${id}.zip`, buf);
   await env.PACKS.put(`meta/${id}.json`, JSON.stringify(record));
-  if (env.AUTO_APPROVE === "1") await approve(env, id);
+  if (env.AUTO_APPROVE === "1" || update) await approve(env, id);
   const mail = notify(env, record);
   if (ctx && ctx.waitUntil) ctx.waitUntil(mail); else await mail;
-  return json({ ok: true, id, status: env.AUTO_APPROVE === "1" ? "approved" : "pending" });
+  return json({ ok: true, id, status: env.AUTO_APPROVE === "1" || update ? "approved" : "pending", updated: update });
 }
 
 async function approve(env, id) {
