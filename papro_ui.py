@@ -675,8 +675,8 @@ header p{margin:0;color:var(--muted);font-size:12.5px}
 .h-ac i{width:8px;height:8px;border-radius:50%;background:currentColor;flex:none}.h-ac span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .h-phase{margin-top:12px;max-width:340px}.h-ptop{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;font-size:12.5px}.h-ptop b{font-size:15px;white-space:nowrap}.h-plab{white-space:nowrap;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-size:10.5px;font-weight:700}.h-psrc{color:var(--muted);font-size:11px;margin-left:auto}
 .h-pbar{display:flex;gap:3px;margin-top:6px}.h-pbar i{flex:1;height:4px;border-radius:2px;background:rgba(160,166,178,.22)}.h-pbar i.done{background:rgba(61,220,151,.45)}.h-pbar i.now{background:var(--ok);box-shadow:0 0 6px rgba(61,220,151,.6)}
-.h-signs{display:flex;gap:10px;margin-top:12px}.h-sign{width:160px;height:64px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:#dedad0;border:1px solid rgba(0,0,0,.22);box-shadow:inset 0 1px 3px rgba(0,0,0,.2);transition:all .25s}
-.h-sign .belt{width:140px;height:auto}.h-sign .cig{height:46px;width:auto}
+.h-signs{display:flex;gap:5px;margin-top:10px;justify-content:center;width:100%}.h-sign{width:80px;height:32px;border-radius:5px;display:flex;align-items:center;justify-content:center;background:#dedad0;border:1px solid rgba(0,0,0,.22);box-shadow:inset 0 1px 3px rgba(0,0,0,.2);transition:all .25s}
+.h-sign .belt{width:70px;height:auto}.h-sign .cig{height:23px;width:auto}
 .h-sign .a{fill:#8f9298}.h-sign .e{fill:#8f9298}.h-sign .r{fill:#8e7076}.h-sign .as{stroke:#8f9298}.h-sign .rs{stroke:#8e7076}
 .h-sign.lit{background:linear-gradient(#4a5565,#343c4a);border-color:rgba(0,0,0,.5);box-shadow:inset 0 1px 3px rgba(0,0,0,.5),0 0 14px rgba(255,170,40,.35)}.h-sign.lit svg{filter:drop-shadow(0 0 4px rgba(255,150,30,.85))}
 .h-sign.lit .a{fill:#ffc030}.h-sign.lit .e{fill:#ffc030}.h-sign.lit .r{fill:#ff2f1f}.h-sign.lit .as{stroke:#ffc030}.h-sign.lit .rs{stroke:#ff2a3c}
@@ -1188,7 +1188,7 @@ function renderHero(){
   const anyPack=(snap.packs||[]).some(p=>p.installed);
   const noPack=!anyPack||!!(f&&f.airline&&!snap.voices);   // no pack at all, or none for this flight's airline
   if(f&&f.airline&&!noPack){h.append(editableLogo(f.airline,"logo"))}
-  const mid=el("div"); mid.style.minWidth="0";
+  const mid=el("div"); mid.style.minWidth="0"; mid.style.flex="1";
   if(noPack){
     const t=el("div","h-nopack"); t.append(document.createTextNode(anyPack&&f&&f.airline?"No "+f.airline+" airline pack installed. Please download or import one ":"No airline pack installed. Please download or import one "));
     const a=el("a",null,"here"); a.href="#"; a.onclick=e=>{e.preventDefault();setView("dl")}; t.append(a,document.createTextNode("."));
