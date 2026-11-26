@@ -201,9 +201,9 @@ class PhaseEngine:
                         pass   # the descent PA already covers it
                     elif getattr(self, "cruise_reached", False) and (vs is None or vs > -SEATBELT_ON_MAX_DESCENT_FPM):
                         self.fire_cb("seatbelt_on")   # turbulence: sign switched on at cruise, not descending
-                gate = bool(r.get("seatbelt_gate")) and seatbelt is not None   # PMDG / FSS E-Jets: the descent PA waits for the sign to go ON
+                gate = seatbelt is not None   # aircraft PAPro plays for (PMDG, FSS E-Jets...): the descent PA waits for the sign to go ON
                 if self.cruise_seen and vs is not None and vs <= DESCENT_VS_FPM and alt <= self.max_alt - DESCENT_BELOW_MAX_FT:
-                    if not gate or seatbelt is True:
+                    if not gate or seatbelt is True or agl <= DESCENT_FALLBACK_AGL_FT:   # ...or by 20,000 ft AGL at the latest
                         self._fire("descent")
                 elif gate and self.cruise_seen and "descent" not in self.done and agl <= LANDING_PREP_AGL_FT:
                     self.done.add("descent")   # the sign never came on: no descent PA this late, but the landing ones still follow
@@ -275,6 +275,7 @@ PUSHBACK_MAX_KT = 12.0
 PUSHBACK_BACKWARD_DEG = 110.0
 PUSHBACK_MIN_MOVE_M = 10.0
 TAXI_MIN_KT = 5.0
+DESCENT_FALLBACK_AGL_FT = 20000.0   # the descent PA plays by this height even if the seatbelt sign has not come on
 PUSHBACK_FORWARD_KT = 2.0       # moving forward this fast after a pushback -> Taxi out
 INITIAL_CLIMB_KT = 60.0
 INITIAL_CLIMB_AIRBORNE_S = 30.0
