@@ -7,6 +7,7 @@ be tested on its own. SimWatcher feeds it from SimConnect.
 from __future__ import annotations
 
 import logging
+import re
 import threading
 import time
 
@@ -56,7 +57,11 @@ def classify_aircraft(title: str) -> dict | None:
         return None
     low = title.lower()
     maker = "fenix" if "fenix" in low else "fslabs" if any(m in low for m in FSLABS_MARKERS) else ""
-    return {"title": title, "supported": bool(maker), "maker": maker}
+    livery = ""
+    if maker == "fslabs":   # "FSLabs A321-251NX - British Airways (G-NEOV)" -> the airline the loaded livery belongs to
+        m = re.search(r"\s-\s(.+?)\s*(?:\([^)]*\))?\s*$", title)
+        livery = m.group(1).strip() if m else ""
+    return {"title": title, "supported": bool(maker), "maker": maker, "livery": livery}
 
 
 class SimWatcher:

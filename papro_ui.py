@@ -613,7 +613,8 @@ body{background:transparent;
      color:var(--text);font:400 14px/1.5 'Inter',system-ui,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased;
      font-feature-settings:'cv11','ss01'}
 .wrap{max-width:860px;margin:0 auto;padding:26px 28px 18px;min-height:100vh;display:flex;flex-direction:column}
-.verbar{margin-top:auto;padding-top:26px;text-align:center;font-size:12px;font-weight:500;color:var(--faint);letter-spacing:.04em}
+.logbar{margin-top:auto;padding-top:22px;text-align:center}.logbar button{font-size:12px;padding:5px 16px}
+.verbar{padding-top:10px;text-align:center;font-size:12px;font-weight:500;color:var(--faint);letter-spacing:.04em}
 header{display:flex;align-items:center;gap:14px;margin-bottom:22px}
 header img{width:46px;height:46px;border-radius:12px;box-shadow:0 6px 20px rgba(107,47,214,.45)}
 header h1{font-size:21px;font-weight:700;margin:0;letter-spacing:-.02em}
@@ -948,6 +949,7 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
   </div>
   <div id="view-studio" style="display:none"></div>
   <div class="support">Enjoying PAPro? <button class="kofi" data-open="kofi"><span>&#9829;</span> Buy me a Ko-fi</button></div>
+  <div class="logbar"><button class="ghost" data-open="log">Log</button></div>
   <div class="verbar" id="ver"></div>
 </div>
 

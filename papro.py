@@ -2543,17 +2543,111 @@ def backup_original(kind: str, code: str, source: Path) -> None:
         log.warning("Could not back up the original %s %s pack: %s", kind, code, exc)
 
 
+_AIRCRAFT: dict = {}   # the aircraft loaded in the sim (title, livery...), for export_fslabs
+FSL_VARIANTS_DIR = "Variants"   # inside <ICAO>_Backup: the per-aircraft-type folders (<variant>\\Sounds\\Cabin)
+
+
+def fsl_pack_code(cfg: dict, code: str, livery: str) -> str:
+    """The FSLabs airline pack to write to: the one of the livery loaded in the sim (matched by airline name in the packs'
+    Config\\fltsim.ini), else the flight's airline."""
+    if livery:
+        try:
+            root = find_community_dir(cfg) / FSL_PACKS_FOLDER
+            want = re.sub(r"[^a-z0-9]", "", livery.lower())
+            for pack in sorted(p for p in root.iterdir() if p.is_dir()):
+                ini = pack / "Config" / "fltsim.ini"
+                if not ini.is_file():
+                    continue
+                text = ini.read_text(encoding="utf-8", errors="ignore")
+                for m in re.finditer(r"(?im)^\s*atc_airline\s*=\s*(.+?)\s*$", text):
+                    if re.sub(r"[^a-z0-9]", "", m.group(1).lower()) == want:
+                        return pack.name.upper()
+        except (AppError, OSError):
+            pass
+    return code
+
+
+def fsl_type_prefixes(title: str, flight_type: str) -> list[str]:
+    """File prefixes of the aircraft type in the sim, most specific first (A321neo: A21N, then A321X, then A321)."""
+    text = f"{title} {flight_type}".upper()
+    m = re.search(r"A3(19|20|21)", text)
+    neo = bool(re.search(r"NX|NEO|A19N|A20N|A21N", text))
+    base = f"A3{m.group(1)}" if m else ""
+    if not base:
+        return []
+    short = {"A319": "A19N", "A320": "A20N", "A321": "A21N"}[base]
+    return ([short] if neo else []) + [base + "X", base]
+
+
+def export_fslabs_briefing(cfg: dict, pack: Path, title: str, flight_type: str) -> int:
+    """The safety briefing introduction (BRIEFING + morning/afternoon/evening) lives in per-aircraft-type folders
+    (<ICAO>\\<variant>\\Sounds\\Cabin): write it into the folder of the type loaded in the sim."""
+    from papro_play import resolve
+
+    wanted = fsl_type_prefixes(title, flight_type)
+    if not wanted:
+        log.info("FSLabs briefing: aircraft type not recognised in '%s' - left as it is", title)
+        return 0
+    source = resolve(PLAYBACK_DIR, "pre_safety", clock_tag())
+    if not source:
+        return 0
+    done = 0
+    for variant in sorted(p for p in pack.iterdir() if p.is_dir() and (p / "Sounds" / "Cabin").is_dir()):
+        cabin = variant / "Sounds" / "Cabin"
+        found = {}
+        for f in cabin.glob("FSL_*_CABIN_PA_BRIEFING*.ogg"):
+            m = re.fullmatch(r"FSL_(.+?)_CABIN_PA_BRIEFING(?:_(?:MORNING|AFTERNOON|EVENING))?\.ogg", f.name, re.I)
+            if m:
+                found.setdefault(m.group(1).upper(), []).append(f)
+        markers = {t.stem.upper() for t in variant.glob("*.txt")} | {t.stem.upper() for t in (variant / "Sounds").glob("*.txt")}
+        if not found:
+            continue
+        # this folder is for our type when its marker (A321X.txt...) or its briefing files carry one of the type's prefixes
+        mine = next((w for w in wanted if w in markers or w in found), None)
+        prefix = next((w for w in wanted if w in found), None)
+        if not mine or not prefix:
+            continue
+        backup_fsl_variant(pack.name, variant.name, cabin)
+        for target in found[prefix]:
+            try:
+                shutil.copyfile(source, target)
+                done += 1
+                log.info("FSLabs wrote %s", target)
+            except OSError as exc:
+                log.warning("Could not write %s (is MSFS using it?): %s", target, exc)
+    return done
+
+
+def backup_fsl_variant(code: str, variant: str, cabin: Path) -> None:
+    dest = BACKUPS_DIR / "FSLabs" / f"{code}_Backup" / FSL_VARIANTS_DIR / variant / "Cabin"
+    if dest.exists():
+        return
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(cabin, dest)
+        log.info("Backed up the original FSLabs %s %s cabin sounds to %s", code, variant, dest)
+    except OSError as exc:
+        shutil.rmtree(dest, ignore_errors=True)
+        log.warning("Could not back up FSLabs %s %s: %s", code, variant, exc)
+
+
 def export_fslabs(cfg: dict, code: str, only_keys: set[str] | None = None) -> str:
     """Copy the PAs just built for this flight (in PAPro's playback folder) over the matching files of the FSLabs airline
     pack. FSLabs decides when each one plays."""
     from papro_play import resolve
 
+    aircraft = _AIRCRAFT
+    pack_code = fsl_pack_code(cfg, code, aircraft.get("livery", ""))
+    if pack_code != code:
+        log.info("FSLabs livery '%s' in the sim -> writing to the %s pack (the flight's airline is %s)", aircraft.get("livery"), pack_code, code)
+    code = pack_code
     try:
-        cabin = find_community_dir(cfg) / FSL_PACKS_FOLDER / code / "Sounds" / "Cabin"
+        pack = find_community_dir(cfg) / FSL_PACKS_FOLDER / code
     except AppError:
         return ""
+    cabin = pack / "Sounds" / "Cabin"
     if not cabin.is_dir():
-        log.info("No FSLabs %s airline pack in %s - nothing to swap", code, cabin.parent.parent.parent)
+        log.info("No FSLabs %s airline pack in %s - nothing to swap", code, pack)
         return ""
     backup_original("FSLabs", code, cabin.parent)
     done = 0
@@ -2578,8 +2672,12 @@ def export_fslabs(cfg: dict, code: str, only_keys: set[str] | None = None) -> st
         try:
             shutil.copyfile(source, target)
             done += 1
+            log.info("FSLabs wrote %s", target)
         except OSError as exc:
-            log.warning("Could not write %s (is MSFS using it?): %s", target.name, exc)
+            log.warning("Could not write %s (is MSFS using it?): %s", target, exc)
+    if not only_keys or "pre_safety" in only_keys:
+        flight_type = str((load_state().get("flight") or {}).get("aircraft", ""))
+        done += export_fslabs_briefing(cfg, pack, aircraft.get("title", ""), flight_type)
     log.info("FSLabs %s pack: %d PA file(s) swapped", code, done)
     return f"FSLabs {code} pack updated ({done} PAs)" if done else ""
 
@@ -2609,7 +2707,10 @@ def restore_original(cfg: dict, kind: str, code: str) -> str:
                 shutil.rmtree(target)
             shutil.copytree(source, target)
         else:
-            shutil.copytree(source, find_community_dir(cfg) / FSL_PACKS_FOLDER / code / "Sounds", dirs_exist_ok=True)
+            pack = find_community_dir(cfg) / FSL_PACKS_FOLDER / code
+            shutil.copytree(source, pack / "Sounds", dirs_exist_ok=True, ignore=shutil.ignore_patterns(FSL_VARIANTS_DIR))
+            for variant in sorted((source / FSL_VARIANTS_DIR).glob("*/Cabin")) if (source / FSL_VARIANTS_DIR).is_dir() else []:
+                shutil.copytree(variant, pack / variant.parent.name / "Sounds" / "Cabin", dirs_exist_ok=True)
     except OSError as exc:
         raise AppError(f"Could not restore {kind} {code} (is MSFS using the files?): {exc}") from exc
     log.info("Restored the original %s %s pack", kind, code)
@@ -4333,6 +4434,8 @@ class TrayApp(UIMixin):
         """From the SimConnect watcher: the aircraft now loaded in the sim (None when the sim is closed)."""
         before = _PLAYBACK["on"]
         self.aircraft = info
+        _AIRCRAFT.clear()
+        _AIRCRAFT.update(info or {})
         if not info and getattr(self, "tracker", None):
             self.tracker.reset()
             self.tracker.current = None   # the sim is closed: no phase to show
