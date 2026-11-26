@@ -967,6 +967,10 @@ REFUEL_PART = "Refueling"
 LANDING_FALLBACK = "Generic After Landing [no destination file]"
 
 
+for _stem, _label, _ in GENERAL:   # every line of the checklist can have aircraft versions
+    TYPED_BASES.setdefault(_stem, _label)
+TYPED_BASES.setdefault("Welcome_Night", "Welcome, night")
+TYPED_FOLDERS.setdefault("Welcome_Night", "time")
 SAFETY_TYPED = ("PreSafetyBriefing", "SafetyBriefing")   # aircraft versions of these are listed in the Safety briefing group
 
 
