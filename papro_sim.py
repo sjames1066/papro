@@ -192,7 +192,7 @@ class SimWatcher:
             "t": time.time(), "on_ground": ground, "agl": agl, "gs": speed,
             "vs": g("VERTICAL_SPEED"), "alt": g("INDICATED_ALTITUDE", "PLANE_ALTITUDE") or 0.0,
             "parking_brake": g("BRAKE_PARKING_POSITION", "BRAKE_PARKING_INDICATOR"),
-            "beacon": g("LIGHT_BEACON", "LIGHT_BEACON_ON"),
+            "beacon": self._beacon(requests, g),
             "landing_light": g("LIGHT_LANDING", "LIGHT_LANDING_ON"),
             "seatbelt": self._seatbelt(requests, g),
             "no_smoking": self._no_smoking(requests, g),   # 0 = off, 1 = on, 2 = auto (None: the aircraft does not report it)
@@ -205,6 +205,7 @@ class SimWatcher:
             "gsx_deboarding": self._lvar(requests, "L:FSDT_GSX_DEBOARDING_STATE"),  # 5 = deboarding
         }
 
+    FSS_BEACON_LVAR = "L:FSS_EXX_OVHD_EXLT_RED_BCN_SWITCH"
     FSS_SEATBELT_LVAR = "L:FSS_EXX_OVHD_PSGR_FSTN_BELT_SWITCH"
     IFLY_SEATBELT_LVAR = "L:VC_Fasten_Belts_SW_VAL"   # iFly 737 MAX overhead switch: 0 = OFF, 10 = AUTO, 20 = ON (it does not set the standard variable)
 
@@ -250,6 +251,20 @@ class SimWatcher:
             if raw is not None:
                 return float(raw) >= 0.5
         return g("CABIN_SEATBELTS_ALERT_SWITCH")
+
+    def _beacon(self, requests, g):
+        """The anti-collision beacon: the FSS E-Jets' own switch (0 = OFF, 100 = ON; their lights don't answer the standard
+        variable), else the standard sim variable."""
+        title = getattr(self, "_title_low", "")
+        if "fss" in title and ("e1" in title or "embraer" in title):
+            raw = self._lvar(requests, self.FSS_BEACON_LVAR)
+            if raw is not None:
+                seen = self.__dict__.setdefault("_sb_seen", {})
+                if seen.get("fssb") != raw:
+                    log.info("FSS E-Jet beacon switch = %s", raw)
+                    seen["fssb"] = raw
+                return float(raw) >= 50
+        return g("LIGHT_BEACON", "LIGHT_BEACON_ON")
 
     def _no_smoking(self, requests, g):
         """The no-smoking sign: the FSLabs switch (20 = ON, 10 = AUTO, which is still lit, 0 = OFF), else the standard variable."""
