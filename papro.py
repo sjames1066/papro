@@ -51,7 +51,7 @@ except Exception:  # missing libraries must not stop the rest of the app
 import papro_studio  # Pack Studio (record / upload, PA sound, loudness, export); imports papro_audio itself
 
 APP_NAME = "PAPro - Cabin announcements for MSFS"
-VERSION = "1.1.8"
+VERSION = "1.1.9"
 BASE_DIR = (
     Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 )
@@ -417,6 +417,21 @@ def msfs_running() -> bool:
 
 def save_aliases(aliases: dict[str, str]) -> None:
     ALIASES_PATH.write_text(json.dumps(dict(sorted(aliases.items())), indent=2) + "\n", encoding="utf-8")
+
+
+def whats_new(state: dict) -> dict | None:
+    """The release notes of this version, once, the first time it is opened after an update (RELEASE-NOTES-<version>.md is
+    bundled with the app). None on a first install, when already seen, or when there are no notes."""
+    if not state.get("welcomed") or state.get("seen_version") == VERSION:
+        return None
+    for base in (getattr(sys, "_MEIPASS", None), Path(__file__).parent):
+        f = Path(base) / f"RELEASE-NOTES-{VERSION}.md" if base else None
+        if f and f.is_file():
+            try:
+                return {"version": VERSION, "notes": f.read_text(encoding="utf-8-sig")}
+            except OSError:
+                return None
+    return None
 
 
 def load_state() -> dict:
@@ -3068,6 +3083,7 @@ class UIMixin:
             "voices": voices,
             "hide_reminder": bool(cfg.get("hide_reminder")),
             "welcome": self._welcome_info(cfg, state),
+            "whats_new": whats_new(state),
             "welcome_info": self._welcome_info(cfg, {}),
             "studio": self.studio_snapshot(cfg),
             "settings": {
@@ -3606,6 +3622,11 @@ class UIMixin:
         elif name == "welcomed":
             state = load_state()
             state["welcomed"] = True
+            state["seen_version"] = VERSION   # a first install has nothing "new" to show
+            save_state(state)
+        elif name == "whats_new_seen":
+            state = load_state()
+            state["seen_version"] = VERSION
             save_state(state)
         elif name == "minimized":
             self.window_minimized()

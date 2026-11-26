@@ -795,6 +795,7 @@ html,body,*{scrollbar-width:none}
 .radio.sel{border-color:transparent;background:linear-gradient(var(--surface2),var(--surface2)) padding-box,var(--grad) border-box;border:1px solid transparent;box-shadow:0 0 0 1px rgba(206,58,128,.35)}
 .modal{position:fixed;inset:0;background:rgba(5,3,14,.72);backdrop-filter:blur(5px);display:none;align-items:center;justify-content:center;z-index:50}
 .modal.show{display:flex}
+.newbody h4{margin:16px 0 6px;font-size:15px;color:var(--text)}.newbody ul{margin:0;padding-left:20px}.newbody li{margin:6px 0;line-height:1.45;color:var(--muted,#b5b3c4)}.newbody li b{color:var(--text)}.newbody p{color:var(--muted,#b5b3c4);line-height:1.45}
 #m-settings .row{position:sticky;bottom:-26px;background:var(--surface);padding:12px 0 2px}
 .dialog{max-height:92vh;overflow-y:auto;background:var(--surface);border:1px solid var(--line2);border-radius:20px;padding:26px;width:440px;max-width:92vw;
         box-shadow:0 30px 80px rgba(0,0,0,.6)}
@@ -968,6 +969,11 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
 </div>
 </div>
 
+<div class="modal" id="m-new"><div class="dialog" style="width:560px;max-height:88vh;overflow:auto">
+  <h3 id="n-title">What's new</h3>
+  <div id="n-body" class="newbody"></div>
+  <div class="row" style="margin-top:16px"><button class="primary" id="n-ok">Got it</button></div>
+</div></div>
 <div class="modal" id="m-welcome"><div class="dialog" style="width:580px;max-height:92vh;overflow:auto">
   <h3>Welcome to PAPro</h3>
   <p>PAPro swaps the cabin announcements in your Fenix A320 for ones that match your flight: the right airline, voice and destination, with the local time read live from the sim.</p>
@@ -1379,6 +1385,25 @@ function renderAliases(){
   });
   const dl=$("#a-sources"); dl.replaceChildren(); (snap.alias_sources||[]).forEach(v=>{const o=document.createElement("option");o.value=v;dl.append(o)});
 }
+let newShown=false;
+function mdLite(src){
+  const box=document.createElement("div");let ul=null;
+  const inl=(t,host)=>{t.split(/(\*\*[^*]+\*\*)/).forEach(s=>{if(s.startsWith("**")&&s.endsWith("**")&&s.length>4){const b=document.createElement("b");b.textContent=s.slice(2,-2);host.append(b)}else host.append(document.createTextNode(s))})};
+  src.split(/\r?\n/).forEach(line=>{
+    if(/^#\s/.test(line))return;
+    if(/^##\s/.test(line)){ul=null;const h=document.createElement("h4");h.textContent=line.slice(3);box.append(h);return}
+    if(/^\s*-\s/.test(line)){if(!ul){ul=document.createElement("ul");box.append(ul)}const li=document.createElement("li");inl(line.replace(/^\s*-\s/,""),li);ul.append(li);return}
+    if(line.trim()){ul=null;const p=document.createElement("p");inl(line,p);box.append(p)}
+  });
+  return box;
+}
+function renderWhatsNew(){
+  const w=snap.whats_new,m=$("#m-new");
+  if(!w||newShown||snap.welcome||snap.setup_needed)return;newShown=true;
+  $("#n-title").textContent="What's new in PAPro "+w.version;
+  $("#n-body").replaceChildren(mdLite(w.notes||""));m.classList.add("show");
+}
+$("#n-ok").onclick=async()=>{$("#m-new").classList.remove("show");await api("whats_new_seen");if(snap)snap.whats_new=null};
 let welcomeShown=false;
 function renderWelcome(){
   const w=snap.welcome, m=$("#m-welcome");
@@ -2233,7 +2258,7 @@ async function tick(){
   try{
     const r=await fetch("/api/state",{headers:{"X-Token":TOKEN,"X-View":(view==="studio"&&!document.hidden)?"studio":""}}); snap=await r.json();
     $("#auto").classList.toggle("on",!!snap.auto); $("#ver").textContent="PAPro v"+(snap.version||"");
-    renderHero(); renderKnob(); renderKeep(); renderUpd(); renderPackUpd(); renderJob(); renderStudio(); renderPacks(); if($("#m-manage").classList.contains("show"))renderManage(); renderAliases(); renderWelcome(); renderPrompt();
+    renderHero(); renderKnob(); renderKeep(); renderUpd(); renderPackUpd(); renderJob(); renderStudio(); renderPacks(); if($("#m-manage").classList.contains("show"))renderManage(); renderAliases(); renderWelcome(); renderWhatsNew(); renderPrompt();
     if(importWatch){const busy=(snap.packs||[]).some(p=>p.task&&p.task.kind==="install");
       if(busy)importWatch.seen=true;
       if(!busy&&(snap.installs_done||0)>importWatch.n){importWatch=null;setView("main");toast("Pack imported",4000)}   // finished: back to the Dashboard
