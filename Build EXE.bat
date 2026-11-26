@@ -30,8 +30,8 @@ echo.
 echo.
 "%PYEXE%" update_catalog.py %PAProVER% "%~dp0dist\PAPro-Setup-%PAProVER%.exe"
 echo.
-echo To publish: 1) create the GitHub release v%PAProVER% and attach the installer above,
-echo             2) then upload C:\PAPro\catalog.json (NOT the one in dist) to the papro repository on GitHub.
+if defined PAPRO_RELEASE exit /b 0
+echo To publish in one go, run  Release.bat  (builds, makes the GitHub release and uploads catalog.json for you).
 start "" "%~dp0dist"
 pause
 exit /b 0
@@ -47,7 +47,7 @@ exit /b 0
 :failed
 echo.
 echo Something went wrong - see the message above.
-pause
+if not defined PAPRO_RELEASE pause
 exit /b 1
 
 :nopython
