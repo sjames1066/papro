@@ -12,8 +12,8 @@ set "PAPRO_RELEASE=1"
 call "Build EXE.bat"
 if errorlevel 1 goto failed
 if not exist "dist\PAPro-Setup-%VER%.exe" goto failed
-set "NOTES=--generate-notes"
-if exist "RELEASE-NOTES-%VER%.md" set "NOTES=--notes-file RELEASE-NOTES-%VER%.md"
+if not exist "RELEASE-NOTES-%VER%.md" goto nonotes
+set "NOTES=--notes-file RELEASE-NOTES-%VER%.md"
 echo.
 echo Creating the GitHub release v%VER% ...
 gh release create v%VER% "dist\PAPro-Setup-%VER%.exe" --repo sjames1066/papro --target main --title "PAPro %VER%" %NOTES%
@@ -26,6 +26,11 @@ echo.
 echo Done: PAPro %VER% is released and announced.
 pause
 exit /b 0
+
+:nonotes
+echo There are no release notes for %VER%: RELEASE-NOTES-%VER%.md is missing from this folder.
+pause
+exit /b 1
 
 :nogh
 echo GitHub CLI is not installed. Run:  winget install GitHub.cli
