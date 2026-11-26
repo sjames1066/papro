@@ -4636,6 +4636,10 @@ class TrayApp(UIMixin):
         sb, ns = reading.get("seatbelt"), reading.get("no_smoking")
         self.signs = {"seatbelt": None if sb is None else bool(sb), "no_smoking": None if ns is None else bool(ns)}   # the cabin signs on the Dashboard
         tracker.feed(reading)
+        if tracker.phase() != getattr(self, "_last_phase", None):
+            log.info("Phase: %s -> %s (ground speed %.1f kt, %s)", getattr(self, "_last_phase", None) or "-", tracker.phase(),
+                     float(reading.get("gs") or 0.0), "backwards" if getattr(tracker, "move_back", False) else "forward / stopped")
+            self._last_phase = tracker.phase()
         if not own_playback():
             # file-swap aircraft (Fenix / FSLabs): nothing is played here, but the phase on the Dashboard still needs working out when opened part way through
             if not getattr(self, "_swap_seeded", False):

@@ -271,6 +271,7 @@ PUSHBACK_MAX_KT = 12.0
 PUSHBACK_BACKWARD_DEG = 110.0
 PUSHBACK_MIN_MOVE_M = 10.0
 TAXI_MIN_KT = 5.0
+PUSHBACK_FORWARD_KT = 2.0       # moving forward this fast after a pushback -> Taxi out
 INITIAL_CLIMB_KT = 60.0
 INITIAL_CLIMB_AIRBORNE_S = 30.0
 CLIMB_INCREASING_S = 180.0
@@ -509,8 +510,8 @@ class PhaseTracker:
                     back = self._backward(r, heading, lat, lon, gs)
                     if back and 0.0 < gs < PUSHBACK_MAX_KT:
                         self._go("Pushback")
-                    elif gs >= TAXI_MIN_KT and not back:
-                        self._go("Taxi out")
+                    elif not back and (gs >= TAXI_MIN_KT or (self.rank == R["Pushback"] and gs >= PUSHBACK_FORWARD_KT)):
+                        self._go("Taxi out")   # after the pushback, a slow roll forward is already taxiing
                 elif gs >= TAXI_MIN_KT:   # no boarding signals seen at all, but it is taxiing
                     self._go("Taxi out")
         else:
