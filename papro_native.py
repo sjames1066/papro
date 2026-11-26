@@ -68,6 +68,10 @@ class NativeWindow:
             import webview
 
             self.webview = webview
+            try:   # pywebview blocks every file download unless this is on (the Studio's "export this recording" button saves a .ogg)
+                webview.settings["ALLOW_DOWNLOADS"] = True
+            except Exception:
+                log.warning("This pywebview cannot allow downloads: exporting a single sound will not work in PAPro's window")
             self.win = webview.create_window(self.title, self.url, width=self.size[0], height=self.size[1], hidden=True,
                                              min_size=(820, 560), text_select=True)
             events = self.win.events
