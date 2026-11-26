@@ -675,7 +675,7 @@ header p{margin:0;color:var(--muted);font-size:12.5px}
 .h-ac i{width:8px;height:8px;border-radius:50%;background:currentColor;flex:none}.h-ac span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .h-phase{margin-top:12px;max-width:340px}.h-ptop{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;font-size:12.5px}.h-ptop b{font-size:15px;white-space:nowrap}.h-plab{white-space:nowrap;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-size:10.5px;font-weight:700}.h-psrc{color:var(--muted);font-size:11px;margin-left:auto}
 .h-pbar{display:flex;gap:3px;margin-top:6px}.h-pbar i{flex:1;height:4px;border-radius:2px;background:rgba(160,166,178,.22)}.h-pbar i.done{background:rgba(61,220,151,.45)}.h-pbar i.now{background:var(--ok);box-shadow:0 0 6px rgba(61,220,151,.6)}
-.h-signs{display:flex;gap:5px;margin-top:10px;justify-content:center;width:100%}.h-sign{width:80px;height:32px;border-radius:5px;display:flex;align-items:center;justify-content:center;background:#dedad0;border:1px solid rgba(0,0,0,.22);box-shadow:inset 0 1px 3px rgba(0,0,0,.2);transition:all .25s}
+.hero{position:relative}.h-signs{display:flex;gap:5px;position:absolute;left:50%;bottom:14px;transform:translateX(-50%)}.h-sign{width:80px;height:32px;border-radius:5px;display:flex;align-items:center;justify-content:center;background:#dedad0;border:1px solid rgba(0,0,0,.22);box-shadow:inset 0 1px 3px rgba(0,0,0,.2);transition:all .25s}
 .h-sign .belt{width:70px;height:auto}.h-sign .cig{height:23px;width:auto}
 .h-sign .a{fill:#8f9298}.h-sign .e{fill:#8f9298}.h-sign .r{fill:#8e7076}.h-sign .as{stroke:#8f9298}.h-sign .rs{stroke:#8e7076}
 .h-sign.lit{background:linear-gradient(#4a5565,#343c4a);border-color:rgba(0,0,0,.5);box-shadow:inset 0 1px 3px rgba(0,0,0,.5),0 0 14px rgba(255,170,40,.35)}.h-sign.lit svg{filter:drop-shadow(0 0 4px rgba(255,150,30,.85))}
@@ -1216,7 +1216,7 @@ function renderHero(){
     if(ph.can_complete&&!ph.detecting){const bc=el("button","ghost","Boarding Complete");bc.style.marginTop="10px";bc.onclick=()=>api("phase_complete");box.append(bc)}
     if(ph.can_disarm&&!ph.detecting){const bd=el("button","ghost","Disarm Doors PA");bd.style.marginTop="10px";bd.title="Play the Disarm Doors announcement now";bd.onclick=()=>api("phase_disarm");box.append(bd)}
     mid.append(box)}
-  if(signsRow)mid.append(signsRow);
+  if(signsRow){mid.style.paddingBottom="44px";h.append(signsRow)}
   h.append(mid);
   const side=el("div","side");
   const b=el("button","primary"); b.innerHTML='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:7px"><path d="M21 12a9 9 0 0 1-15.4 6.4L3 16"/><path d="M3 12a9 9 0 0 1 15.4-6.4L21 8"/><path d="M21 3v5h-5"/><path d="M3 21v-5h5"/></svg>Refresh'; b.title="Rebuild this flight's announcements now"; b.disabled=snap.busy||!snap.voices; b.onclick=()=>api("update");
