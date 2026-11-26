@@ -438,7 +438,7 @@ def remove_landing_section(root: Path, project: dict, item: str) -> None:
 # (from the Airports section) and recorded parts (the first is the old Modular_Welcome), in an order the pack creator sets.
 BOARDING_PART = "Boarding Welcome PA"
 BOARDING_DEFAULT_ORDER = ["greeting", "airport", "part:1"]
-BOARDING_ITEM = re.compile(r"^(part:[1-9]\d?|greeting|airport)$")
+BOARDING_ITEM = re.compile(r"^(part:[1-9]\d?|greeting|airport|names|and)$")
 
 
 def boarding_order(project: dict) -> list[str]:
@@ -480,9 +480,9 @@ def add_boarding_section(root: Path, project: dict, item: str) -> None:
 
 
 def remove_boarding_section(root: Path, project: dict, item: str) -> None:
-    if item.startswith("part:") and item != "part:1":
+    if (item.startswith("part:") and item != "part:1") or item == "and":
         try:
-            delete_slot(root, project, f"main/{boarding_stem(int(item[5:]))}")
+            delete_slot(root, project, f"main/{'Modular_WelcomeAnd' if item == 'and' else boarding_stem(int(item[5:]))}")
         except (StudioError, ValueError):
             pass
     project["boarding_order"] = [i for i in boarding_order(project) if i != item]
@@ -537,11 +537,11 @@ EXTRA_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _-]{0,39}$")
 GENERAL = [  # (file name, label, what to say). The file names are Fenix's announcement types; every one is optional except the modular pair.
     ("Modular_Welcome", "Welcome - part 2: after the airport name", "Everything in the welcome PA after the destination: seatbelts, safety, enjoy your flight..."),
     ("Modular_Landing", "Landing - part 2: after the local time", "Everything in the landing PA after the local time: cabin crew seats, seatbelt sign, belongings, thank you..."),
-    ("BoardingWelcome[Morning]", "While boarding - welcome, morning (generic)", "Generic welcome aboard, good morning. Played every 2-6 min during boarding."),
-    ("BoardingWelcome[Afternoon]", "While boarding - welcome, afternoon (generic)", "Generic welcome aboard, good afternoon."),
-    ("BoardingWelcome[Evening]", "While boarding - welcome, evening (generic)", "Generic welcome aboard, good evening."),
-    ("BoardingWelcome[Night]", "While boarding - welcome, night (generic)", "Generic welcome aboard for boardings between midnight and 6 am."),
-    ("BoardingWelcome[Refueling]", "While boarding - welcome, refuelling (generic)", "Generic welcome aboard while the aircraft is being refuelled."),
+    ("BoardingWelcome[Morning]", "Welcome, morning (generic)", "Generic welcome aboard, good morning. Played every 2-6 min during boarding."),
+    ("BoardingWelcome[Afternoon]", "Welcome, afternoon (generic)", "Generic welcome aboard, good afternoon."),
+    ("BoardingWelcome[Evening]", "Welcome, evening (generic)", "Generic welcome aboard, good evening."),
+    ("BoardingWelcome[Night]", "Welcome, night (generic)", "Generic welcome aboard for boardings between midnight and 6 am."),
+    ("BoardingWelcome[Refueling]", "Welcome, refuelling (generic)", "Generic welcome aboard while the aircraft is being refuelled."),
     ("BoardingComplete", "Boarding is complete", "The purser announces that boarding has completed."),
     ("ArmDoors", "Doors to automatic (arm doors)", "Cabin crew, arm doors and cross-check."),
     ("DisarmDoors", "Doors to manual (disarm doors)", "Cabin crew, disarm doors and cross-check."),
@@ -784,7 +784,7 @@ def rename_project(root: Path, project: dict, icao: str, airline: str, voice: st
 
 
 # --------------------------------------------------------------------------- primary / secondary language
-SHARED_FIELDS = ("artist", "accent", "description", "credit_url", "donate_url", "version", "local_time", "also_icaos", "crew", "service_types", "descent_city", "descent_order", "takeoff_crew", "takeoff_order", "takeoff_count", "landing_base", "landing_order", "landing_off", "boarding_order", "boarding_off", "time_period")
+SHARED_FIELDS = ("artist", "accent", "description", "credit_url", "donate_url", "version", "local_time", "also_icaos", "crew", "service_types", "descent_city", "descent_order", "takeoff_crew", "takeoff_order", "takeoff_count", "boarding_count", "landing_base", "landing_order", "landing_off", "boarding_order", "boarding_off", "time_period")
 
 
 def duplicate_project(root: Path, project: dict) -> dict:
@@ -911,7 +911,7 @@ def slot_list(project: dict) -> list[dict]:
         if item == "greeting":
             for stem, label, script in GREETINGS:
                 if stem.startswith("Welcome_"):
-                    add("BoardingWelcome", "time", stem, label.replace("Welcome - part 1: ", "Welcome greeting - "), script, required=stem != "Welcome_Night", part=BOARDING_PART)
+                    add("BoardingWelcome", "time", stem, label.replace("Welcome - part 1: good ", "Welcome, ").replace("Welcome - part 1: ", "Welcome, "), script, required=stem != "Welcome_Night", part=BOARDING_PART)
                     add_variations(stem, "BoardingWelcome", label, script, BOARDING_PART, "time")
         elif item.startswith("part:"):
             n = int(item[5:])
@@ -920,6 +920,8 @@ def slot_list(project: dict) -> list[dict]:
             add("BoardingWelcome", "main", boarding_stem(n), label, script, required=n == 1, part=BOARDING_PART)
             if n == 1:
                 add_variations("Modular_Welcome", "BoardingWelcome", label, script, BOARDING_PART)
+        elif item == "and":
+            add("BoardingWelcome", "main", "Modular_WelcomeAnd", "Welcome - \"and\" (said before the last crew name)", "Just say: 'and'.", part=BOARDING_PART)
         for sl in out[first:]:
             sl["boarding_item"] = item
     for i, word in enumerate(HOURS):
@@ -1659,6 +1661,7 @@ def voice_json(project: dict) -> dict:
         out["landing_order"] = landing_order(project)
     if not project.get("boarding_off"):
         out["boarding_order"] = boarding_order(project)
+        out["boarding_count"] = takeoff_count({"takeoff_count": project.get("boarding_count")})
     crew = crew_config(project)
     if crew["on"]:   # how to build the crew introduction travels with the pack
         out["crew"] = {"order": crew["order"], "fa": crew["fa"]}
@@ -1948,6 +1951,8 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
             if f"part:{n}" not in order:
                 order.append(f"part:{n}")
         project["descent_order"] = order
+    if info.get("boarding_count"):
+        project["boarding_count"] = info["boarding_count"]
     if info.get("takeoff_crew"):
         project["takeoff_crew"] = True
         if isinstance(info.get("takeoff_order"), list):
@@ -2088,7 +2093,7 @@ def install_to_library(root: Path, project: dict, airline_dir: Path) -> Path:
         pass
     if project.get("scripts"):
         (dest / "scripts.json").write_text(json.dumps(project["scripts"], indent=2, ensure_ascii=False), encoding="utf-8")
-    structure = {k: project[k] for k in ("airports", "extras", "variants", "typed", "silent", "service_types", "descent_order", "takeoff_order", "takeoff_count", "landing_order", "boarding_order") if project.get(k)}
+    structure = {k: project[k] for k in ("airports", "extras", "variants", "typed", "silent", "service_types", "descent_order", "takeoff_order", "takeoff_count", "boarding_count", "landing_order", "boarding_order") if project.get(k)}
     if crew_config(project)["on"]:
         structure["crew"] = crew_config(project)
     structure_file = dest / "studio.json"   # the parts of the checklist that are not backed by a clip yet (an airport you have not recorded, a skipped "+")

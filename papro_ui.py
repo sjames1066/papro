@@ -1940,10 +1940,16 @@ function descentControls(c,d){
 }
 function boardingControls(c,d){
   pieceControls(c,d,{order:c.boarding_order||["greeting","airport","part:1"],specials:{
-      greeting:{label:"Greeting (good morning / afternoon / evening / night, recorded below)",add:"+ Greeting",title:"Say the time-of-day greeting"},
-      airport:{label:"Airport name (from the Airports section)",add:"+ Airport name",title:"Say the destination's name"}},
+      greeting:{label:"Welcome, morning, afternoon etc. (recorded below)",add:"+ Welcome",title:"Say the time-of-day welcome"},
+      airport:{label:"Airport name (from the Airports section)",add:"+ Airport name",title:"Say the destination's name"},
+      names:{label:"Crew names (picked at random for each flight)",add:"+ Names",title:"Say the crew's names, picked at random"},
+      and:{label:"And (said between the last two names)",add:"+ And",title:"The clip said before the last name, e.g. “and”"}},
     intro:"PAPro builds the welcome aboard for each flight from these pieces, in this order (drag to reorder, ✕ to delete a piece, the buttons add more). For example: Greeting (“Ladies and gentlemen, good morning, welcome on board this flight to”), Airport name, Part 1 (“We'll be flying for...”). If a recorded part is missing, the generic welcome is used.",
     secAction:"boarding_section",orderAction:"studio_boarding_order",open:openBoarding,save:v=>{c.boarding_order=v}});
+  if((c.boarding_order||[]).includes("names")){const nl=el("div","small");nl.style.cssText="display:flex;align-items:center;gap:8px;margin:4px 2px 10px";
+    const ci=el("input");ci.type="number";ci.min=2;ci.max=8;ci.value=c.boarding_count||3;ci.style.width="64px";
+    ci.onchange=async()=>{const r=await studio("boarding_count",{...pid(c),count:ci.value});if(r.error)toast(r.error,5000)};
+    nl.append(document.createTextNode("Names said each flight: "),ci);d.append(nl)}
 }
 function landingControls(c,d){
   pieceControls(c,d,{order:c.landing_order||["part:1","airport","part:2","time","part:3"],specials:{
