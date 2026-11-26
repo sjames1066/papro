@@ -86,7 +86,7 @@ class PhaseEngine:
                 self.done.update(("seatbelt_off", "cabin_service"))
             if vs is not None and float(vs) < -300:
                 self.done.add("descent")   # already on the way down: no "we have started our descent"
-        elif phase in ("Taxi in", "Deboarding"):
+        elif phase in ("Taxi in", "Deboarding", "Flight complete"):
             self.done.update(before + takeoff + ("seatbelt_off", "cabin_service", "descent", "landing_seats", "landing_dim",
                                                  "landing_secured", "after_landing"))
             self.flown = self.landed = True
@@ -108,7 +108,7 @@ class PhaseEngine:
                 closest = ("after_takeoff",)
             else:
                 closest = ()
-        elif phase in ("Taxi in", "Deboarding"):
+        elif phase in ("Taxi in", "Deboarding", "Flight complete"):
             closest = () if "deboard_complete" in self.done else ("after_landing",)
         elif phase == "Pushback":
             closest = ("boarding_complete",)
@@ -262,7 +262,7 @@ class PhaseEngine:
 import math
 
 PHASES = ["Preflight", "Boarding", "Boarding complete", "Pushback", "Taxi out", "Initial climb", "Climb", "Cruise",
-          "Descent", "Approach", "Taxi in", "Deboarding"]
+          "Descent", "Approach", "Taxi in", "Deboarding", "Flight complete"]
 
 # L:A32NX_FMGC_FLIGHT_PHASE (FlyByWire) numbering - kept for the probe report only
 FMGC_PHASES = {0: "Preflight", 1: "Takeoff", 2: "Climb", 3: "Cruise", 4: "Descent", 5: "Approach", 6: "Approach", 7: "Arrived"}
@@ -286,6 +286,7 @@ NOT_FLOWN_MAX_ALT_FT = 3000.0     # ...and it has never climbed above this: it h
 SEED_AT_DESTINATION_NM = 5.0     # opened on the ground within this of the destination airport: landed, taxiing in
 LANDED_KT = 60.0
 GSX_PERFORMING, GSX_COMPLETED = 5, 6
+FLIGHT_COMPLETE_S = 180.0         # parked, engines off, nobody deboarding for this long -> Flight complete
 PARKED_DEBOARD_S = 20.0          # stopped with the engines off this long after landing -> Deboarding, even with no GSX / door signal
 
 
@@ -370,8 +371,8 @@ class PhaseTracker:
             if self.dist_nm is not None and self.dist_nm <= SEED_AT_DESTINATION_NM and self.rank <= PHASES.index("Taxi out") and not self.flown:
                 self.flown = True
                 parked = float(r.get("gs") or 0.0) < 1.0 and r.get("eng_running") is not True
-                self.rank = PHASES.index("Deboarding" if parked else "Taxi in")
-                self.current = "Deboarding" if parked else "Taxi in"
+                self.rank = PHASES.index("Flight complete" if parked else "Taxi in")
+                self.current = "Flight complete" if parked else "Taxi in"
             return
         if self.rank > 0:
             return
@@ -488,6 +489,9 @@ class PhaseTracker:
                 if self.rank >= R["Taxi in"] and (r.get("door_open") or (gsx_d is not None and gsx_d >= GSX_PERFORMING)
                                                   or (parked and self._parked_since(t) >= PARKED_DEBOARD_S)):
                     self._go("Deboarding")
+                if self.rank >= R["Deboarding"] and parked and not (gsx_d is not None and gsx_d >= GSX_PERFORMING) \
+                        and self._parked_since(t) >= FLIGHT_COMPLETE_S:
+                    self._go("Flight complete")
                 if not parked:
                     self.parked_t = None
             else:

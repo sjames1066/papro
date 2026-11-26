@@ -4608,6 +4608,14 @@ class TrayApp(UIMixin):
         self.signs = {"seatbelt": None if sb is None else bool(sb), "no_smoking": None if ns is None else bool(ns)}   # the cabin signs on the Dashboard
         tracker.feed(reading)
         if not own_playback():
+            # file-swap aircraft (Fenix / FSLabs): nothing is played here, but the phase on the Dashboard still needs working out when opened part way through
+            if not getattr(self, "_swap_seeded", False):
+                if getattr(self, "_detect_t0", None) is None:
+                    self._detect_t0 = reading["t"]
+                if reading["t"] - self._detect_t0 >= DETECT_PHASE_S:
+                    self._swap_seeded = True
+                    self._detect_t0 = None
+                    tracker.seed(reading)
             return
         engine = getattr(self, "phases", None)
         if engine is None:
