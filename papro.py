@@ -4729,12 +4729,31 @@ class TrayApp(UIMixin):
             save_state(state)
             self.landing_pending = None
             return
+        if event == "final":
+            if own_playback():
+                return   # PAPro plays those aircraft's PAs itself, after landing
+            threading.Thread(target=self._final_pa, args=(clock,), daemon=True).start()
+            return
         if own_playback() and getattr(self, "phases", None):
             # PAPro plays this one itself: wait until the aircraft has turned off the runway
             self.landing_pending = {"clock": clock, "t": time.time(), "hdg": getattr(self, "last_heading", None)}
             log.info("Landed - the After Landing PA plays once the aircraft is off the runway")
             return
         self._landing_pa(clock)
+
+    def _final_pa(self, clock: str | None) -> None:
+        """On short final: build the landing PA with the real local time already (the one built after landing follows)."""
+        log.info("On short final: building the landing PA early")
+        got = self.lock.acquire(timeout=15)
+        try:
+            self.set_status(rebuild_landing(load_config(), clock, None, ask=False), notify=False)
+        except AppError as exc:
+            self.set_status(str(exc))
+        except Exception:
+            log.exception("Early landing PA error")
+        finally:
+            if got:
+                self.lock.release()
 
     def _landing_pa(self, clock: str | None) -> None:
         log.info("Landed: building the landing PA")

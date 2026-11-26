@@ -369,6 +369,21 @@ class SimWatcher:
                     except Exception:
                         log.exception("Telemetry callback failed")
                 event = self.detector.feed(bool(ground), float(agl), float(speed))
+                # on short final (500 ft after having been well above it): an early landing PA with the real local time, for
+                # aircraft whose PAs are swapped files (FSLabs may play its After Landing PA before the aircraft has slowed down)
+                if not ground:
+                    if float(agl) > 1500:
+                        self._final_done = False
+                        self._was_high = True
+                    elif float(agl) <= 500 and getattr(self, "_was_high", False) and not getattr(self, "_final_done", False):
+                        self._final_done = True
+                        local = requests.get("LOCAL_TIME")
+                        if local is not None:
+                            clock = round_clock(float(local))
+                            log.info("500 ft or less on final - local time here is %s", clock)
+                            self.on_event("final", clock)
+                else:
+                    self._was_high = False
                 if event == "takeoff":
                     self.on_event("takeoff", None)
                 elif event == "landed":
