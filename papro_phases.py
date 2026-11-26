@@ -353,7 +353,11 @@ class PhaseTracker:
 
     def seed(self, r: dict) -> None:
         """Opened part way through a flight, so there is no history to work the phase out from: take it from one reading."""
-        if r.get("on_ground") and r.get("eng_all") is True and not (self.dist_nm is not None and self.dist_nm <= SEED_AT_DESTINATION_NM):
+        at_dep = None   # on the ground within reach of the departure airport (None: departure not known)
+        if r.get("on_ground") and self.origin and r.get("lat") is not None:
+            la, lo, _ = position_degrees(r.get("lat"), r.get("lon"), r.get("heading"))
+            at_dep = la is not None and haversine_nm(la, lo, self.origin[0], self.origin[1]) <= AT_ORIGIN_NM
+        if r.get("on_ground") and r.get("eng_all") is True and (at_dep if at_dep is not None else not (self.dist_nm is not None and self.dist_nm <= SEED_AT_DESTINATION_NM)):
             if self.rank <= PHASES.index("Taxi out") and not self.flown:   # both engines running on the ground: on the way out
                 self.rank = PHASES.index("Taxi out")
                 self.current = "Taxi out"
