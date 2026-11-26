@@ -299,80 +299,6 @@ def remove_descent_section(root: Path, project: dict, item: str) -> None:
     save(root, project)
 
 
-# "Ladies and gentlemen, ... your crew today are Sarah, Marcus, and Ann": the After takeoff PA built from recorded parts and the
-# crew's names (picked at random for each flight, from the names recorded for the crew introduction), with an "and" clip said
-# before the last name. The order of the parts is the pack creator's.
-TAKEOFF_PART = "After Takeoff PA"
-CLIMB_PART = "Climb & cruise"
-TAKEOFF_DEFAULT_ORDER = ["part:1", "names", "and"]
-TAKEOFF_ITEM = re.compile(r"^(part:[1-9]\d?|names|and)$")
-TAKEOFF_DEFAULT_COUNT = 3
-TAKEOFF_MAX_NAMES = 8
-
-
-def takeoff_order(project: dict) -> list[str]:
-    raw = project.get("takeoff_order")
-    if raw is None:
-        return list(TAKEOFF_DEFAULT_ORDER)
-    out = []
-    for i in raw:
-        if isinstance(i, str) and TAKEOFF_ITEM.match(i) and i not in out:
-            out.append(i)
-    return out
-
-
-def takeoff_count(project: dict) -> int:
-    try:
-        return max(2, min(TAKEOFF_MAX_NAMES, int(project.get("takeoff_count") or TAKEOFF_DEFAULT_COUNT)))
-    except (TypeError, ValueError):
-        return TAKEOFF_DEFAULT_COUNT
-
-
-def takeoff_stem(item: str) -> str:
-    if item == "and":
-        return "Modular_TakeoffAnd"
-    return f"Modular_TakeoffPart{int(item[5:])}"
-
-
-def set_takeoff(root: Path, project: dict, on=None, order=None, count=None) -> None:
-    if on is not None:
-        if on:
-            project["takeoff_crew"] = True
-        else:
-            project.pop("takeoff_crew", None)
-    if order is not None:
-        project["takeoff_order"] = [i for i in order if isinstance(i, str) and TAKEOFF_ITEM.match(i)]
-    if count is not None:
-        project["takeoff_count"] = max(2, min(TAKEOFF_MAX_NAMES, int(count)))
-    save(root, project)
-
-
-def add_takeoff_section(root: Path, project: dict, item: str) -> None:
-    order = takeoff_order(project)
-    if item == "part":
-        used = [int(i[5:]) for i in order if i.startswith("part:")]
-        n = next((k for k in range(1, 20) if k not in used), None)
-        if n is None:
-            raise StudioError("That is enough parts.")
-        item = f"part:{n}"
-    if not TAKEOFF_ITEM.match(item):
-        raise StudioError("Unknown part of the After takeoff announcement.")
-    if item not in order:
-        order.append(item)
-    project["takeoff_order"] = order
-    save(root, project)
-
-
-def remove_takeoff_section(root: Path, project: dict, item: str) -> None:
-    if item == "and" or item.startswith("part:"):
-        try:
-            delete_slot(root, project, f"main/{takeoff_stem(item)}")
-        except (StudioError, ValueError):
-            pass
-    project["takeoff_order"] = [i for i in takeoff_order(project) if i != item]
-    save(root, project)
-
-
 # --------------------------------------------------------------------------- the After Landing PA, built from pieces
 # "Welcome to <airport>, where the local time is <time>. <rest>": recorded parts (the first is the old Modular_Landing), the welcome-to
 # clip, the airport's name (from the Airports section), the local time (from Time and Numbers) and the crew base (from the crew
@@ -438,7 +364,7 @@ def remove_landing_section(root: Path, project: dict, item: str) -> None:
 # (from the Airports section) and recorded parts (the first is the old Modular_Welcome), in an order the pack creator sets.
 BOARDING_PART = "Boarding Welcome PA"
 BOARDING_DEFAULT_ORDER = ["greeting", "airport", "part:1"]
-BOARDING_ITEM = re.compile(r"^(part:[1-9]\d?|greeting|airport|names|and)$")
+BOARDING_ITEM = re.compile(r"^(part:[1-9]\d?|greeting|airport)$")
 
 
 def boarding_order(project: dict) -> list[str]:
@@ -480,9 +406,9 @@ def add_boarding_section(root: Path, project: dict, item: str) -> None:
 
 
 def remove_boarding_section(root: Path, project: dict, item: str) -> None:
-    if (item.startswith("part:") and item != "part:1") or item == "and":
+    if item.startswith("part:") and item != "part:1":
         try:
-            delete_slot(root, project, f"main/{'Modular_WelcomeAnd' if item == 'and' else boarding_stem(int(item[5:]))}")
+            delete_slot(root, project, f"main/{boarding_stem(int(item[5:]))}")
         except (StudioError, ValueError):
             pass
     project["boarding_order"] = [i for i in boarding_order(project) if i != item]
@@ -784,7 +710,7 @@ def rename_project(root: Path, project: dict, icao: str, airline: str, voice: st
 
 
 # --------------------------------------------------------------------------- primary / secondary language
-SHARED_FIELDS = ("artist", "accent", "description", "credit_url", "donate_url", "version", "local_time", "also_icaos", "crew", "service_types", "descent_city", "descent_order", "takeoff_crew", "takeoff_order", "landing_base", "landing_order", "landing_off", "boarding_order", "boarding_off", "time_period")
+SHARED_FIELDS = ("artist", "accent", "description", "credit_url", "donate_url", "version", "local_time", "also_icaos", "crew", "service_types", "descent_city", "descent_order", "landing_base", "landing_order", "landing_off", "boarding_order", "boarding_off", "time_period")
 
 
 def duplicate_project(root: Path, project: dict) -> dict:
@@ -920,8 +846,6 @@ def slot_list(project: dict) -> list[dict]:
             add("BoardingWelcome", "main", boarding_stem(n), label, script, required=n == 1, part=BOARDING_PART)
             if n == 1:
                 add_variations("Modular_Welcome", "BoardingWelcome", label, script, BOARDING_PART)
-        elif item == "and":
-            add("BoardingWelcome", "main", "Modular_WelcomeAnd", "Welcome - \"and\" (said before the last crew name)", "Just say: 'and'.", part=BOARDING_PART)
         for sl in out[first:]:
             sl["boarding_item"] = item
     for i, word in enumerate(HOURS):
@@ -973,21 +897,6 @@ def slot_list(project: dict) -> list[dict]:
                 n = int(item[5:])
                 add("Descent & approach", "main", descent_stem(n), f"Descent Started - part {n}", texts.get(n, "Another part of the descent announcement."), part=DESCENT_PART)
                 out[-1]["descent_item"] = item
-    if project.get("takeoff_crew"):   # the After takeoff PA says the crew's names: parts + names (+ "and" before the last)
-        for sl in out:
-            if sl["stem"] == "AfterTakeoff":
-                sl["label"] = "After takeoff (Generic)"
-                sl["takeoff_generic"] = True
-        texts = {1: "Ladies and gentlemen, welcome aboard. Your cabin crew today are... (the names are added next)",
-                 2: "...and the rest of the crew are here to help you. Please sit back and relax."}
-        for item in takeoff_order(project):
-            if item.startswith("part:"):
-                n = int(item[5:])
-                add("Climb & cruise", "main", takeoff_stem(item), f"After takeoff - part {n}", texts.get(n, "Another part of the After takeoff announcement."), part=TAKEOFF_PART)
-                out[-1]["takeoff_item"] = item
-            elif item == "and":
-                add("Climb & cruise", "main", takeoff_stem(item), "After takeoff - \"and\" (said before the last name)", "Just say: 'and'.", part=TAKEOFF_PART)
-                out[-1]["takeoff_item"] = item
     for code in project.get("airports", []):
         name = airport_name(code)
         add("Airports", "airports", f"{icao}_{code}", f"{code}: {name}" if name else f"Airport name - {code}",
@@ -1014,9 +923,11 @@ def slot_list(project: dict) -> list[dict]:
                     f"Say the base name, e.g. '{nm or 'Atlanta'}' (it is heard between the pieces of the introduction).")
                 out[-1]["crew"] = "base"
                 out[-1]["part"] = CREW_PART
-    for name in crew["names"]:   # the crew's first names: one list, used by the crew introduction and the After takeoff PA
-        add("Crew names", CREW_FOLDER, crew_stem("name", name), f"Crew name: {name}", f"Say just the name: '{name}'.")
-        out[-1]["crew_name"] = True
+        if "names" in crew["order"]:
+            for name in crew["names"]:
+                add("Safety briefing", CREW_FOLDER, crew_stem("name", name), f"Crew name: {name}", f"Say just the name: '{name}'.")
+                out[-1]["crew"] = "name"
+                out[-1]["part"] = CREW_PART
     for entry in project.get("typed", []):   # custom takes for particular aircraft types
         stem = typed_stem(entry["base"], entry["types"], entry.get("n", 1))
         shown = "all aircraft" if entry["types"] == ["ALL"] else ", ".join(entry["types"])
@@ -1033,7 +944,6 @@ def slot_list(project: dict) -> list[dict]:
 # The checklist in the order the announcements are heard on a flight. (group, the file-name bases that belong to it.)
 PHASES = [
     ("Airports", ()),
-    ("Crew names", ()),
     ("Boarding", ("Welcome_", "Modular_Welcome", "BoardingWelcome", "Fuel_Tag")),
     ("Boarding music", ()), ("Bolt-ons", ()),
     ("Boarding complete & doors", ("BoardingComplete", "ArmDoors")),
@@ -1059,10 +969,6 @@ def phase_of(slot: dict) -> tuple[str, int]:
     """(phase name, position inside it) for a slot, from its file-name base."""
     if slot.get("descent_item"):
         return "Descent & approach", 1.5
-    if slot.get("takeoff_item"):
-        return "Climb & cruise", 0.5
-    if slot.get("crew_name"):
-        return "Crew names", 0
     if slot.get("boarding_item"):
         return "Boarding", 0.5
     if slot.get("landing_item"):
@@ -1109,10 +1015,6 @@ def arrange(slots: list[dict]) -> list[dict]:
         for sl in slots:
             if sl["group"] == "Descent & approach":
                 sl["part"] = DESCENT_PART if sl["stem"] == "DescentStarted" or sl.get("descent_item") else OTHER_DESCENT_PART
-    if any(sl.get("takeoff_item") or sl.get("takeoff_generic") for sl in slots):   # the crew-name After takeoff PA is a sub-section of Climb & cruise
-        for sl in slots:
-            if sl["group"] == "Climb & cruise":
-                sl["part"] = TAKEOFF_PART if sl["stem"] == "AfterTakeoff" or sl.get("takeoff_item") else CLIMB_PART
     if any(sl.get("crew") for sl in slots):   # with the crew introduction in it, the Safety briefing has two sub-sections
         for sl in slots:
             if sl["group"] == "Safety briefing" and not sl.get("crew"):
@@ -1210,10 +1112,9 @@ def status(root: Path, project: dict) -> list[dict]:
                      "lufs": info.get("lufs_out") if have else None, "imported": bool(have and info.get("imported")), "variants": variants})
     crew_order = crew_config(project)["order"]
     descent_pos = {item: i for i, item in enumerate(descent_order(project))}
-    takeoff_pos = {item: i for i, item in enumerate(takeoff_order(project))}
     landing_pos = {item: i for i, item in enumerate(landing_order(project))}
     boarding_pos = {item: i for i, item in enumerate(boarding_order(project))}
-    alphabetical = {"Boarding music", "Bolt-ons", "Crew names"}  # the clock stays in clock order; everything else is in flight order
+    alphabetical = {"Boarding music", "Bolt-ons"}  # the clock stays in clock order; everything else is in flight order
     first = {}
     for i, r in enumerate(rows):
         first.setdefault(r["group"], i)
@@ -1226,10 +1127,6 @@ def status(root: Path, project: dict) -> list[dict]:
             return -100 + landing_pos[r["landing_item"]]
         if r.get("descent_item"):
             return -100 + descent_pos[r["descent_item"]]
-        if r.get("takeoff_item"):
-            return -100 + takeoff_pos[r["takeoff_item"]]
-        if r["stem"] == "AfterTakeoff" and project.get("takeoff_crew"):
-            return -200
         if r["stem"] == "DescentStarted" and project.get("descent_city"):
             return -200
         if r.get("crew"):   # in the Safety briefing, first the intro parts (in their order), then the bases, then the names
@@ -1653,9 +1550,6 @@ def voice_json(project: dict) -> dict:
     if project.get("descent_city"):
         out["descent_city"] = True
         out["descent_order"] = descent_order(project)
-    if project.get("takeoff_crew"):
-        out["takeoff_crew"] = True
-        out["takeoff_order"] = takeoff_order(project)
     if not project.get("landing_off"):   # written, so the pack builds its After Landing PA the way Pack Studio shows it
         out["landing_order"] = landing_order(project)
     if not project.get("boarding_off"):
@@ -1663,8 +1557,6 @@ def voice_json(project: dict) -> dict:
     crew = crew_config(project)
     if crew["on"]:   # how to build the crew introduction travels with the pack
         out["crew"] = {"order": crew["order"], "fa": crew["fa"]}
-    if crew["fa"]:   # the crew per aircraft type also sets how many names the After takeoff / boarding PAs say
-        out["crew_fa"] = crew["fa"]
     if project.get("local_time") is False:
         out["local_time"] = False
     return out
@@ -1951,10 +1843,6 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
             if f"part:{n}" not in order:
                 order.append(f"part:{n}")
         project["descent_order"] = order
-    if info.get("takeoff_crew"):
-        project["takeoff_crew"] = True
-        if isinstance(info.get("takeoff_order"), list):
-            project["takeoff_order"] = info["takeoff_order"]
     if isinstance(info.get("boarding_order"), list):
         project["boarding_order"] = info["boarding_order"]
     board_parts = sorted(int(p.stem[len("Modular_WelcomePart"):]) for p in (pack / "main").glob("Modular_WelcomePart*.ogg")
@@ -1982,8 +1870,6 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
             crew_raw = {**saved_crew, **{k: v for k, v in crew_raw.items() if k in ("order", "fa")}}
     except (OSError, ValueError, AttributeError):
         pass
-    if isinstance(info.get("crew_fa"), dict) and not crew_raw.get("fa"):
-        crew_raw["fa"] = info["crew_fa"]
     crew_dir = pack / CREW_FOLDER
     if crew_dir.is_dir() and any(crew_dir.glob("*.ogg")):   # the clips themselves say which bases and names there are
         crew_raw["on"] = True
@@ -2091,7 +1977,7 @@ def install_to_library(root: Path, project: dict, airline_dir: Path) -> Path:
         pass
     if project.get("scripts"):
         (dest / "scripts.json").write_text(json.dumps(project["scripts"], indent=2, ensure_ascii=False), encoding="utf-8")
-    structure = {k: project[k] for k in ("airports", "extras", "variants", "typed", "silent", "service_types", "descent_order", "takeoff_order", "landing_order", "boarding_order") if project.get(k)}
+    structure = {k: project[k] for k in ("airports", "extras", "variants", "typed", "silent", "service_types", "descent_order", "landing_order", "boarding_order") if project.get(k)}
     if crew_config(project)["on"]:
         structure["crew"] = crew_config(project)
     structure_file = dest / "studio.json"   # the parts of the checklist that are not backed by a clip yet (an airport you have not recorded, a skipped "+")
