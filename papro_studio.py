@@ -714,12 +714,11 @@ SHARED_FIELDS = ("artist", "accent", "description", "credit_url", "donate_url", 
 
 
 def duplicate_project(root: Path, project: dict) -> dict:
-    """A copy of a pack in progress (recordings, details, the secondary language): the airline name and the voice name get
-    " Copy" added (the voice name is what tells two packs of one airline apart). It is not in your library until it is saved."""
+    """A copy of a pack in progress (recordings, details, the secondary language): the airline name gets " Copy" added; the
+    character's name gets a number (that is what tells two packs of one airline apart: rename it afterwards if you like). It is not in your library until it is saved."""
     icao, n = project["icao"], 1
     while True:
-        tag = " Copy" if n == 1 else f" Copy {n}"
-        voice, airline = f"{project['voice']}{tag}"[:40], f"{project['airline']}{tag}"[:80]
+        voice, airline = f"{project['voice']} {n + 1}"[:40], f"{project['airline']} Copy"[:80]
         sec = secondary_of(root, project)
         sec_voice = f"{voice} - {LANGUAGES.get(sec.get('language'), sec.get('language', ''))}"[:40] if sec is not None else ""
         if not (project_dir(root, icao, voice) / "project.json").is_file() and (not sec_voice or not (project_dir(root, icao, sec_voice) / "project.json").is_file()):
