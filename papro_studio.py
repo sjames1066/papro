@@ -1706,7 +1706,8 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
                       if p.is_file() and p.suffix.lower() == ".ogg"]
     if not files:
         raise StudioError("That pack has no sound files to edit.")
-    project = create(root, icao, airline or icao, voice)
+    saved_name = str(info.get("airline", "")).strip()   # the name the pack was saved with wins over the catalog's (or the bare code)
+    project = create(root, icao, (saved_name if saved_name and saved_name.upper() != icao.upper() else airline) or icao, voice)
     for key, limit in (("artist", 80), ("accent", 40), ("description", 200)):
         project[key] = str(info.get(key, "")).strip()[:limit]
     if str(info.get("version", "")).strip():
