@@ -205,6 +205,7 @@ class SimWatcher:
             "gsx_deboarding": self._lvar(requests, "L:FSDT_GSX_DEBOARDING_STATE"),  # 5 = deboarding
         }
 
+    FSS_SEATBELT_LVAR = "L:FSS_EXX_OVHD_PSGR_FSTN_BELT_SWITCH"
     IFLY_SEATBELT_LVAR = "L:VC_Fasten_Belts_SW_VAL"   # iFly 737 MAX overhead switch: 0 = OFF, 10 = AUTO, 20 = ON (it does not set the standard variable)
 
     # FSLabs A32X overhead switches (0 = OFF, 10 = AUTO, 20 = ON). The no-smoking name is read off the aircraft in the behaviours
@@ -233,6 +234,13 @@ class SimWatcher:
             raw = self._lvar(requests, self.IFLY_SEATBELT_LVAR)
             if raw is not None:
                 return float(raw) >= 15
+        elif "fss" in title and ("e1" in title or "embraer" in title):   # FlightSim Studio E-Jets: 0 = OFF, 100 = ON
+            raw = self._lvar(requests, self.FSS_SEATBELT_LVAR)
+            if raw is not None:
+                if self.__dict__.setdefault("_sb_seen", {}).get("fss") != raw:
+                    log.info("FSS E-Jet seatbelt switch = %s", raw)
+                    self._sb_seen["fss"] = raw
+                return float(raw) >= 50
         try:
             extra = [str(n) for n in (self.seatbelt_lvars() if self.seatbelt_lvars else []) if str(n).strip()]
         except Exception:
