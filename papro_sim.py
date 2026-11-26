@@ -196,6 +196,7 @@ class SimWatcher:
             "landing_light": g("LIGHT_LANDING", "LIGHT_LANDING_ON"),
             "seatbelt": self._seatbelt(requests, g),
             "no_smoking": self._no_smoking(requests, g),   # 0 = off, 1 = on, 2 = auto (None: the aircraft does not report it)
+            "sim_local_s": g("LOCAL_TIME"),   # seconds since midnight, local time at the aircraft
             "eng_running": any(known) if known else None,
             "eng_all": all(known) if len(known) >= 2 else None,   # both engines running
             "fmgc_phase": self._lvar(requests, "L:A32NX_FMGC_FLIGHT_PHASE"),

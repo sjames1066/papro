@@ -1750,8 +1750,15 @@ def knob_gain() -> float:
     return (max(0, min(100, int(KNOB["volume"]))) / 100.0) if KNOB["on"] else 0.0
 
 
+_SIM_CLOCK = {"s": None, "t": 0.0}   # the sim's local time at the aircraft (seconds since midnight) and when it was read
+
+
 def clock_tag() -> str:
-    hour = time.localtime().tm_hour
+    """Time of day for the greeting: the local time in the sim (where the aircraft is), the PC clock only if the sim gives none."""
+    if _SIM_CLOCK["s"] is not None and time.time() - _SIM_CLOCK["t"] < 60:
+        hour = int(_SIM_CLOCK["s"] // 3600) % 24
+    else:
+        hour = time.localtime().tm_hour
     return "night" if hour < 6 else "morning" if hour < 12 else "afternoon" if hour < 18 else "evening"
 
 
@@ -4615,6 +4622,8 @@ class TrayApp(UIMixin):
         if tracker is None:
             tracker = self.tracker = PhaseTracker()
         self._sync_tracker(tracker, reading["t"])
+        if reading.get("sim_local_s") is not None:
+            _SIM_CLOCK["s"], _SIM_CLOCK["t"] = float(reading["sim_local_s"]), time.time()
         sb, ns = reading.get("seatbelt"), reading.get("no_smoking")
         self.signs = {"seatbelt": None if sb is None else bool(sb), "no_smoking": None if ns is None else bool(ns)}   # the cabin signs on the Dashboard
         tracker.feed(reading)
