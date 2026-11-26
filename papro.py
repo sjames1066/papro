@@ -2244,7 +2244,16 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
     elif len(options) == 1:
         chosen = options[0]
     elif len(options) > 1:
-        chosen = pick_variant(airline, dest_icao, options, choose or CHOOSER or choose_default)
+        flight_now = load_state().get("flight") or {}
+        sig = f"{flight_now.get('number', '')}/{flight_now.get('origin', '')}/{flight_now.get('dest', '')}"
+        asked = (load_state().get("variant_asked") or {}).get(f"{airline}_{dest_icao}") or {}
+        if asked.get("sig") == sig and asked.get("v") in options and not getattr(_DIVERSION, "on", False):
+            chosen = asked["v"]   # already answered for this flight: do not ask again
+        else:
+            chosen = pick_variant(airline, dest_icao, options, choose or CHOOSER or choose_default)
+            state = load_state()
+            state.setdefault("variant_asked", {})[f"{airline}_{dest_icao}"] = {"sig": sig, "v": chosen}
+            save_state(state)
 
     state = load_state()
     state.setdefault("voice_used", {})[f"{airline}_{dest_icao}"] = voice_name
