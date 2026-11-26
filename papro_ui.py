@@ -1491,7 +1491,7 @@ $("#refresh").onclick=async()=>{await api("refresh");toast("Refreshing pack list
 document.querySelectorAll("[data-open]").forEach(b=>b.onclick=()=>api("open",{what:b.dataset.open}));
 
 // ---------------------------------------------------------------- Pack Studio
-let airportFilter="", view="main", studioSig="", recState=null, openGroups=new Set(["Boarding"]), playing=null;
+let airportFilter="", airportUnrec=false, view="main", studioSig="", recState=null, openGroups=new Set(["Boarding"]), playing=null;
 function setView(v){view=v;for(const n of ["main","studio","dl","test"]){$("#view-"+n).style.display=v===n?"":"none";$("#tab-"+n).classList.toggle("on",v===n)}
   if(v==="studio"){studioSig="";renderStudio()} if(v==="test")testInit()}
 let tOpts=null,tKey="",tAudio=null,tRows=[],tIdx=-1,tPlaylist=false,tBusy=false,tPaused=false;
@@ -1999,11 +1999,13 @@ function buildChecklist(c,host){
       i.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();add.click()}});line.append(i,add);d.append(line);
       if(gr.rows.length>4){
         const fl=el("input");fl.type="search";fl.placeholder="Search airports (code or name)";fl.value=airportFilter;fl.style.cssText="margin:12px 0 4px;width:100%";fl.setAttribute("aria-label","Search airports");
-        const none=el("div","small","No airport matches that search.");none.style.cssText="display:none;margin:8px 2px";
-        const apply=()=>{airportFilter=fl.value;const q=fl.value.trim().toLowerCase();let n=0;
-          d.querySelectorAll(":scope > .slot").forEach(row=>{const hit=!q||row.textContent.toLowerCase().includes(q);row.style.display=hit?"":"none";if(hit)n++});
-          none.style.display=q&&!n?"":"none"};
-        fl.addEventListener("input",apply);d.append(fl,none);setTimeout(apply,0);
+        const ul=el("label","small");ul.style.cssText="display:flex;align-items:center;gap:8px;margin:6px 2px";const uc=el("input");uc.type="checkbox";uc.checked=airportUnrec;
+        const left=gr.rows.filter(r=>!r.done&&!r.skipped).length;ul.append(uc,document.createTextNode(" Unrecorded only ("+left+" left)"));
+        const none=el("div","small","No airport matches.");none.style.cssText="display:none;margin:8px 2px";
+        const apply=()=>{airportFilter=fl.value;airportUnrec=uc.checked;const q=fl.value.trim().toLowerCase();let n=0;
+          d.querySelectorAll(":scope > .slot").forEach(row=>{const hit=(!q||row.textContent.toLowerCase().includes(q))&&(!airportUnrec||(!row.classList.contains("done")&&!row.classList.contains("skipped")));row.style.display=hit?"":"none";if(hit)n++});
+          none.style.display=(q||airportUnrec)&&!n?"":"none"};
+        fl.addEventListener("input",apply);uc.addEventListener("change",apply);d.append(fl,ul,none);setTimeout(apply,0);
       }
     }
     if(gr.name==="Boarding music"){
