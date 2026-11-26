@@ -622,6 +622,7 @@ def _flight_from_plan(data: dict) -> dict:
         "arrival": arrival_clock(data),
         "aircraft": str((data.get("aircraft") or {}).get("icaocode", "")).strip().upper(),   # ICAO type, e.g. A320
         "dest_lat": _number(dest.get("pos_lat")), "dest_lon": _number(dest.get("pos_long")),
+        "origin_lat": _number((data.get("origin") or {}).get("pos_lat")), "origin_lon": _number((data.get("origin") or {}).get("pos_long")),
         "cruise_ft": _number((data.get("general") or {}).get("initial_altitude")),
         **flight_labels(data),
     }
@@ -2732,7 +2733,8 @@ def update(cfg: dict, force: bool = False, airline: str | None = None, dest: str
     state = load_state()
     shown = {"airline": code, "dest": flight["icao"], "origin": flight.get("origin", ""), "name": flight.get("name", ""),
              "number": flight.get("number", ""), "callsign": flight.get("callsign", ""), "aircraft": flight.get("aircraft", ""),
-             "dest_lat": flight.get("dest_lat"), "dest_lon": flight.get("dest_lon"), "cruise_ft": flight.get("cruise_ft")}
+             "dest_lat": flight.get("dest_lat"), "dest_lon": flight.get("dest_lon"),
+             "origin_lat": flight.get("origin_lat"), "origin_lon": flight.get("origin_lon"), "cruise_ft": flight.get("cruise_ft")}
     if state.get("flight") != shown:
         state["flight"] = shown
         save_state(state)
@@ -4556,6 +4558,8 @@ class TrayApp(UIMixin):
         self._flight_identity = identity
         lat, lon = flight.get("dest_lat"), flight.get("dest_lon")
         tracker.set_flight((lat, lon) if lat is not None and lon is not None else None, flight.get("cruise_ft"))
+        olat, olon = flight.get("origin_lat"), flight.get("origin_lon")
+        tracker.origin = (olat, olon) if olat is not None and olon is not None else None
 
     def phase_action(self, what: str) -> None:
         """A Dashboard button: "boarding" (start the boarding phase) or "disarm" (the Disarm Doors PA)."""
@@ -4621,6 +4625,11 @@ class TrayApp(UIMixin):
         self.check_runway_exit(reading)
         engine.cruise_reached = tracker.rank == _PH.index("Cruise")   # cabin service: on reaching cruise altitude
         engine.boarding_ok = _PH.index("Boarding") <= tracker.rank <= _PH.index("Taxi out") and not tracker.flown   # the welcome waits for boarding to start (GSX or the button)
+        if getattr(tracker, "corrected", False):   # parked at the departure airport after a false "already flown": start the flight afresh
+            tracker.corrected = False
+            engine.reset()
+            engine.joined = True
+            log.info("Parked at the departure airport: phase back to Preflight")
         engine.feed(reading)
         self.track_flight_lock(reading)
         self.boarding_music(engine, tracker)

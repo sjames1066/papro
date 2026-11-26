@@ -281,6 +281,8 @@ CRUISE_LEVEL_BAND_FT = 150.0
 CRUISE_MATCH_FT = 300.0
 DESCENT_DROP_FT = 3000.0
 APPROACH_NM = 25.0
+AT_ORIGIN_NM = 5.0                 # on the ground this close to the departure airport (and far from the destination): the flight is yet to start
+NOT_FLOWN_MAX_ALT_FT = 3000.0     # ...and it has never climbed above this: it has not flown
 SEED_AT_DESTINATION_NM = 5.0     # opened on the ground within this of the destination airport: landed, taxiing in
 LANDED_KT = 60.0
 GSX_PERFORMING, GSX_COMPLETED = 5, 6
@@ -317,6 +319,7 @@ class PhaseTracker:
     def __init__(self):
         self.use_gsx = True
         self.dest = None          # (lat, lon) of the destination airport, degrees
+        self.origin = None        # (lat, lon) of the departure airport, degrees
         self.cruise_ft = None     # planned cruise altitude
         self.reset()
 
@@ -350,6 +353,10 @@ class PhaseTracker:
 
     def seed(self, r: dict) -> None:
         """Opened part way through a flight, so there is no history to work the phase out from: take it from one reading."""
+        if r.get("on_ground") and self.origin and r.get("lat") is not None:
+            lat0, lon0, _ = position_degrees(r.get("lat"), r.get("lon"), r.get("heading"))
+            if lat0 is not None and haversine_nm(lat0, lon0, self.origin[0], self.origin[1]) <= AT_ORIGIN_NM:
+                return   # parked at the departure airport: Preflight, whatever the destination says
         if r.get("on_ground"):   # no history: on the ground at the destination means we have landed (taxiing in), anywhere else it is the start
             if self.dist_nm is not None and self.dist_nm <= SEED_AT_DESTINATION_NM and self.rank <= PHASES.index("Taxi out") and not self.flown:
                 self.flown = True
@@ -449,6 +456,16 @@ class PhaseTracker:
             self.dist_nm = haversine_nm(lat, lon, self.dest[0], self.dest[1])
         else:
             self.dist_nm = None
+        self.origin_nm = haversine_nm(lat, lon, self.origin[0], self.origin[1]) if lat is not None and self.origin else None
+        if ground and self.flown and self.origin_nm is not None and self.origin_nm <= AT_ORIGIN_NM and self.max_alt < NOT_FLOWN_MAX_ALT_FT \
+                and (self.dist_nm is None or self.dist_nm > AT_ORIGIN_NM):
+            # on the ground at the departure airport, far from the destination, and never really climbed: this is the start of the
+            # flight (a bad first reading made it look flown), so Preflight - not Taxi in / Deboarding
+            self.flown = False
+            if self.rank >= PHASES.index("Initial climb") or self.rank >= PHASES.index("Taxi in"):
+                self.rank = 0
+            self.corrected = True    # the announcements marked as already said must be given back (see the PAPro loop)
+            self.parked_t = None
         self.max_alt = max(self.max_alt, alt) if not ground else self.max_alt
 
         if ground:
