@@ -784,7 +784,7 @@ def rename_project(root: Path, project: dict, icao: str, airline: str, voice: st
 
 
 # --------------------------------------------------------------------------- primary / secondary language
-SHARED_FIELDS = ("artist", "accent", "description", "credit_url", "donate_url", "version", "local_time", "also_icaos", "crew", "service_types", "descent_city", "descent_order", "takeoff_crew", "takeoff_order", "takeoff_count", "boarding_count", "landing_base", "landing_order", "landing_off", "boarding_order", "boarding_off", "time_period")
+SHARED_FIELDS = ("artist", "accent", "description", "credit_url", "donate_url", "version", "local_time", "also_icaos", "crew", "service_types", "descent_city", "descent_order", "takeoff_crew", "takeoff_order", "landing_base", "landing_order", "landing_off", "boarding_order", "boarding_off", "time_period")
 
 
 def duplicate_project(root: Path, project: dict) -> dict:
@@ -1656,15 +1656,15 @@ def voice_json(project: dict) -> dict:
     if project.get("takeoff_crew"):
         out["takeoff_crew"] = True
         out["takeoff_order"] = takeoff_order(project)
-        out["takeoff_count"] = takeoff_count(project)
     if not project.get("landing_off"):   # written, so the pack builds its After Landing PA the way Pack Studio shows it
         out["landing_order"] = landing_order(project)
     if not project.get("boarding_off"):
         out["boarding_order"] = boarding_order(project)
-        out["boarding_count"] = takeoff_count({"takeoff_count": project.get("boarding_count")})
     crew = crew_config(project)
     if crew["on"]:   # how to build the crew introduction travels with the pack
         out["crew"] = {"order": crew["order"], "fa": crew["fa"]}
+    if crew["fa"]:   # the crew per aircraft type also sets how many names the After takeoff / boarding PAs say
+        out["crew_fa"] = crew["fa"]
     if project.get("local_time") is False:
         out["local_time"] = False
     return out
@@ -1951,14 +1951,10 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
             if f"part:{n}" not in order:
                 order.append(f"part:{n}")
         project["descent_order"] = order
-    if info.get("boarding_count"):
-        project["boarding_count"] = info["boarding_count"]
     if info.get("takeoff_crew"):
         project["takeoff_crew"] = True
         if isinstance(info.get("takeoff_order"), list):
             project["takeoff_order"] = info["takeoff_order"]
-        if info.get("takeoff_count"):
-            project["takeoff_count"] = info["takeoff_count"]
     if isinstance(info.get("boarding_order"), list):
         project["boarding_order"] = info["boarding_order"]
     board_parts = sorted(int(p.stem[len("Modular_WelcomePart"):]) for p in (pack / "main").glob("Modular_WelcomePart*.ogg")
@@ -1986,6 +1982,8 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
             crew_raw = {**saved_crew, **{k: v for k, v in crew_raw.items() if k in ("order", "fa")}}
     except (OSError, ValueError, AttributeError):
         pass
+    if isinstance(info.get("crew_fa"), dict) and not crew_raw.get("fa"):
+        crew_raw["fa"] = info["crew_fa"]
     crew_dir = pack / CREW_FOLDER
     if crew_dir.is_dir() and any(crew_dir.glob("*.ogg")):   # the clips themselves say which bases and names there are
         crew_raw["on"] = True
@@ -2093,7 +2091,7 @@ def install_to_library(root: Path, project: dict, airline_dir: Path) -> Path:
         pass
     if project.get("scripts"):
         (dest / "scripts.json").write_text(json.dumps(project["scripts"], indent=2, ensure_ascii=False), encoding="utf-8")
-    structure = {k: project[k] for k in ("airports", "extras", "variants", "typed", "silent", "service_types", "descent_order", "takeoff_order", "takeoff_count", "boarding_count", "landing_order", "boarding_order") if project.get(k)}
+    structure = {k: project[k] for k in ("airports", "extras", "variants", "typed", "silent", "service_types", "descent_order", "takeoff_order", "landing_order", "boarding_order") if project.get(k)}
     if crew_config(project)["on"]:
         structure["crew"] = crew_config(project)
     structure_file = dest / "studio.json"   # the parts of the checklist that are not backed by a clip yet (an airport you have not recorded, a skipped "+")

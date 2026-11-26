@@ -1821,7 +1821,7 @@ function slotRow(c,r){
 }
 function faEditor(c,d){
   const cr=c.crew||{fa:{}};
-  d.append(el("div","small","Flight attendants per aircraft type (the number is said in the introduction; the crew introduction is used only on aircraft types listed here):"));
+  d.append(el("div","small","Flight attendants per aircraft type. This is the number said in the crew introduction, and how many crew names the Boarding and After takeoff PAs say. The crew introduction is used only on aircraft types listed here:"));
   const fa={...cr.fa};const list=el("div");list.style.cssText="display:flex;flex-direction:column;gap:6px;margin:8px 0;max-width:360px";
   const saveFa=async()=>{const r=await api("studio_crew",{...pid(c),fa});if(r.ok){cr.fa={...fa}}else if(r.error)toast(r.error,5000)};
   const draw=()=>{list.textContent="";Object.keys(fa).sort().forEach(t=>{const row=el("div");row.style.cssText="display:flex;align-items:center;gap:8px";
@@ -1851,7 +1851,7 @@ function crewNameAdd(c,d,after){
 function openCrew(sub){openGroups.add("Safety briefing");openGroups.add("Safety briefing/Crew introduction");if(sub)openGroups.add("Safety briefing/Crew introduction/"+sub)}
 function crewControls(c,d){
       const cr=c.crew||{order:[],fa:{}};let order=[...cr.order];
-      d.append(el("div","small","The pre-safety briefing is built for each flight from these pieces, in the order below (drag to reorder, ✕ to delete a piece, the buttons add more). The number of flight attendants comes from the aircraft type (set above) and is said with the hour clips (1-12) from After Landing. A flight from a recorded base uses that base, otherwise one is picked at random, and each flight attendant gets a different random name."));
+      d.append(el("div","small","The pre-safety briefing is built for each flight from these pieces, in the order below (drag to reorder, ✕ to delete a piece, the buttons add more). The number of flight attendants comes from the aircraft type (set in the Crew names section) and is said with the hour clips (1-12) from After Landing. A flight from a recorded base uses that base, otherwise one is picked at random, and each flight attendant gets a different random name."));
       const intros=c.rows.filter(r=>r.crew==="intro"),bases=c.rows.filter(r=>r.crew==="base"),names=c.rows.filter(r=>r.crew_name);
       const miss=[];if(!intros.length)miss.push("an intro part");intros.filter(r=>!r.done).forEach(r=>miss.push(r.label));
       if(order.includes("base")&&!bases.some(r=>r.done))miss.push("at least one base");
@@ -1928,10 +1928,6 @@ function takeoffControls(c,d){
       and:{label:"And (said between the last two names)",add:"+ And",title:"The clip said before the last name, e.g. “and”"}},
     intro:"PAPro builds the After takeoff announcement for each flight from these pieces, in this order (drag to reorder, ✕ to delete a piece, the buttons add more). For example: Part 1 (“Ladies and gentlemen, your cabin crew today are”), Names, And. The names are picked at random from the list below for each flight, and the And clip is said between the last two. Until every piece is recorded, the Generic clip is used.",
     secAction:"takeoff_section",orderAction:"studio_takeoff_order",open:openTakeoff,save:v=>{c.takeoff_order=v}});
-  const nl=el("div","small");nl.style.cssText="display:flex;align-items:center;gap:8px;margin:4px 2px 10px";
-  const ci=el("input");ci.type="number";ci.min=2;ci.max=8;ci.value=c.takeoff_count||3;ci.style.width="64px";
-  ci.onchange=async()=>{const r=await studio("takeoff_crew",{...pid(c),count:ci.value});if(r.error)toast(r.error,5000)};
-  nl.append(document.createTextNode("Names said each flight: "),ci);d.append(nl);
 }
 function descentControls(c,d){
   pieceControls(c,d,{order:c.descent_order||["part:1","city","part:2"],specials:{city:{label:"City name (from the Airports section)",add:"+ City name",title:"Say the destination's airport name"}},
@@ -1946,10 +1942,6 @@ function boardingControls(c,d){
       and:{label:"And (said between the last two names)",add:"+ And",title:"The clip said before the last name, e.g. “and”"}},
     intro:"PAPro builds the welcome aboard for each flight from these pieces, in this order (drag to reorder, ✕ to delete a piece, the buttons add more). For example: Greeting (“Ladies and gentlemen, good morning, welcome on board this flight to”), Airport name, Part 1 (“We'll be flying for...”). If a recorded part is missing, the generic welcome is used.",
     secAction:"boarding_section",orderAction:"studio_boarding_order",open:openBoarding,save:v=>{c.boarding_order=v}});
-  if((c.boarding_order||[]).includes("names")){const nl=el("div","small");nl.style.cssText="display:flex;align-items:center;gap:8px;margin:4px 2px 10px";
-    const ci=el("input");ci.type="number";ci.min=2;ci.max=8;ci.value=c.boarding_count||3;ci.style.width="64px";
-    ci.onchange=async()=>{const r=await studio("boarding_count",{...pid(c),count:ci.value});if(r.error)toast(r.error,5000)};
-    nl.append(document.createTextNode("Names said each flight: "),ci);d.append(nl)}
 }
 function landingControls(c,d){
   pieceControls(c,d,{order:c.landing_order||["part:1","airport","part:2","time","part:3"],specials:{
@@ -1974,6 +1966,7 @@ function buildChecklist(c,host){
     const sm=el("summary",null,gr.name);sm.append(el("span",null,gr.rows.filter(r=>r.done||r.skipped).length+"/"+gr.rows.length));d.append(sm);
     if(gr.name==="Crew names"){
       d.append(el("div","small","First names of the cabin crew, recorded once and used by the Crew introduction (Safety briefing) and the After takeoff PA (Climb & cruise). Each flight, PAPro picks names at random."));
+      faEditor(c,d);
       crewNameAdd(c,d);
     }
     if(gr.name==="Boarding"){
@@ -2069,7 +2062,7 @@ function buildChecklist(c,host){
           const sub=(title,rows,adder,count)=>{const k="Safety briefing/Crew introduction/"+title,dd=el("details","grp sub");dd.open=openGroups.has(k);dd.ontoggle=()=>{dd.open?openGroups.add(k):openGroups.delete(k)};
             const sm=el("summary",null,title);sm.append(el("span",null,count!=null?String(count):rows.filter(r=>r.done||r.skipped).length+"/"+rows.length));dd.append(sm);adder(dd);rows.forEach(r=>dd.append(slotRow(c,r)));sd.append(dd)};
           const ord=(c.crew&&c.crew.order)||[];
-          sub("Aircraft types",[],dd=>faEditor(c,dd),Object.keys((c.crew&&c.crew.fa)||{}).length);
+          sd.append(el("div","small","Flight attendants per aircraft type are set in the Crew names section, under Airports."));
           if(ord.includes("base"))sub("Bases",pt.rows.filter(r=>r.crew==="base"),dd=>crewBaseAdd(c,dd));
           if(ord.includes("names"))sd.append(el("div","small","The crew names are recorded in the Crew names section, under Airports."));
         }else if(pt.name==="After Takeoff PA"&&c.takeoff_crew){
