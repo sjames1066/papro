@@ -235,13 +235,13 @@ class SimWatcher:
             raw = self._lvar(requests, self.IFLY_SEATBELT_LVAR)
             if raw is not None:
                 return float(raw) >= 15
-        elif "fss" in title and ("e1" in title or "embraer" in title):   # FlightSim Studio E-Jets: 0 = OFF, 100 = ON
+        elif "fss" in title and ("e1" in title or "embraer" in title):   # FlightSim Studio E-Jets: 0 = OFF, 1 = ON
             raw = self._lvar(requests, self.FSS_SEATBELT_LVAR)
             if raw is not None:
                 if self.__dict__.setdefault("_sb_seen", {}).get("fss") != raw:
                     log.info("FSS E-Jet seatbelt switch = %s", raw)
                     self._sb_seen["fss"] = raw
-                return float(raw) >= 50
+                return float(raw) >= 0.5   # reads 0 / 1 in the sim (not 0 / 100)
         try:
             extra = [str(n) for n in (self.seatbelt_lvars() if self.seatbelt_lvars else []) if str(n).strip()]
         except Exception:
@@ -253,7 +253,7 @@ class SimWatcher:
         return g("CABIN_SEATBELTS_ALERT_SWITCH")
 
     def _beacon(self, requests, g):
-        """The anti-collision beacon: the FSS E-Jets' own switch (0 = OFF, 100 = ON; their lights don't answer the standard
+        """The anti-collision beacon: the FSS E-Jets' own switch (0 = OFF, 1 = ON; their lights don't answer the standard
         variable), else the standard sim variable."""
         title = getattr(self, "_title_low", "")
         if "fss" in title and ("e1" in title or "embraer" in title):
@@ -263,7 +263,7 @@ class SimWatcher:
                 if seen.get("fssb") != raw:
                     log.info("FSS E-Jet beacon switch = %s", raw)
                     seen["fssb"] = raw
-                return float(raw) >= 50
+                return float(raw) >= 0.5   # reads 0 / 1 in the sim (not 0 / 100)
         return g("LIGHT_BEACON", "LIGHT_BEACON_ON")
 
     def _no_smoking(self, requests, g):
