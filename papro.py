@@ -4929,10 +4929,10 @@ class TrayApp(UIMixin):
         threading.Thread(target=work, daemon=True).start()
 
     def poll_once(self, force: bool = False) -> None:
-        if not self.lock.acquire(blocking=False):
-            return
         if not force and self.flight_in_progress() and load_state().get("last"):
             return   # in the air / taxiing in: a newly filed flight waits until the aircraft is parked with the engines off
+        if not self.lock.acquire(blocking=False):
+            return
         try:
             cfg = load_config()
             changed, message = update(cfg, force=force)
