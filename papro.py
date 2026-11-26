@@ -1864,6 +1864,52 @@ def build_crew_intro(voice_dir: Path, airline: str, origin: str, aircraft: str, 
     return True
 
 
+def build_takeoff_crew(voice_dir: Path, order: list, count: int, out: Path, state_key: str) -> bool:
+    """The After takeoff PA from pieces: recorded parts and the crew's names. The names are picked at random once per flight (from
+    the names recorded for the crew introduction); the "and" clip is said between the last two names. False (the plain After
+    takeoff clip stays) when a piece is missing."""
+    folder = voice_dir / "crew"
+    if papro_audio is None or not papro_audio.have_backend():
+        return False
+    names = {f.stem[5:]: f for f in folder.glob("Name_*.ogg")} if folder.is_dir() else {}
+    state = load_state()
+    pick_all = state.setdefault("takeoff_pick", {})
+    pick = pick_all.get(state_key) or {}
+    chosen = [n for n in pick.get("names", []) if n in names]
+    if "names" in order and (len(chosen) != min(count, len(names)) or pick.get("n") != count):
+        chosen = random.sample(sorted(names), min(count, len(names)))
+        pick_all.clear()
+        pick_all[state_key] = {"n": count, "names": chosen}
+        save_state(state)
+        log.info("After takeoff crew names: %s", ", ".join(chosen) or "-")
+    pieces: list[Path] = []
+    for item in order:
+        if item.startswith("part:") and item[5:].isdigit():
+            found = _find_piece(voice_dir, [f"Modular_TakeoffPart{int(item[5:])}"], (MAIN_FOLDER,))
+            if not found:
+                log.info("After takeoff crew introduction not built: part %s is not recorded", item[5:])
+                return False
+            pieces.append(found)
+        elif item == "names":
+            if len(names) < 2:
+                log.info("After takeoff crew introduction not built: record at least two crew names")
+                return False
+            files = [names[n] for n in chosen]
+            if "and" in order and len(files) >= 2:
+                and_clip = _find_piece(voice_dir, ["Modular_TakeoffAnd"], (MAIN_FOLDER,))
+                if not and_clip:
+                    log.info("After takeoff crew introduction not built: the \"and\" clip is not recorded")
+                    return False
+                files = [*files[:-1], and_clip, files[-1]]
+            joined = out.with_name("takeoff_names.ogg")
+            papro_audio.join(files, joined, 180, False)
+            pieces.append(joined)
+    if not pieces:
+        return False
+    papro_audio.join(pieces, out, 60, True)
+    return True
+
+
 _WELCOME_WHY: list[str] = []
 
 
@@ -2216,6 +2262,18 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
                     crew_note = "generic Pre-safety briefing used: " + _CREW_WHY[0]
             except (papro_audio.AudioError, OSError) as exc:
                 log.warning("Could not build the crew introduction: %s", exc)
+
+    if not only and voice_setting(voice_dir, "takeoff_crew"):   # "...your cabin crew today are Sarah, Marcus and Ann"
+        flight_now = load_state().get("flight") or {}
+        with tempfile.TemporaryDirectory(dir=DATA_DIR) as takeoff_work:
+            takeoff_out = Path(takeoff_work) / "AfterTakeoff.ogg"
+            try:
+                if build_takeoff_crew(voice_dir, voice_setting(voice_dir, "takeoff_order") or ["part:1", "names", "and"],
+                                      int(voice_setting(voice_dir, "takeoff_count") or 3), takeoff_out,
+                                      "takeoff/" + crew_state_key(airline, voice_dir, flight_now)):
+                    install_file(takeoff_out, fenix_dir / "AfterTakeoff.ogg", boost)
+            except (papro_audio.AudioError, OSError) as exc:
+                log.warning("Could not build the After takeoff crew introduction: %s", exc)
 
     all_clips = {m["folder"]: find_clips(voice_dir, m["folder"], source, dest_icao) for m in cfg["mappings"]}
     all_clips[AIRPORTS_FOLDER] = find_clips(voice_dir, AIRPORTS_FOLDER, source, dest_icao)  # just the airport's name
@@ -3720,7 +3778,7 @@ class UIMixin:
             "also_icaos": ", ".join(project.get("also_icaos", [])), "local_time": project.get("local_time") is not False,
             "description": project.get("description", ""), "version": project.get("version", "1.0.0"),
             "effect": bool(project.get("effect", True)), "music_level": papro_studio.music_level(project), "airports": project["airports"], "aircraft": project.get("aircraft", []), "aircraft_on": bool(project.get("aircraft_on")),
-            "app_boost": boost_percent(cfg), "languages": self.language_snapshot(project), "language": project.get("language", ""), "aircraft_presets": papro_studio.AIRCRAFT_PRESETS, "typed_bases": papro_studio.TYPED_BASES, "aircraft_types": papro_studio.AIRCRAFT_TYPES, "extras": project["extras"], "music": project.get("music", []), "crew": papro_studio.crew_config(project), "descent_city": bool(project.get("descent_city")), "time_period": bool(project.get("time_period")), "descent_order": papro_studio.descent_order(project), "landing_order": papro_studio.landing_order(project), "landing_off": bool(project.get("landing_off")), "boarding_order": papro_studio.boarding_order(project), "boarding_off": bool(project.get("boarding_off")), "service_types": project.get("service_types", []),
+            "app_boost": boost_percent(cfg), "languages": self.language_snapshot(project), "language": project.get("language", ""), "aircraft_presets": papro_studio.AIRCRAFT_PRESETS, "typed_bases": papro_studio.TYPED_BASES, "aircraft_types": papro_studio.AIRCRAFT_TYPES, "extras": project["extras"], "music": project.get("music", []), "crew": papro_studio.crew_config(project), "descent_city": bool(project.get("descent_city")), "time_period": bool(project.get("time_period")), "descent_order": papro_studio.descent_order(project), "takeoff_crew": bool(project.get("takeoff_crew")), "takeoff_order": papro_studio.takeoff_order(project), "takeoff_count": papro_studio.takeoff_count(project), "landing_order": papro_studio.landing_order(project), "landing_off": bool(project.get("landing_off")), "boarding_order": papro_studio.boarding_order(project), "boarding_off": bool(project.get("boarding_off")), "service_types": project.get("service_types", []),
             "logo": papro_studio.logo_path(STUDIO_DIR, project).is_file(), "has_script": bool(project.get("scripts")), "origin": bool(project.get("origin")), "in_library": self.project_in_library(cfg, project["icao"], project["voice"]), "upgrades": papro_studio.upgrade_preview(STUDIO_DIR, project), "target_pending": False, "rows": rows, "missing": len(papro_studio.missing(STUDIO_DIR, project)),
             "target": target, "target_count": count, "target_source": label,
             "done": sum(1 for r in rows if r["done"] or r["skipped"]), "total": len(rows)}
@@ -4107,6 +4165,19 @@ class UIMixin:
                 papro_studio.sync_secondary(STUDIO_DIR, project)
             elif name == "landing_order":
                 papro_studio.set_landing_order(STUDIO_DIR, project, data.get("order") or [])
+                papro_studio.sync_secondary(STUDIO_DIR, project)
+            elif name == "takeoff_crew":   # the After takeoff PA says the crew's names: on / off, names said
+                papro_studio.set_takeoff(STUDIO_DIR, project, on=data.get("on") if "on" in data else None,
+                                         count=data.get("count") if data.get("count") not in (None, "") else None)
+                papro_studio.sync_secondary(STUDIO_DIR, project)
+            elif name == "takeoff_section":   # add / delete a piece of the After takeoff announcement
+                if data.get("remove"):
+                    papro_studio.remove_takeoff_section(STUDIO_DIR, project, str(data.get("item", "")))
+                else:
+                    papro_studio.add_takeoff_section(STUDIO_DIR, project, str(data.get("item", "")))
+                papro_studio.sync_secondary(STUDIO_DIR, project)
+            elif name == "takeoff_order":
+                papro_studio.set_takeoff(STUDIO_DIR, project, order=data.get("order") or [])
                 papro_studio.sync_secondary(STUDIO_DIR, project)
             elif name == "descent_section":   # add / delete a piece of the city-based descent announcement
                 if data.get("remove"):
