@@ -1672,6 +1672,13 @@ def is_modular(name: str) -> bool:
     return name.lower().startswith("modular_")
 
 
+def typed_take(key: str, current: Path | None, name: str, folders) -> Path | None:
+    """`current` unless the pack has a take of `name` made for this aircraft type (Welcome_Morning@A320.ogg)."""
+    typed = [p for f in folders if f and Path(f).is_dir() for p in sorted(Path(f).iterdir())
+             if p.is_file() and typed_info(p.name) and typed_info(p.name)[0].lower() == name.lower()]
+    return (typed_choice(key, [current] if current else [], typed) or current) if typed else current
+
+
 def take_choice(key: str, base: Path | None, folders, stem: str | None = None) -> Path | None:
     """`base` or one of its extra takes (<stem>~v2.ogg ... in `folders`), rolled once per flight like the other variations.
     With no base file the takes alone are used."""
@@ -1876,6 +1883,8 @@ def welcome_pieces(lib_dir: Path, clip: Path, tag: str, tail: list[Path] | None 
     base_file = part_file(lib_dir, name)
     greeting = take_choice(f"{lib_dir.parent.name}/{lib_dir.name}/{name}", base_file,
                            [lib_dir / PARTS_FOLDER, lib_dir / LEGACY_PARTS], name) if base_file else None
+    if greeting and base_file:   # a take made for this aircraft type (Welcome_Morning@A320.ogg)
+        greeting = typed_take(f"{lib_dir.parent.name}/{lib_dir.name}/{name}@", greeting, base_file.name, [base_file.parent]) or greeting
     pieces = []
     for item in order or ["greeting", "airport", "part:1"]:
         if item == "greeting":
@@ -2305,6 +2314,8 @@ def _apply_single(cfg: dict, airline: str, dest_icao: str, choose=None, variant:
                 generic = own_main / name if own_main and (own_main / name).is_file() else (pristine / name if pristine else None)
                 if generic and generic.is_file():   # extra takes of the generic PA (BoardingWelcome[Morning]~v2.ogg)
                     generic = take_choice(f"{airline}/{voice_dir.name}/{name}", generic, [own_main, pristine], Path(name).stem) or generic
+                if generic and generic.is_file():   # a take made for this aircraft type (BoardingWelcome@A320[Morning].ogg)
+                    generic = typed_take(f"{airline}/{voice_dir.name}/{name}@", generic, name, [own_main, pristine]) or generic
                 pieces = None
                 if joined and clip:
                     if folder == "dest":

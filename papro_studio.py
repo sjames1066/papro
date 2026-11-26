@@ -33,8 +33,12 @@ AIRCRAFT_PRESETS = ["Airbus A319", "Airbus A320", "Airbus A321", "Airbus A330", 
 # Aircraft-specific PAs: a custom take of a PA that only plays for some aircraft types (ICAO type designators). The types are
 # part of the file name - SafetyBriefing@A320+A319.ogg - so they travel with the pack. ALL = every aircraft.
 TYPED_BASES = {"SafetyBriefing": "Safety demonstration", "PreSafetyBriefing": "Pre-safety briefing",
-               "Modular_Welcome": "Boarding welcome - the rest"}
-TYPED_RE = re.compile(r"^(?P<base>[A-Za-z_]+)@(?P<types>[A-Za-z0-9+]+)(?:~v(?P<n>\d+))?$")
+               "Modular_Welcome": "Boarding welcome - the rest", "AfterTakeoff": "After takeoff",
+               "Welcome_Morning": "Welcome, morning", "Welcome_Afternoon": "Welcome, afternoon", "Welcome_Evening": "Welcome, evening",
+               "BoardingWelcome[Morning]": "Welcome, morning (generic)", "BoardingWelcome[Afternoon]": "Welcome, afternoon (generic)",
+               "BoardingWelcome[Evening]": "Welcome, evening (generic)"}
+TYPED_FOLDERS = {"Welcome_Morning": "time", "Welcome_Afternoon": "time", "Welcome_Evening": "time"}   # where the aircraft versions of these live (the rest are in main)
+TYPED_RE = re.compile(r"^(?P<base>[A-Za-z_]+)@(?P<types>[A-Za-z0-9+]+)(?:~v(?P<n>\d+))?(?P<tags>(?:\[[^\]]*\])*)$")
 TYPE_CODE = re.compile(r"^[A-Z0-9]{2,4}$")
 ICAO_TYPES = frozenset("""
 A124 A140 A148 A158 A19N A20N A21N A225 A306 A30B A310 A318 A319 A320 A321 A332 A333 A337 A338 A339 A342 A343 A345
@@ -416,15 +420,16 @@ def remove_boarding_section(root: Path, project: dict, item: str) -> None:
 
 
 def typed_stem(base: str, types: list[str], n: int = 1) -> str:
-    return f"{base}@{'+'.join(types)}" + (f"~v{n}" if n > 1 else "")
+    name, _, tags = base.partition("[")   # BoardingWelcome[Morning] -> BoardingWelcome@A320[Morning]
+    return f"{name}@{'+'.join(types)}" + (f"~v{n}" if n > 1 else "") + (f"[{tags}" if tags else "")
 
 
 def parse_typed(stem: str):
     """'SafetyBriefing@A320+A319~v2' -> ('SafetyBriefing', ['A320', 'A319'], 2); None for anything else."""
     m = TYPED_RE.match(stem)
-    if not m or m["base"] not in TYPED_BASES:
+    if not m or m["base"] + m["tags"] not in TYPED_BASES:
         return None
-    return m["base"], [t.upper() for t in m["types"].split("+") if t], int(m["n"] or 1)
+    return m["base"] + m["tags"], [t.upper() for t in m["types"].split("+") if t], int(m["n"] or 1)
 
 
 def clean_types(types, strict: bool = True) -> list[str]:
@@ -933,7 +938,7 @@ def slot_list(project: dict) -> list[dict]:
         shown = "all aircraft" if entry["types"] == ["ALL"] else ", ".join(entry["types"])
         in_safety = entry["base"] in SAFETY_TYPED   # these sit right under the normal safety briefing PA they replace
         label = next((lab for stem0, lab, _ in GENERAL if stem0 == entry["base"]), TYPED_BASES[entry["base"]]) if in_safety else TYPED_BASES[entry["base"]]
-        add("Safety briefing" if in_safety else "Other announcements", "main", stem, f"{label} ({shown})",
+        add("Safety briefing" if in_safety else "Other announcements", TYPED_FOLDERS.get(entry["base"], "main"), stem, f"{label} ({shown})",
             "this announcement as it should sound on the aircraft types you choose. It replaces the normal one on those types.")
         out[-1].update({"typed": True, "base": entry["base"], "types": entry["types"], "n": entry.get("n", 1)})
     for name in project.get("extras", []):
@@ -1769,7 +1774,7 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
             if int(n) not in project.setdefault("variants", {}).setdefault(base, []):
                 project["variants"][base].append(int(n))
                 project["variants"][base].sort()
-        elif folder == "main" and parse_typed(stem):
+        elif folder == TYPED_FOLDERS.get((parse_typed(stem) or ("",))[0], "main") and parse_typed(stem):
             base, types, n = parse_typed(stem)
             try:
                 entry = {"base": base, "types": clean_types(types, False), "n": n}
@@ -1786,7 +1791,7 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
             progress(i / len(files))
         (pack / folder).mkdir(parents=True, exist_ok=True)
         name = path.name
-        if folder == "main" and parse_typed(path.stem):   # types in a canonical order (sorted), so the clip matches its entry
+        if folder == TYPED_FOLDERS.get((parse_typed(path.stem) or ("",))[0], "main") and parse_typed(path.stem):   # types in a canonical order (sorted), so the clip matches its entry
             base, types, n = parse_typed(path.stem)
             try:
                 name = typed_stem(base, clean_types(types, False), n) + path.suffix
