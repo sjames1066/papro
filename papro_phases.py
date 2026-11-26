@@ -201,8 +201,12 @@ class PhaseEngine:
                         pass   # the descent PA already covers it
                     elif getattr(self, "cruise_reached", False) and (vs is None or vs > -SEATBELT_ON_MAX_DESCENT_FPM):
                         self.fire_cb("seatbelt_on")   # turbulence: sign switched on at cruise, not descending
+                gate = bool(r.get("seatbelt_gate")) and seatbelt is not None   # PMDG / FSS E-Jets: the descent PA waits for the sign to go ON
                 if self.cruise_seen and vs is not None and vs <= DESCENT_VS_FPM and alt <= self.max_alt - DESCENT_BELOW_MAX_FT:
-                    self._fire("descent")
+                    if not gate or seatbelt is True:
+                        self._fire("descent")
+                elif gate and self.cruise_seen and "descent" not in self.done and agl <= LANDING_PREP_AGL_FT:
+                    self.done.add("descent")   # the sign never came on: no descent PA this late, but the landing ones still follow
                 if self.cruise_seen and "descent" in self.done and agl <= LANDING_PREP_AGL_FT:
                     self._fire("landing_seats")
                     self._fire("landing_dim")
