@@ -1816,7 +1816,7 @@ function slotRow(c,r){
   if(r.typed){const xt=el("button","danger","✕");xt.title="Remove this aircraft PA";let armT=null;xt.onclick=()=>{if(!xt.classList.contains("arm")){xt.classList.add("arm");xt.textContent="Delete?";armT=setTimeout(()=>{xt.classList.remove("arm");xt.textContent="✕"},3000);return}clearTimeout(armT);studio("typed_remove",{...pid(c),slot:r.id})};act.append(xt)}
   if(r.variant_of){const xv=el("button","danger","✕");xv.title="Remove this variation";let armV=null;xv.onclick=()=>{if(!xv.classList.contains("arm")){xv.classList.add("arm");xv.textContent="Delete?";armV=setTimeout(()=>{xv.classList.remove("arm");xv.textContent="✕"},3500);return}clearTimeout(armV);studio("variant",{...pid(c),base:r.variant_of,n:r.variant_n,remove:true})};act.append(xv)}
   if(r.custom){const cs=el("button","sq ghost","✕");cs.title="Remove this item's script";cs.style.fontSize="11px";cs.onclick=()=>studio("script",{...pid(c),slot:r.id,text:""});act.insertBefore(cs,up.nextSibling)}
-  if(r.variantable){const av=el("button","sq ghost","+");av.title="Add a variation: record another take of this announcement. PAPro picks one at random each flight.";av.style.fontSize="18px";av.style.lineHeight="1";av.onclick=async()=>{openGroups.add(r.group);await studio("variant",{...pid(c),base:r.stem});studioSig="";renderStudio()};act.append(av)}
+  if(r.variantable){const av=el("button","ghost","+ Variation");av.title="Add a variation: record another take of this announcement. PAPro picks one at random each flight.";av.style.whiteSpace="nowrap";av.onclick=async()=>{openGroups.add(r.group);await studio("variant",{...pid(c),base:r.stem});studioSig="";renderStudio()};act.append(av)}
   d.append(act);return d;
 }
 function faEditor(c,d){
