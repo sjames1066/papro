@@ -905,6 +905,7 @@ body.remote .pc-only{display:none!important}body.remote .remote-note{display:blo
   <nav class="tabs"><button id="tab-main" class="on">Dashboard</button><button id="tab-dl">Pack Manager</button><button id="tab-studio">Pack Studio</button><button id="tab-test">Test</button><div class="h-signs" id="signs"></div></nav>
   <div id="view-main">
   <div class="card updbar" id="updbar" style="display:none"><div><b id="upd-t"></b><span id="upd-s"></span></div><button class="primary" id="upd-go">Download</button></div>
+  <div id="packupd"></div>
   <div class="herorow"><section class="card hero" id="hero"></section>
     <aside class="card knobbox" id="knobbox" style="display:none"><div class="kt">Captain's PA</div>
       <div class="knob on" id="knob" tabindex="0" role="slider" aria-label="PA volume" aria-valuemin="0" aria-valuemax="100" title="Click the middle to mute / unmute. Click the left or right side, or scroll, to change the volume.">
@@ -1155,6 +1156,16 @@ function editableLogo(icao,cls){ // the logo with a pencil that appears on hover
 function logo(icao,cls){const i=el("img",cls);i.alt=icao;i.src="/logo/"+icao+".png?t="+TOKEN+"&v="+(snap&&snap.logo_v||0);return i}
 
 let heroSig="", keepClosed=false;
+let packUpdSig="";
+function renderPackUpd(){const box=$("#packupd");if(!box)return;
+  const list=(snap.packs||[]).filter(p=>p.catalog&&p.installed&&p.update);
+  const sig=JSON.stringify([list.map(p=>[p.icao,p.id,p.task&&p.task.text,p.task&&p.task.frac]),snap.busy]);
+  if(sig===packUpdSig)return;packUpdSig=sig;box.replaceChildren();
+  list.forEach(p=>{const c=el("div","card updbar"),t=el("div");
+    t.append(el("b",null,p.name+" pack: update available"),el("span",null,p.task?(p.task.text||"Updating")+(p.task.frac!=null?" "+Math.round(p.task.frac*100)+"%":""):"Updating also makes it the pack in use for your flight."));
+    const b=el("button","primary",p.task?"Updating...":"Update");b.disabled=!!p.task||!!snap.busy;
+    b.onclick=()=>{b.disabled=true;b.textContent="Updating...";api("install",{id:p.id})};
+    c.append(t,b);box.append(c)})}
 function renderUpd(){const a=snap.app_update,b=$("#updbar");if(!a||!a.url){b.style.display="none";return}
   b.style.display="";$("#upd-t").textContent="PAPro "+a.version+" is available";$("#upd-s").textContent="";$("#upd-go").textContent=a.auto?"Update now":"Download"}
 $("#upd-go").onclick=()=>{if(snap.app_update&&snap.app_update.auto){$("#upd-go").disabled=true;toast("Downloading the update - PAPro will restart by itself",6000)}api("open",{what:"update"})};
@@ -2218,7 +2229,7 @@ async function tick(){
   try{
     const r=await fetch("/api/state",{headers:{"X-Token":TOKEN,"X-View":(view==="studio"&&!document.hidden)?"studio":""}}); snap=await r.json();
     $("#auto").classList.toggle("on",!!snap.auto); $("#ver").textContent="PAPro v"+(snap.version||"");
-    renderHero(); renderKnob(); renderKeep(); renderUpd(); renderJob(); renderStudio(); renderPacks(); if($("#m-manage").classList.contains("show"))renderManage(); renderAliases(); renderWelcome(); renderPrompt();
+    renderHero(); renderKnob(); renderKeep(); renderUpd(); renderPackUpd(); renderJob(); renderStudio(); renderPacks(); if($("#m-manage").classList.contains("show"))renderManage(); renderAliases(); renderWelcome(); renderPrompt();
     if(importWatch){const busy=(snap.packs||[]).some(p=>p.task&&p.task.kind==="install");
       if(busy)importWatch.seen=true;
       if(!busy&&(snap.installs_done||0)>importWatch.n){importWatch=null;setView("main");toast("Pack imported",4000)}   // finished: back to the Dashboard
