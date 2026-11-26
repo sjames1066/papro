@@ -3910,6 +3910,15 @@ class UIMixin:
                 if getattr(self, "studio_current", None) == (project["icao"], project["voice"]):
                     self.studio_current = None
                 return {"ok": True}
+            if name == "duplicate":
+                project = self.studio_project(data)
+                try:
+                    new = papro_studio.duplicate_project(STUDIO_DIR, project)
+                except (papro_studio.StudioError, OSError) as exc:
+                    return {"error": str(exc)}
+                self.studio_current = (new["icao"], new["voice"])
+                log.info("Pack Studio: duplicated %s / %s as %s / %s", project["icao"], project["voice"], new["icao"], new["voice"])
+                return {"ok": True, "name": new["airline"]}
             if name == "close":
                 self.studio_current = None
                 return {"ok": True}

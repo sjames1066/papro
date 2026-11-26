@@ -2201,7 +2201,9 @@ function renderStudio(){
   use.onclick=async()=>{const r=await studio("install",pid(c));if(r.ok){savedSig=saveSig;use.classList.add("done");toast(r.finished?"Saved to your library":"Added to your library as a voice for "+c.icao)}};
   const ex=el("button","ghost","Export");ex.onclick=async()=>{const r=await studio("export",pid(c));if(r.ok)toast("Exported - release tag: "+(r.tag||"")+" (the folder is open)",9000)};
   const sh=el("button","primary","Upload to Community");sh.onclick=()=>openShare(c);
-  bar2.append(dis,fol,sh,use,ex);root.append(bar2);syncPlayer();
+  const dup=el("button","ghost","Duplicate");dup.title="Makes a copy of this pack (recordings and details) named \""+c.airline+" Copy\" and opens it";
+  dup.onclick=async()=>{dup.disabled=true;const r=await studio("duplicate",pid(c));dup.disabled=false;if(r.ok)toast("Duplicated - you are now in "+r.name,5000);else if(r.error)toast(r.error,5000)};
+  bar2.append(dis,dup,fol,sh,use,ex);root.append(bar2);syncPlayer();
 }
 
 let shareCard=null;

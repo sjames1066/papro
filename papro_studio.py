@@ -713,6 +713,32 @@ def rename_project(root: Path, project: dict, icao: str, airline: str, voice: st
 SHARED_FIELDS = ("artist", "accent", "description", "credit_url", "donate_url", "version", "local_time", "also_icaos", "crew", "service_types", "descent_city", "descent_order", "landing_base", "landing_order", "landing_off", "boarding_order", "boarding_off", "time_period")
 
 
+def duplicate_project(root: Path, project: dict) -> dict:
+    """A copy of a pack in progress (recordings, details, the secondary language): the airline name and the voice name get
+    " Copy" added (the voice name is what tells two packs of one airline apart). It is not in your library until it is saved."""
+    icao, n = project["icao"], 1
+    while True:
+        tag = " Copy" if n == 1 else f" Copy {n}"
+        voice, airline = f"{project['voice']}{tag}"[:40], f"{project['airline']}{tag}"[:80]
+        sec = secondary_of(root, project)
+        sec_voice = f"{voice} - {LANGUAGES.get(sec.get('language'), sec.get('language', ''))}"[:40] if sec is not None else ""
+        if not (project_dir(root, icao, voice) / "project.json").is_file() and (not sec_voice or not (project_dir(root, icao, sec_voice) / "project.json").is_file()):
+            break
+        n += 1
+    shutil.copytree(project_dir(root, icao, project["voice"]), project_dir(root, icao, voice))
+    new = {**json.loads((project_dir(root, icao, voice) / "project.json").read_text(encoding="utf-8")), "airline": airline, "voice": voice}
+    new.pop("origin", None)   # not in your library yet: saving adds it as a voice of its own
+    if sec is not None:
+        shutil.copytree(project_dir(root, icao, sec["voice"]), project_dir(root, icao, sec_voice))
+        sec_new = {**json.loads((project_dir(root, icao, sec_voice) / "project.json").read_text(encoding="utf-8")),
+                   "airline": airline, "voice": sec_voice, "primary_voice": voice}
+        sec_new.pop("origin", None)
+        save(root, sec_new)
+        new["secondary"] = {**new["secondary"], "voice": sec_voice}
+    save(root, new)
+    return new
+
+
 def secondary_of(root: Path, project: dict) -> dict | None:
     """The project holding this pack's secondary-language recordings, or None."""
     link = project.get("secondary")
